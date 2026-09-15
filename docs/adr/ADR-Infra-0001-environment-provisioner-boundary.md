@@ -1,4 +1,4 @@
-# ADR-0001: Establish a separate environment provisioner
+# ADR-Infra-0001: Establish a separate environment provisioner
 
 - **Status:** Accepted
 - **Date:** 2026-08-31
