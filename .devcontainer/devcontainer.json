@@ -1,6 +1,6 @@
 {
   "name": "Nabhold infrastructure",
-  "image": "ghcr.io/nabhold/baobab-dev:1.4.0-rc.0-infra",
+  "image": "ghcr.io/nabhold/baobab-dev:1.4.0-infra",
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
   "init": true,
