@@ -1,4 +1,4 @@
-name: Foundation 4
+name: Foundation Gates Repository
 
 on:
   pull_request:
