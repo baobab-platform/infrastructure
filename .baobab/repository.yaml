@@ -1,0 +1,11 @@
+schema_version: 1
+repository:
+  lifecycle: active
+capabilities:
+  - infrastructure
+environment:
+  baobab_dev:
+    required: true
+    profile: infra
+artifacts:
+  container: false

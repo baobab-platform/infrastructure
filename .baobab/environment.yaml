@@ -1,5 +1,5 @@
 schema:
-  name: "nabhold-development-environment-contract"
+  name: "baobab-platform-development-environment-contract"
   version: "1.0"
 application:
   name: "infrastructure"
@@ -21,12 +21,12 @@ validation:
     - "development.terraform"
     - "development.aws_cli"
 notes:
-  - "Codespaces uses ghcr.io/nabhold/baobab-dev:1.4.0-infra."
+  - "Codespaces uses ghcr.io/baobab-platform/baobab-dev:1.4.0-infra."
   - >
     Profile changed from "full" to "infra" (2026-09-03) -- this repo never
     used full's Python/Node/Flutter/Java/Maven/PostgreSQL client; infra is
     the lean Terraform + AWS CLI profile baobab-dev now provides
-    specifically for it. See nabhold/shared's
+    specifically for it. See baobab-platform/shared's
     contracts/development-environment/schema.yaml for the profile's
     capability_domains.
   - >
