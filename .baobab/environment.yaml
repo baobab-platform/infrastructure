@@ -1,5 +1,5 @@
 schema:
-  name: "nabhold-development-environment-contract"
+  name: "baobab-platform-development-environment-contract"
   version: "1.0"
 application:
   name: "infrastructure"
@@ -7,7 +7,7 @@ application:
 environment:
   provider: "baobab-dev"
   profile: "infra"
-  minimum_version: "1.4.0"
+  minimum_version: "1.4.2"
   contract_minimum_version: "1.0"
 compatibility_policy:
   strict_runtime_versions: true
@@ -21,7 +21,7 @@ validation:
     - "development.terraform"
     - "development.aws_cli"
 notes:
-  - "Codespaces uses ghcr.io/nabhold/baobab-dev:1.4.0-infra."
+  - "Codespaces uses ghcr.io/baobab-platform/baobab-dev:1.4.0-infra."
   - >
     Profile changed from "full" to "infra" (2026-09-03) -- this repo never
     used full's Python/Node/Flutter/Java/Maven/PostgreSQL client; infra is
