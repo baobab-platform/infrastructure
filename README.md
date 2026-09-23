@@ -36,7 +36,7 @@ It must not contain:
 ## Contract dependencies
 
 Environment declarations conform to
-`nabhold/shared/contracts/infrastructure/v1/environment-topology.schema.json`.
+`baobab-platform/shared/contracts/infrastructure/v1/environment-topology.schema.json`.
 The control-plane runtime in `nabhold/baobab-cp` interacts with provisioned
 services through narrowly scoped APIs and workload identities.
 
