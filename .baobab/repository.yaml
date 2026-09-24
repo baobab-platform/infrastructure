@@ -9,3 +9,5 @@ environment:
     profile: infra
 artifacts:
   container: false
+security:
+  sast_provider: fallback
