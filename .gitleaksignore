@@ -1,0 +1,9 @@
+# gitleaks false-positive allowlist.
+#
+# Each entry is a verified false positive, not credential material. Never
+# add an entry without first confirming the flagged value is not a secret.
+
+# compose/compose.yaml:174 - an APISIX admin API healthcheck that sends
+# -H "X-API-KEY: $${APISIX_ADMIN_KEY}", i.e. a reference to an environment
+# variable resolved at runtime; the key itself is not in the repository.
+887da1f8dba7e72dded955ba320484e62fe4fc6c:compose/compose.yaml:curl-auth-user:174

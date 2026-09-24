@@ -36,7 +36,7 @@ It must not contain:
 ## Contract dependencies
 
 Environment declarations conform to
-`nabhold/shared/contracts/infrastructure/v1/environment-topology.schema.json`.
+`baobab-platform/shared/contracts/infrastructure/v1/environment-topology.schema.json`.
 The control-plane runtime in `nabhold/baobab-cp` interacts with provisioned
 services through narrowly scoped APIs and workload identities.
 
@@ -75,7 +75,7 @@ justifies their additional machinery.
 
 ## Foundation 4
 
-Codespaces uses `ghcr.io/nabhold/baobab-dev:1.4.0-rc.0-infra` -- the lean
+Codespaces uses `ghcr.io/baobab-platform/baobab-dev:1.4.3-infra` -- the lean
 `infra` profile (Terraform + AWS CLI only, no Python/Node/Flutter/Java),
 not the `full` profile this repo carried before. The SHA-pinned
 `foundation` workflow validates the development contract and reproducibility,
