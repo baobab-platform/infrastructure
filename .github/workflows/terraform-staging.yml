@@ -1,0 +1,38 @@
+name: Terraform Staging
+
+on:
+  pull_request:
+    paths:
+      - "terraform/environments/staging/**"
+      - ".github/workflows/terraform-staging.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/environments/staging/**"
+      - ".github/workflows/terraform-staging.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-staging-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-26.04
+    defaults:
+      run:
+        working-directory: terraform/environments/staging
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+      - name: Terraform format
+        run: terraform fmt -check -recursive
+      - name: Terraform init without remote backend
+        run: terraform init -backend=false -lockfile=readonly
+      - name: Terraform validate
+        run: terraform validate
