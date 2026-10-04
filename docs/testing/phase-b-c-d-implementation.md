@@ -6,86 +6,53 @@ Companion to [platform-integrated-testing-strategy.md](./platform-integrated-tes
 
 ## Phase B — Contract spine (status: largely present in `shared`)
 
-The contract spine is **not invented here**. It already lives in
-`baobab-platform/shared`:
+The contract spine lives in `baobab-platform/shared`:
 
-| Mechanism | Location | Role |
-| --- | --- | --- |
-| Canonical schemas / AsyncAPI / policies | `shared/contracts/**` | Source of truth |
-| Producer validators | `shared/scripts/validate-*.py` / `validate-*.rb` | Schema + example conformance |
-| Consumer lock schema | `shared/.baobab/contract-consumer-lock.schema.json` | EA-01 lock shape |
-| Consumer lock check / drift | `shared/scripts/contract_lock.py` | Pin validity, incompatible drift |
-| Engine locks | `baobab-cp/contracts.lock.yaml`, `baobab-iam/contracts.lock.yaml`, … | Explicit consumption |
-| Foundation gates | `shared/.github/workflows/foundation-*.yml` | Org-wide enforcement |
+| Mechanism | Location |
+| --- | --- |
+| Canonical schemas | `shared/contracts/**` |
+| Consumer lock check | `shared/scripts/contract_lock.py` |
+| Engine locks | `baobab-cp`, `baobab-iam`, … `contracts.lock.yaml` |
 
-### What Phase B adds operationally
-
-1. **Treat highest-traffic boundaries as required consumer locks**
-   - CP context / control-plane contracts (already extensive in CP lock)
-   - Identity + identity-events (IAM)
-   - Trade outbox / capability events (when Trade publishes)
-2. **Run consumer lock check before merging engine PRs** that change types
-   derived from Shared:
-   ```bash
-   python3 ../shared/scripts/contract_lock.py check \
-     --repository-root . \
-     --shared-repo ../shared \
-     --mode enforce
-   ```
-3. **Drift is informational, not a hard fail** (`contract_lock.py drift`) until
-   the consumer deliberately re-pins via PR.
-
-Infrastructure does not host canonical contracts. It only documents the spine
-and provides the dependency topology engines test against.
-
-## Phase C — CP / IAM L2 against this topology
-
-### Control plane (`baobab-cp`)
-
-Already wired:
+Operational rule: enforce lock on engine PRs that consume Shared; re-pin via explicit PR.
 
 ```bash
-make dev-up-infra
-make dev-env-infra
-make test-integration
+python3 ../shared/scripts/contract_lock.py check \
+  --repository-root . --shared-repo ../shared --mode enforce
 ```
 
-### IAM (`baobab-iam`)
-
-Already wired:
+## Phase C — CP / IAM L2
 
 ```bash
+# baobab-cp
+make dev-up-infra && make test-integration
+
+# baobab-iam
 make integration-test
 ```
 
-### Engine template
-
-New engines should inherit L2/L3 expectations from `engine-template`.
-Infrastructure L3-07 validates the template still exposes those hooks:
-see [../../tests/platform/engine-template-hooks.md](../../tests/platform/engine-template-hooks.md).
-
-```bash
-make platform-l3-engine-template
-# or
-ENGINE_TEMPLATE_DIR=../engine-template make platform-l3
-```
+Prefer infrastructure Compose over a second dependency stack. See engine-template
+`docs/testing/platform-l2-l3.md` once merged.
 
 ## Phase D — L3 multi-engine harness
 
-Location: `tests/platform/`
-
-### Critical-path checks
+Location: `tests/platform/` · version **0.3.0**
 
 | ID | Check |
 | --- | --- |
-| L3-01 | Compose stack healthy (verify-local) |
-| L3-02 | RabbitMQ management ready |
-| L3-03 | Postgres readiness |
-| L3-04 | Optional CP if `PLATFORM_CP_URL` set |
-| L3-05 | Optional IAM OIDC if `PLATFORM_IAM_URL` set |
-| L3-07 | Engine-template L2/L3 hooks |
-| L3-06 | Evidence JSON |
+| L3-01 | verify-local smoke |
+| L3-02 | RabbitMQ ready |
+| L3-03 | PostgreSQL ready |
+| L3-04 | Optional CP |
+| L3-05 | Optional IAM OIDC |
+| L3-06 | Engine-template hooks |
+| L3-08 | RabbitMQ publish/get fixture |
+| L3-09 | Optional Regulations |
+| L3-10 | APISIX admin |
+| L3-11 | Evidence pack |
 
-### Cadence
+Cadence: main / schedule / workflow_dispatch — not every PR.
 
-Minute-aware: main / schedule / workflow_dispatch — not every PR.
+## Phase E — Governance
+
+See [required-checks-matrix.md](./required-checks-matrix.md).
