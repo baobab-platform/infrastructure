@@ -2,11 +2,22 @@ SHELL := /bin/sh
 
 COMPOSE := docker compose --env-file compose/.env -f compose/compose.yaml
 
-.PHONY: local-config local-down local-env local-logs local-ps local-up local-verify
+.PHONY: local-config local-down local-env local-logs local-ps local-up local-verify ci-env platform-l3 platform-l3-engine-template
 
 local-env:
 	@test -f compose/.env || cp compose/.env.example compose/.env
 	@echo "Local environment file is available at compose/.env"
+
+# Deterministic placeholders for CI / non-interactive smoke (not for production).
+ci-env:
+	cp compose/.env.example compose/.env
+	sed -i \
+		-e 's/^APISIX_ADMIN_KEY=.*/APISIX_ADMIN_KEY=ci-apisix-admin-key-32chars-min-xx/' \
+		-e 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-postgres-password-32chars-min/' \
+		-e 's/^RABBITMQ_DEFAULT_PASS=.*/RABBITMQ_DEFAULT_PASS=ci-rabbitmq-password-32chars-min/' \
+		-e 's/^REDIS_PASSWORD=.*/REDIS_PASSWORD=ci-redis-password-32chars-minimum/' \
+		compose/.env
+	@echo "CI environment file written to compose/.env"
 
 local-config:
 	@test -f compose/.env || { echo "Run 'make local-env' first." >&2; exit 1; }
@@ -27,3 +38,12 @@ local-logs:
 local-down:
 	$(COMPOSE) down --remove-orphans
 
+# Phase D: platform L3 critical-path harness (infra-owned).
+platform-l3: local-config
+	chmod +x tests/platform/run-l3.sh tests/platform/check-engine-template.sh scripts/verify-local.sh
+	./tests/platform/run-l3.sh
+
+# L3-07 only (no Compose). Clone engine-template as sibling or set ENGINE_TEMPLATE_DIR.
+platform-l3-engine-template:
+	chmod +x tests/platform/check-engine-template.sh
+	./tests/platform/check-engine-template.sh

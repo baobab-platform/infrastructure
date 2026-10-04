@@ -1,0 +1,45 @@
+name: Platform L3 harness
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "55 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Minute-aware: not on pull_request. Same policy as local-smoke.
+jobs:
+  platform-l3:
+    name: Platform L3 critical path
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Materialise CI env
+        run: |
+          set -eu
+          cp compose/.env.example compose/.env
+          sed -i \
+            -e 's/^APISIX_ADMIN_KEY=.*/APISIX_ADMIN_KEY=ci-apisix-admin-key-32chars-min-xx/' \
+            -e 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-postgres-password-32chars-min/' \
+            -e 's/^RABBITMQ_DEFAULT_PASS=.*/RABBITMQ_DEFAULT_PASS=ci-rabbitmq-password-32chars-min/' \
+            -e 's/^REDIS_PASSWORD=.*/REDIS_PASSWORD=ci-redis-password-32chars-minimum/' \
+            compose/.env
+      - name: Run L3 harness
+        run: |
+          chmod +x tests/platform/run-l3.sh scripts/verify-local.sh
+          ./tests/platform/run-l3.sh
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: platform-l3-evidence
+          path: tests/platform/evidence/
+          if-no-files-found: ignore
+      - name: Capture compose status on failure
+        if: failure()
+        run: |
+          docker compose --env-file compose/.env -f compose/compose.yaml ps || true
+          docker compose --env-file compose/.env -f compose/compose.yaml logs --tail=120 || true
