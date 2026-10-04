@@ -34,5 +34,14 @@ jobs:
         run: terraform fmt -check -recursive
       - name: Terraform init without remote backend
         run: terraform init -backend=false
+      - name: Lock provider set
+        run: terraform providers lock -platform=linux_amd64
+      - name: Upload generated provider lock
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-terraform-lock
+          path: terraform/environments/staging/.terraform.lock.hcl
+          if-no-files-found: error
+          retention-days: 1
       - name: Terraform validate
         run: terraform validate
