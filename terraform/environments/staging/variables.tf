@@ -55,6 +55,12 @@ variable "data_subnet_cidrs" {
   default     = ["10.40.20.0/24", "10.40.21.0/24"]
 }
 
+variable "management_subnet_cidrs" {
+  type        = list(string)
+  description = "Private management subnet CIDRs, one per availability zone."
+  default     = ["10.40.30.0/24", "10.40.31.0/24"]
+}
+
 variable "public_ingress_cidrs" {
   type        = list(string)
   description = "CIDRs permitted to reach the public HTTPS ALB. Staging defaults to Internet-reachable browser federation."
