@@ -35,14 +35,34 @@ unit tests and L2 consumer-side integration tests against this topology.
 5. **Thin new engines** (`baobab-tms`, `baobab-trade-docs`, `baobab-scf`) inherit L0–L2 from day one.
 6. **Evidence over green checkmarks.** Failures must produce diagnosable artifacts consistent with Foundation gates.
 
+## CI minute policy (Phase A)
+
+Starting the full Compose topology (Postgres, RabbitMQ, Redis, etcd, APISIX,
+OTEL) consumes GitHub Actions minutes. Until org billing/minutes are
+comfortable:
+
+- **Every PR:** `validate-compose` only (model validation — cheap, required).
+- **Full local smoke** (`scripts/verify-local.sh`): runs on `main` pushes,
+  weekly schedule, and manual `workflow_dispatch` — not on every pull request.
+- Developers always run `make local-verify` (or `make ci-env && make local-verify`)
+  on a workstation before relying on CI alone.
+
+When minutes allow, the `local-smoke` job `if:` condition can be widened to
+pull requests.
+
 ## Phase plan
 
 ### Phase A — Foundations (this change)
 
 - Document this strategy and the platform test topology.
-- Expand Infrastructure CI from `compose config` only to **up + smoke** against the local stack.
-- Provide a CI-safe path to generate `compose/.env` without committing secrets.
+- Expand Infrastructure CI: required Compose model validation on PRs; full
+  stack smoke on main / schedule / dispatch (minute-aware).
+- Provide a CI-safe path to generate `compose/.env` without committing secrets
+  (`make ci-env`).
+- Cross-link the local runbook and testing docs.
 - Keep Terraform / Kubernetes deferred; Compose remains the integration base.
+- Repo visibility (private core engines) is an org operations task, not blocked
+  on this PR.
 
 ### Phase B — Contract spine
 
@@ -68,7 +88,7 @@ unit tests and L2 consumer-side integration tests against this topology.
 ### Phase E — Governance and promotion
 
 - Align with ADR-Infra-0020/0021/0022: infrastructure and application promotions stay separate; tests gate each.
-- Required checks: Foundation + contract + unit on engine PRs; platform smoke on main/release.
+- Required checks: Foundation + contract + unit on engine PRs; platform smoke on main/release when minutes allow.
 - Preserve evidence packs for auditability.
 
 ## What this repository will and will not own
@@ -77,7 +97,8 @@ unit tests and L2 consumer-side integration tests against this topology.
 
 - Local Compose topology and its health/smoke verification.
 - Documentation of which services each engine is expected to use locally.
-- CI jobs that prove the dependency stack starts and answers health checks.
+- CI jobs that prove the dependency stack starts and answers health checks
+  (cadence constrained by Actions minutes).
 - Optional future L3 harness that only orchestrates published engine images + this topology.
 
 **Does not own**

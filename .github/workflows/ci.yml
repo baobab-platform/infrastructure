@@ -4,6 +4,15 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # Weekly full smoke when minutes allow (Monday 05:40 UTC)
+    - cron: "40 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      run_smoke:
+        description: "Run local stack smoke (starts full Compose topology)"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -18,7 +27,6 @@ jobs:
         run: |
           set -eu
           cp compose/.env.example compose/.env
-          # Deterministic CI placeholders that satisfy verify-local length rules
           sed -i \
             -e 's/^APISIX_ADMIN_KEY=.*/APISIX_ADMIN_KEY=ci-apisix-admin-key-32chars-min-xx/' \
             -e 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-postgres-password-32chars-min/' \
@@ -28,10 +36,16 @@ jobs:
       - name: Validate Compose model
         run: docker compose --env-file compose/.env --file compose/compose.yaml config --quiet
 
+  # Full stack smoke is intentional but minute-heavy. Default: main, schedule, and
+  # manual dispatch only — not every PR — so free-tier / limited billing still works.
   local-smoke:
     name: Local stack smoke
     runs-on: ubuntu-24.04
     needs: validate-compose
+    if: |
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' && inputs.run_smoke ||
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Materialise CI env from example
