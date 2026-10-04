@@ -1,6 +1,6 @@
 # Platform integrated testing strategy
 
-- **Status:** Phase A–D implemented on open PR stack; Phase E matrix drafted
+- **Status:** Phase A–D implemented on `main`; Phase E matrix drafted; L4 staging foundation is the next infrastructure increment
 - **Owner:** Platform / infrastructure
 - **Related:** ADR-Infra-0001, ADR-Infra-0020, ADR-Infra-0021, ADR-Infra-0022
 - **Date:** 2026-10-04
@@ -39,12 +39,12 @@ contracts from `shared`, and Foundation evidence culture.
 
 | Phase | Status |
 | --- | --- |
-| A Foundations | Open PR #11 |
+| A Foundations | Implemented; Phase A reconciliation included in this corrective change |
 | B Contract spine | Documented; enforce on engines ongoing |
 | C CP/IAM L2 | Present in engines; topology documented |
-| D L3 harness | Open PR #12–#13; v0.3.0 includes L3-08..10 |
+| D L3 harness | Implemented on `main`; v0.3.0 includes L3-08..10 |
 | E Governance | [required-checks-matrix.md](./required-checks-matrix.md) |
-| L4 Staging | Not started (needs env + billing) |
+| L4 Staging | MP2-C production-shaped AWS staging foundation next |
 
 ## References
 
