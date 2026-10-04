@@ -6,6 +6,10 @@ Foundation 1 supplies the local infrastructure dependencies for later
 `baobab-cp` development. It does not provision production infrastructure and it
 does not include the control-plane application.
 
+For how this topology fits multi-engine integrated testing, see
+[docs/testing/platform-integrated-testing-strategy.md](../testing/platform-integrated-testing-strategy.md)
+and [docs/testing/platform-test-topology.md](../testing/platform-test-topology.md).
+
 ## Prerequisites
 
 - Docker Engine with Compose v2
@@ -29,6 +33,13 @@ The verification command validates the resolved Compose model, waits for the
 stateful services and APISIX, then checks the APISIX Admin API, RabbitMQ
 readiness endpoint, and OpenTelemetry health endpoint from inside the isolated
 networks.
+
+For non-interactive / CI-style placeholders (not for day-to-day development):
+
+```bash
+make ci-env
+make local-verify
+```
 
 Useful commands:
 
