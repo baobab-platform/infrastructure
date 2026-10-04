@@ -64,7 +64,6 @@ if command -v docker >/dev/null 2>&1; then
   if compose exec -T postgresql pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; then
     record "L3-03" pass "pg_isready inside postgresql service"
   else
-    # Fallback: host-side check if client available
     if command -v pg_isready >/dev/null 2>&1 && \
       pg_isready -h 127.0.0.1 -p "${POSTGRES_PORT:-5432}" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; then
       record "L3-03" pass "pg_isready on host loopback"
@@ -99,14 +98,21 @@ else
   record "L3-05" pass "skipped (PLATFORM_IAM_URL unset)"
 fi
 
+echo "== L3-07 engine-template L2/L3 hooks =="
+chmod +x "$repository_root/tests/platform/check-engine-template.sh"
+if "$repository_root/tests/platform/check-engine-template.sh"; then
+  record "L3-07" pass "engine-template hooks check passed or skipped"
+else
+  record "L3-07" fail "engine-template hooks check failed"
+fi
+
 echo "== L3-06 evidence pack =="
 mkdir -p "$evidence_dir"
-# Trim trailing comma from RESULTS_JSON
 RESULTS_JSON="${RESULTS_JSON%,}"
 cat >"$evidence_file" <<EOF
 {
   "harness": "platform-l3",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "timestamp": "$timestamp",
   "pass": $PASS,
   "fail": $FAIL,

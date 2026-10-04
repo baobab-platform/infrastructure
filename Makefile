@@ -2,7 +2,7 @@ SHELL := /bin/sh
 
 COMPOSE := docker compose --env-file compose/.env -f compose/compose.yaml
 
-.PHONY: local-config local-down local-env local-logs local-ps local-up local-verify ci-env platform-l3
+.PHONY: local-config local-down local-env local-logs local-ps local-up local-verify ci-env platform-l3 platform-l3-engine-template
 
 local-env:
 	@test -f compose/.env || cp compose/.env.example compose/.env
@@ -40,5 +40,10 @@ local-down:
 
 # Phase D: platform L3 critical-path harness (infra-owned).
 platform-l3: local-config
-	chmod +x tests/platform/run-l3.sh scripts/verify-local.sh
+	chmod +x tests/platform/run-l3.sh tests/platform/check-engine-template.sh scripts/verify-local.sh
 	./tests/platform/run-l3.sh
+
+# L3-07 only (no Compose). Clone engine-template as sibling or set ENGINE_TEMPLATE_DIR.
+platform-l3-engine-template:
+	chmod +x tests/platform/check-engine-template.sh
+	./tests/platform/check-engine-template.sh
