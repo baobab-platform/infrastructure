@@ -13,6 +13,9 @@ infrastructure and is not a production deployment template.
 
 Start with the [local platform runbook](docs/runbooks/local-platform.md).
 
+Integrated testing strategy and engine→dependency topology live under
+[docs/testing/](docs/testing/).
+
 ## Ownership
 
 This repository will contain:
@@ -23,7 +26,8 @@ This repository will contain:
 - RabbitMQ, PostgreSQL, and Redis deployment configuration;
 - Kubernetes/Helm definitions when their adoption is approved;
 - observability and backup configuration;
-- environment deployment workflows and runbooks.
+- environment deployment workflows and runbooks;
+- platform-level dependency smoke and (later) critical-path harness docs/jobs.
 
 It must not contain:
 
@@ -53,6 +57,7 @@ deploy/                  Deployment workflows and scripts
 docs/adr/                Infrastructure decisions
 docs/architecture/       Environment topology
 docs/runbooks/           Operational procedures
+docs/testing/            Integrated testing strategy and topology
 ```
 
 ## Initial platform services
@@ -72,6 +77,18 @@ docs/runbooks/           Operational procedures
 Production is targeted at AWS Cape Town (`af-south-1`) through Terraform.
 Kubernetes, Helm, and Temporal are deliberately deferred until operational need
 justifies their additional machinery.
+
+## Local commands
+
+```bash
+make local-env      # copy compose/.env.example → compose/.env
+make local-up       # start dependency stack
+make local-verify   # config + up + smoke (APISIX, RabbitMQ, OTEL)
+make local-down     # stop containers (volumes retained)
+```
+
+CI uses the same smoke path with deterministic placeholders via the
+Infrastructure CI workflow.
 
 ## Foundation 4
 

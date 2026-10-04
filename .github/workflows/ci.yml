@@ -1,14 +1,53 @@
 name: Infrastructure CI
+
 on:
   pull_request:
   push:
     branches: [main]
+
 permissions:
   contents: read
+
 jobs:
-  validate:
-    runs-on: ubuntu-26.04
+  validate-compose:
+    name: Compose model
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: cp compose/.env.example compose/.env
-      - run: docker compose --env-file compose/.env --file compose/compose.yaml config --quiet
+      - name: Materialise CI env from example
+        run: |
+          set -eu
+          cp compose/.env.example compose/.env
+          # Deterministic CI placeholders that satisfy verify-local length rules
+          sed -i \
+            -e 's/^APISIX_ADMIN_KEY=.*/APISIX_ADMIN_KEY=ci-apisix-admin-key-32chars-min-xx/' \
+            -e 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-postgres-password-32chars-min/' \
+            -e 's/^RABBITMQ_DEFAULT_PASS=.*/RABBITMQ_DEFAULT_PASS=ci-rabbitmq-password-32chars-min/' \
+            -e 's/^REDIS_PASSWORD=.*/REDIS_PASSWORD=ci-redis-password-32chars-minimum/' \
+            compose/.env
+      - name: Validate Compose model
+        run: docker compose --env-file compose/.env --file compose/compose.yaml config --quiet
+
+  local-smoke:
+    name: Local stack smoke
+    runs-on: ubuntu-24.04
+    needs: validate-compose
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Materialise CI env from example
+        run: |
+          set -eu
+          cp compose/.env.example compose/.env
+          sed -i \
+            -e 's/^APISIX_ADMIN_KEY=.*/APISIX_ADMIN_KEY=ci-apisix-admin-key-32chars-min-xx/' \
+            -e 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-postgres-password-32chars-min/' \
+            -e 's/^RABBITMQ_DEFAULT_PASS=.*/RABBITMQ_DEFAULT_PASS=ci-rabbitmq-password-32chars-min/' \
+            -e 's/^REDIS_PASSWORD=.*/REDIS_PASSWORD=ci-redis-password-32chars-minimum/' \
+            compose/.env
+      - name: Start stack and run smoke
+        run: ./scripts/verify-local.sh
+      - name: Capture service status on failure
+        if: failure()
+        run: |
+          docker compose --env-file compose/.env -f compose/compose.yaml ps || true
+          docker compose --env-file compose/.env -f compose/compose.yaml logs --tail=150 || true
