@@ -14,6 +14,14 @@ locals {
       cidrs = var.data_subnet_cidrs
       zone  = "data"
     }
+    management = {
+      cidrs = var.management_subnet_cidrs
+      zone  = "management"
+    }
+  }
+
+  az_indexes = {
+    for index in range(length(var.availability_zones)) : tostring(index) => index
   }
 
   endpoint_services = toset([
@@ -78,6 +86,7 @@ locals {
   public_subnet_ids      = [for index in range(length(var.availability_zones)) : aws_subnet.zone["public-${index}"].id]
   application_subnet_ids = [for index in range(length(var.availability_zones)) : aws_subnet.zone["application-${index}"].id]
   data_subnet_ids        = [for index in range(length(var.availability_zones)) : aws_subnet.zone["data-${index}"].id]
+  management_subnet_ids  = [for index in range(length(var.availability_zones)) : aws_subnet.zone["management-${index}"].id]
 }
 
 resource "aws_route_table" "public" {
@@ -95,8 +104,9 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public" {
-  for_each       = toset(local.public_subnet_ids)
-  subnet_id      = each.value
+  for_each = local.az_indexes
+
+  subnet_id      = aws_subnet.zone["public-${each.value}"].id
   route_table_id = aws_route_table.public.id
 }
 
@@ -138,8 +148,9 @@ resource "aws_route_table" "application" {
 }
 
 resource "aws_route_table_association" "application" {
-  for_each       = toset(local.application_subnet_ids)
-  subnet_id      = each.value
+  for_each = local.az_indexes
+
+  subnet_id      = aws_subnet.zone["application-${each.value}"].id
   route_table_id = aws_route_table.application.id
 }
 
@@ -153,9 +164,26 @@ resource "aws_route_table" "data" {
 }
 
 resource "aws_route_table_association" "data" {
-  for_each       = toset(local.data_subnet_ids)
-  subnet_id      = each.value
+  for_each = local.az_indexes
+
+  subnet_id      = aws_subnet.zone["data-${each.value}"].id
   route_table_id = aws_route_table.data.id
+}
+
+resource "aws_route_table" "management" {
+  vpc_id = aws_vpc.staging.id
+
+  tags = {
+    Name      = "${local.name}-management"
+    TrustZone = "management"
+  }
+}
+
+resource "aws_route_table_association" "management" {
+  for_each = local.az_indexes
+
+  subnet_id      = aws_subnet.zone["management-${each.value}"].id
+  route_table_id = aws_route_table.management.id
 }
 
 resource "aws_security_group" "alb_public" {
@@ -288,15 +316,51 @@ resource "aws_security_group" "endpoints" {
   }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "endpoint_https" {
-  for_each          = toset([aws_security_group.apisix.id, aws_security_group.cp.id, aws_security_group.iam.id, aws_security_group.keycloak.id])
-  security_group_id = aws_security_group.endpoints.id
+locals {
+  endpoint_callers = {
+    apisix   = aws_security_group.apisix.id
+    cp       = aws_security_group.cp.id
+    iam      = aws_security_group.iam.id
+    keycloak = aws_security_group.keycloak.id
+  }
 
+  external_https_callers = {
+    iam      = aws_security_group.iam.id
+    keycloak = aws_security_group.keycloak.id
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "endpoint_https" {
+  for_each = local.endpoint_callers
+
+  security_group_id            = aws_security_group.endpoints.id
   referenced_security_group_id = each.value
   from_port                    = 443
   to_port                      = 443
   ip_protocol                  = "tcp"
-  description                  = "Private workload access to AWS APIs"
+  description                  = "Private ${each.key} access to AWS APIs"
+}
+
+resource "aws_vpc_security_group_egress_rule" "workload_to_endpoints" {
+  for_each = local.endpoint_callers
+
+  security_group_id            = each.value
+  referenced_security_group_id = aws_security_group.endpoints.id
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  description                  = "Private ${each.key} AWS API egress"
+}
+
+resource "aws_vpc_security_group_egress_rule" "federation_https" {
+  for_each = local.external_https_callers
+
+  security_group_id = each.value
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  description       = "HTTPS egress for approved federation/provider dependencies"
 }
 
 resource "aws_vpc_endpoint" "interface" {
@@ -306,7 +370,7 @@ resource "aws_vpc_endpoint" "interface" {
   service_name        = "com.amazonaws.${var.aws_region}.${each.value}"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
-  subnet_ids          = local.application_subnet_ids
+  subnet_ids          = local.management_subnet_ids
   security_group_ids  = [aws_security_group.endpoints.id]
 
   tags = {
@@ -420,10 +484,10 @@ resource "aws_efs_file_system" "iam_ledger" {
 }
 
 resource "aws_efs_mount_target" "iam_ledger" {
-  for_each = toset(local.data_subnet_ids)
+  for_each = local.az_indexes
 
   file_system_id  = aws_efs_file_system.iam_ledger.id
-  subnet_id       = each.value
+  subnet_id       = aws_subnet.zone["data-${each.value}"].id
   security_groups = [aws_security_group.efs.id]
 }
 
