@@ -3,8 +3,10 @@
 # Resolves template root as:
 #   1) ENGINE_TEMPLATE_DIR if set
 #   2) sibling ../engine-template relative to this infrastructure repo
-#   3) if neither exists and REQUIRE_ENGINE_TEMPLATE is unset → skip (exit 0)
-#   4) if REQUIRE_ENGINE_TEMPLATE=1 and missing → fail
+#   3) if neither exists and REQUIRE_ENGINE_TEMPLATE is unset → skip (exit 0, message SKIP)
+#   4) if REQUIRE_ENGINE_TEMPLATE=1 and missing → fail (exit 1)
+#
+# Exit codes: 0 = pass or skip (stdout starts with SKIP: when skipped), 1 = fail
 set -euo pipefail
 
 repository_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -46,11 +48,7 @@ require_path ".baobab/repository.yaml.example"
 require_path ".baobab/environment.yaml.example"
 require_path "contracts/README.md"
 
-# Contract consumption guidance (Phase B)
-require_path "contracts"
-
-# New engines must learn L2/L3 wiring; these may be examples until activated.
-# Prefer explicit testing docs once added to the template.
+# New engines must learn L2/L3 wiring.
 if [ -f "$template_dir/docs/testing/platform-l2-l3.md" ] || \
    [ -f "$template_dir/docs/testing/README.md" ] || \
    [ -f "$template_dir/Makefile.example" ] || \
@@ -61,14 +59,15 @@ else
   missing=$((missing + 1))
 fi
 
-# Consumer lock is required once lifecycle=active; template may only document it.
+# Consumer lock: prefer explicit example or lock file; else documented contracts.lock
 if [ -f "$template_dir/contracts.lock.yaml.example" ] || \
    [ -f "$template_dir/contracts.lock.yaml" ] || \
    grep -q "contracts.lock" "$template_dir/contracts/README.md" 2>/dev/null || \
-   grep -qi "contract" "$template_dir/TEMPLATE-USAGE.md" 2>/dev/null; then
+   grep -q "contracts.lock" "$template_dir/TEMPLATE-USAGE.md" 2>/dev/null || \
+   grep -q "contracts.lock" "$template_dir/docs/testing/platform-l2-l3.md" 2>/dev/null; then
   echo "  present: contract lock guidance"
 else
-  echo "  MISSING: contracts.lock.yaml.example or lock guidance in TEMPLATE-USAGE / contracts README"
+  echo "  MISSING: contracts.lock.yaml.example or contracts.lock mentioned in contracts/TEMPLATE-USAGE/docs/testing"
   missing=$((missing + 1))
 fi
 

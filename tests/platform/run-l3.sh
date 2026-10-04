@@ -9,22 +9,33 @@ environment_file="$repository_root/compose/.env"
 evidence_dir="${EVIDENCE_DIR:-$repository_root/tests/platform/evidence}"
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 evidence_file="$evidence_dir/l3-${timestamp}.json"
+checks_tmp=$(mktemp)
+trap 'rm -f "$checks_tmp"' EXIT
 
 PASS=0
 FAIL=0
-RESULTS_JSON=""
+SKIP=0
 
+# status: pass | fail | skip
 record() {
   local id=$1 status=$2 detail=$3
-  if [ "$status" = "pass" ]; then
-    echo "  PASS: $id — $detail"
-    PASS=$((PASS + 1))
-  else
-    echo "  FAIL: $id — $detail"
-    FAIL=$((FAIL + 1))
-  fi
-  # shellcheck disable=SC2089
-  RESULTS_JSON="${RESULTS_JSON}{\"id\":\"$id\",\"status\":\"$status\",\"detail\":$(printf '%s' "$detail" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')},"
+  case $status in
+    pass)
+      echo "  PASS: $id — $detail"
+      PASS=$((PASS + 1))
+      ;;
+    skip)
+      echo "  SKIP: $id — $detail"
+      SKIP=$((SKIP + 1))
+      ;;
+    *)
+      echo "  FAIL: $id — $detail"
+      FAIL=$((FAIL + 1))
+      status=fail
+      ;;
+  esac
+  detail_json=$(printf '%s' "$detail" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+  printf '%s\n' "{\"id\":\"$id\",\"status\":\"$status\",\"detail\":$detail_json}" >>"$checks_tmp"
 }
 
 if [ ! -f "$environment_file" ]; then
@@ -32,7 +43,6 @@ if [ ! -f "$environment_file" ]; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
 set -a
 # shellcheck source=/dev/null
 . "$environment_file"
@@ -83,7 +93,7 @@ if [ -n "${PLATFORM_CP_URL:-}" ]; then
     record "L3-04" fail "CP not reachable at PLATFORM_CP_URL=${PLATFORM_CP_URL}"
   fi
 else
-  record "L3-04" pass "skipped (PLATFORM_CP_URL unset)"
+  record "L3-04" skip "PLATFORM_CP_URL unset"
 fi
 
 echo "== L3-05 optional IAM OIDC discovery =="
@@ -95,34 +105,63 @@ if [ -n "${PLATFORM_IAM_URL:-}" ]; then
     record "L3-05" fail "OIDC discovery failed at $discovery"
   fi
 else
-  record "L3-05" pass "skipped (PLATFORM_IAM_URL unset)"
+  record "L3-05" skip "PLATFORM_IAM_URL unset"
 fi
 
-echo "== L3-07 engine-template L2/L3 hooks =="
-chmod +x "$repository_root/tests/platform/check-engine-template.sh"
-if "$repository_root/tests/platform/check-engine-template.sh"; then
-  record "L3-07" pass "engine-template hooks check passed or skipped"
+echo "== L3-06 engine-template L2/L3 hooks =="
+check_script="$repository_root/tests/platform/check-engine-template.sh"
+chmod +x "$check_script" 2>/dev/null || true
+template_out=$("$check_script" 2>&1) || template_rc=$?
+template_rc=${template_rc:-0}
+printf '%s\n' "$template_out"
+if [ "$template_rc" -ne 0 ]; then
+  record "L3-06" fail "engine-template hooks check failed"
+elif printf '%s' "$template_out" | grep -q '^SKIP:'; then
+  record "L3-06" skip "engine-template not present"
 else
-  record "L3-07" fail "engine-template hooks check failed"
+  record "L3-06" pass "engine-template L2/L3 hooks present"
 fi
 
-echo "== L3-06 evidence pack =="
+echo "== L3-07 evidence pack =="
 mkdir -p "$evidence_dir"
-RESULTS_JSON="${RESULTS_JSON%,}"
+checks_json=$(python3 -c '
+import json, sys
+lines = [ln.strip() for ln in sys.stdin if ln.strip()]
+print(",".join(lines))
+' <"$checks_tmp")
 cat >"$evidence_file" <<EOF
 {
   "harness": "platform-l3",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "timestamp": "$timestamp",
   "pass": $PASS,
   "fail": $FAIL,
-  "checks": [${RESULTS_JSON}]
+  "skip": $SKIP,
+  "checks": [${checks_json}]
 }
 EOF
-record "L3-06" pass "wrote $evidence_file"
+record "L3-07" pass "wrote $evidence_file"
+
+# Re-write evidence including L3-07 so totals and checks array match final state.
+checks_json=$(python3 -c '
+import json, sys
+lines = [ln.strip() for ln in sys.stdin if ln.strip()]
+print(",".join(lines))
+' <"$checks_tmp")
+cat >"$evidence_file" <<EOF
+{
+  "harness": "platform-l3",
+  "version": "0.2.1",
+  "timestamp": "$timestamp",
+  "pass": $PASS,
+  "fail": $FAIL,
+  "skip": $SKIP,
+  "checks": [${checks_json}]
+}
+EOF
 
 echo ""
-echo "Platform L3 summary: $PASS passed, $FAIL failed"
+echo "Platform L3 summary: $PASS passed, $FAIL failed, $SKIP skipped"
 echo "Evidence: $evidence_file"
 
 if [ "$FAIL" -gt 0 ]; then
