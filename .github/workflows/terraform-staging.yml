@@ -42,6 +42,7 @@ jobs:
           name: staging-terraform-lock
           path: terraform/environments/staging/.terraform.lock.hcl
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 1
       - name: Terraform validate
         run: terraform validate
