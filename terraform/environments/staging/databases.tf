@@ -1,5 +1,10 @@
+variable "iam_shared_postgres" {
+  description = "Provision dedicated IAM shared federation state; enable only with a reviewed PostgreSQL service configuration."
+  type        = bool
+  default     = false
+}
 locals {
-  database_owners = var.workload_release == null ? toset([]) : toset(["cp", "keycloak"])
+  database_owners = var.workload_release == null ? toset([]) : toset(concat(["cp", "keycloak"], var.iam_shared_postgres ? ["iam"] : []))
 }
 resource "aws_kms_key" "database" {
   for_each                = local.database_owners
@@ -56,7 +61,7 @@ resource "aws_db_instance" "workloads" {
   kms_key_id                      = aws_kms_key.database[each.key].arn
   username                        = "platform_bootstrap"
   manage_master_user_password     = true
-  db_name                         = each.key == "cp" ? "controlplane" : "keycloak"
+  db_name                         = each.key == "cp" ? "controlplane" : each.key == "iam" ? "federation" : "keycloak"
   db_subnet_group_name            = aws_db_subnet_group.workloads[0].name
   vpc_security_group_ids          = [aws_security_group.database[each.key].id]
   parameter_group_name            = aws_db_parameter_group.workloads[0].name
@@ -82,3 +87,4 @@ output "workload_databases" {
     master_secret_arn = db.master_user_secret[0].secret_arn
   } }
 }
+

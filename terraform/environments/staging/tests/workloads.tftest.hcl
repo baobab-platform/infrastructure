@@ -59,3 +59,30 @@ run "reject_unprepared_activation" {
   }
   expect_failures = [aws_ecs_service.workload]
 }
+
+
+run "prepared_shared_iam_storage" {
+  command = plan
+  override_resource {
+    target          = aws_security_group.iam
+    values          = { id = "sg-11111111111111111" }
+    override_during = plan
+  }
+  override_resource {
+    target          = aws_security_group.database["iam"]
+    values          = { id = "sg-22222222222222222" }
+    override_during = plan
+  }
+  variables {
+    workload_release    = jsondecode(file("tests/release.fixture.json"))
+    iam_shared_postgres = true
+  }
+  assert {
+    condition     = length(aws_db_instance.workloads) == 3 && aws_db_instance.workloads["iam"].db_name == "federation" && aws_db_instance.workloads["iam"].multi_az && !aws_db_instance.workloads["iam"].publicly_accessible
+    error_message = "IAM shared state requires its own private encrypted Multi-AZ database."
+  }
+  assert {
+    condition     = aws_vpc_security_group_ingress_rule.database["iam"].referenced_security_group_id == aws_security_group.iam.id && aws_vpc_security_group_egress_rule.database["iam"].referenced_security_group_id == aws_security_group.database["iam"].id
+    error_message = "Only the IAM task security group can reach IAM PostgreSQL."
+  }
+}
