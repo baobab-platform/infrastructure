@@ -495,16 +495,16 @@ resource "aws_efs_access_point" "iam_ledger" {
   file_system_id = aws_efs_file_system.iam_ledger.id
 
   posix_user {
-    gid = 10001
-    uid = 10001
+    gid = 65532
+    uid = 65532
   }
 
   root_directory {
     path = "/baobab-iam"
 
     creation_info {
-      owner_gid   = 10001
-      owner_uid   = 10001
+      owner_gid   = 65532
+      owner_uid   = 65532
       permissions = "0700"
     }
   }
@@ -514,3 +514,4 @@ resource "aws_efs_access_point" "iam_ledger" {
     Service = "baobab-iam"
   }
 }
+

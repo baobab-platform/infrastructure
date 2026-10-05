@@ -5,11 +5,17 @@ on:
     paths:
       - "terraform/environments/staging/**"
       - ".github/workflows/terraform-staging.yml"
+      - "deploy/runtime-helper/**"
+      - "deploy/verification/**"
+      - "tests/staging/**"
   push:
     branches: [main]
     paths:
       - "terraform/environments/staging/**"
       - ".github/workflows/terraform-staging.yml"
+      - "deploy/runtime-helper/**"
+      - "deploy/verification/**"
+      - "tests/staging/**"
 
 permissions:
   contents: read
@@ -36,3 +42,38 @@ jobs:
         run: terraform init -backend=false -lockfile=readonly
       - name: Terraform validate
         run: terraform validate
+
+
+      - name: Terraform mocked release plans (no AWS credentials)
+        run: terraform test
+      - name: Offline release validation
+        run: python ../../../deploy/verification/staging.py validate --release tests/release.fixture.json
+
+  runtime-helper:
+    runs-on: ubuntu-26.04
+    defaults:
+      run:
+        working-directory: deploy/runtime-helper
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: deploy/runtime-helper/go.mod
+          cache-dependency-path: deploy/runtime-helper/go.sum
+      - name: Tests and static analysis
+        run: |
+          test -z "$(gofmt -l .)"
+          go test -race ./...
+          go vet ./...
+      - name: Read-only preflight and observation tests
+        working-directory: .
+        run: python -m unittest discover -s tests/staging -v
+      - name: Build helper image
+        run: docker build --build-arg REVISION="$GITHUB_SHA" -t baobab-runtime-helper:test .
+      - name: Scan helper image
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          image-ref: baobab-runtime-helper:test
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
