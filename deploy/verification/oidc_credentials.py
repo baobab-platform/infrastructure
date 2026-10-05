@@ -56,7 +56,9 @@ def credentials(environ, request_token=None, command=None):
 
 
 def main():
-    if os.environ.get('GITHUB_REF') != 'refs/heads/main' or os.environ.get('GITHUB_REPOSITORY') != 'baobab-platform/infrastructure':
+    ref = os.environ.get('GITHUB_REF', '')
+    allowed = ref == 'refs/heads/main' or re.fullmatch(r'refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-staging', ref)
+    if not allowed or os.environ.get('GITHUB_REPOSITORY') != 'baobab-platform/infrastructure':
         raise ValueError('unreviewed deployment context')
     result = credentials(os.environ)
     for key in ('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN'):
@@ -69,3 +71,4 @@ if __name__ == '__main__':
     except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError, http.client.HTTPException):
         print('staging OIDC role exchange denied', file=sys.stderr)
         sys.exit(1)
+
