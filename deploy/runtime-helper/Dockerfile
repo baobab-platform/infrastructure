@@ -2,8 +2,8 @@ FROM golang:1.27.0-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc99
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY main.go ./
-RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /runtime-helper .
+COPY deploy/runtime-helper/main.go ./deploy/runtime-helper/main.go
+RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /runtime-helper ./deploy/runtime-helper
 FROM scratch
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown

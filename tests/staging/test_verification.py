@@ -63,3 +63,26 @@ class PrivateAuthorityTests(unittest.TestCase):
             with self.assertRaises(ValueError): p.endpoint(origin, 'staging.baobab.internal')
 
 if __name__ == '__main__': unittest.main()
+
+class OIDCTests(unittest.TestCase):
+    def setUp(self):
+        self.module = module('oidc_credentials')
+        self.environment = {'STAGING_ACCOUNT_ID': '123456789012', 'STAGING_ROLE_ARN': 'arn:aws:iam::123456789012:role/staging-plan', 'ACTIONS_ID_TOKEN_REQUEST_URL': 'https://token.actions.githubusercontent.com/job?audience=wrong', 'GITHUB_RUN_ID': '123'}
+    def test_token_audience_and_file_delivery(self):
+        def get_token(path):
+            self.assertIn('audience=sts.amazonaws.com', path)
+            self.assertNotIn('audience=wrong', path)
+            return 'header.payload.signature'
+        def assume(args):
+            token = args[args.index('--web-identity-token') + 1]
+            self.assertTrue(token.startswith('file://'))
+            self.assertNotIn('header.payload.signature', args)
+            self.assertEqual(pathlib.Path(token[7:]).stat().st_mode & 0o777, 0o600)
+            return {'AssumedRoleUser': {'Arn': 'arn:aws:sts::123456789012:assumed-role/staging-plan/session'}, 'Credentials': {'AccessKeyId': 'temporary', 'SecretAccessKey': 'temporary-secret', 'SessionToken': 'temporary-session'}}
+        result = self.module.credentials(self.environment, get_token, assume)
+        self.assertEqual(result['AWS_REGION'], 'af-south-1')
+    def test_untrusted_token_endpoint_and_wrong_account_deny(self):
+        wrong = {**self.environment, 'ACTIONS_ID_TOKEN_REQUEST_URL': 'https://actions.githubusercontent.com.attacker.test/token'}
+        with self.assertRaises(ValueError): self.module.credentials(wrong, lambda path: 'h.p.s', None)
+        response = {'AssumedRoleUser': {'Arn': 'arn:aws:sts::999999999999:assumed-role/role/session'}}
+        with self.assertRaises(ValueError): self.module.credentials(self.environment, lambda path: 'h.p.s', lambda args: response)

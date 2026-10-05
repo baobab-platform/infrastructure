@@ -61,7 +61,7 @@ variable "workload_release" {
       alltrue([for file in service.bundle_files : can(regex("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$", file)) && file != "runtime-helper"]) &&
       alltrue([for arn in service.secret_kms_arns : startswith(arn, "arn:aws:kms:af-south-1:${var.workload_release.account_id}:key/")]) &&
       can(regex("^[A-Za-z0-9.-]+$", service.tls_server_name)) &&
-      can(regex("^/[A-Za-z0-9/_-]*$", service.health_path)) &&
+      service.health_path == (name == "iam" ? "/ready" : name == "keycloak" ? "/health/ready" : "/healthz") &&
       alltrue([for key, value in service.environment :
         !can(regex("(?i)(password|secret|token|database_url|aws_access|aws_secret)", key)) ||
         (endswith(key, "_FILE") && startswith(value, "/run/baobab/") && contains(service.bundle_files, trimprefix(value, "/run/baobab/")))

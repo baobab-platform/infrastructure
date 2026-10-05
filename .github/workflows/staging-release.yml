@@ -19,6 +19,7 @@ jobs:
   plan:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
+    timeout-minutes: 25
     environment: staging-plan
     permissions:
       contents: read
@@ -44,12 +45,8 @@ jobs:
                   raise SystemExit('Staging account configuration is incomplete')
           PY
           python deploy/verification/staging.py validate --release "$RELEASE_PATH"
-      - uses: aws-actions/configure-aws-credentials@a1831f246e33da58263720d178cf1c2817a6321b
-        with:
-          role-to-assume: ${{ vars.STAGING_PLAN_ROLE_ARN }}
-          aws-region: af-south-1
-          allowed-account-ids: ${{ vars.STAGING_ACCOUNT_ID }}
-          role-session-name: staging-plan-${{ github.run_id }}
+      - name: Assume the staging plan role with the job OIDC identity
+        run: python deploy/verification/oidc_credentials.py
       - name: Read-only artifact, certificate and secret-version preflight
         run: python deploy/verification/staging.py preflight --release "$RELEASE_PATH"
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
@@ -76,21 +73,20 @@ jobs:
     if: inputs.apply && github.ref == 'refs/heads/main'
     needs: plan
     runs-on: ubuntu-26.04
+    timeout-minutes: 55
     environment: staging
     permissions:
       contents: read
       id-token: write
     env:
+      STAGING_ACCOUNT_ID: ${{ vars.STAGING_ACCOUNT_ID }}
+      STAGING_ROLE_ARN: ${{ vars.STAGING_APPLY_ROLE_ARN }}
       STAGING_STATE_BUCKET: ${{ vars.STAGING_STATE_BUCKET }}
       RELEASE_PATH: ${{ inputs.release_path }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: aws-actions/configure-aws-credentials@a1831f246e33da58263720d178cf1c2817a6321b
-        with:
-          role-to-assume: ${{ vars.STAGING_APPLY_ROLE_ARN }}
-          aws-region: af-south-1
-          allowed-account-ids: ${{ vars.STAGING_ACCOUNT_ID }}
-          role-session-name: staging-apply-${{ github.run_id }}
+      - name: Assume the staging apply role with the job OIDC identity
+        run: python deploy/verification/oidc_credentials.py
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
         with:
           terraform_version: 1.16.5

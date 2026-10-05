@@ -1,0 +1,9 @@
+*
+!go.mod
+!go.sum
+!deploy/
+deploy/*
+!deploy/runtime-helper/
+deploy/runtime-helper/*
+!deploy/runtime-helper/main.go
+!deploy/runtime-helper/Dockerfile

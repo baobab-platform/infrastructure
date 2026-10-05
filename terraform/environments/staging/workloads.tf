@@ -206,7 +206,7 @@ resource "aws_ecs_service" "workload" {
       error_message = "Workload activation requires the approved durable etcd cluster boundary."
     }
   }
-  depends_on = [aws_vpc_security_group_ingress_rule.workload_link, aws_vpc_security_group_egress_rule.workload_link, aws_efs_mount_target.iam_ledger, aws_lb_listener.browser, aws_iam_role_policy.execution, aws_iam_role_policy.workload]
+  depends_on = [aws_vpc_security_group_ingress_rule.workload_link, aws_vpc_security_group_egress_rule.workload_link, aws_efs_mount_target.iam_ledger, aws_efs_file_system_policy.iam_ledger, aws_lb_listener.browser, aws_iam_role_policy.execution, aws_iam_role_policy.workload]
 }
 resource "aws_vpc_security_group_egress_rule" "ecr_s3" {
   for_each          = local.workloads
