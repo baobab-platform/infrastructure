@@ -58,7 +58,8 @@ Terraform rejects a stale saved plan if state changed during approval.
 
 Publish app images in their owning repositories; infrastructure consumes them
 without rebuilding. Build the infrastructure-owned helper from
-`deploy/runtime-helper` and scan it. Promote the same artifacts into staging ECR.
+the repository root with `docker build -f deploy/runtime-helper/Dockerfile .`
+and scan it. Promote the same artifacts into staging ECR.
 Pin the Linux/amd64 **platform manifest** digest, not a multi-platform image
 index. Preserve build run, source revision, SBOM and security/provenance evidence
 alongside each promotion. Preflight verifies availability and digest identity;

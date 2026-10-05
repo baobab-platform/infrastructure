@@ -6,6 +6,9 @@ on:
       - "terraform/environments/staging/**"
       - ".github/workflows/terraform-staging.yml"
       - "deploy/runtime-helper/**"
+      - "go.mod"
+      - "go.sum"
+      - ".dockerignore"
       - "deploy/verification/**"
       - "tests/staging/**"
   push:
@@ -14,6 +17,9 @@ on:
       - "terraform/environments/staging/**"
       - ".github/workflows/terraform-staging.yml"
       - "deploy/runtime-helper/**"
+      - "go.mod"
+      - "go.sum"
+      - ".dockerignore"
       - "deploy/verification/**"
       - "tests/staging/**"
 
@@ -42,7 +48,6 @@ jobs:
         run: terraform init -backend=false -lockfile=readonly
       - name: Terraform validate
         run: terraform validate
-
 
       - name: Terraform mocked release plans (no AWS credentials)
         run: terraform test
