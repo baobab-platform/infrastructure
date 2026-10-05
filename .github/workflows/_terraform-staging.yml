@@ -76,7 +76,7 @@ jobs:
       - name: Save reviewed plan
         working-directory: terraform/environments/staging
         run: |
-          terraform plan -input=false -lock-timeout=5m -var-file="../../../$RELEASE_PATH" -out=staging.tfplan
+          terraform plan -input=false -lock-timeout=5m -var-file="../../../$RELEASE_PATH" -var="github_release_tag=$GITHUB_REF_NAME" -out=staging.tfplan
           sha256sum staging.tfplan > staging.tfplan.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:

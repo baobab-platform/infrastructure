@@ -17,14 +17,23 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Platform           = "baobab"
-      Environment        = var.environment
-      ManagedBy          = "terraform"
-      Repository         = "baobab-platform/infrastructure"
-      Owner              = "baobab-platform"
-      DataClassification = "confidential"
-      CostCentre         = "platform"
+      Platform                     = "baobab"
+      Environment                  = var.environment
+      ManagedBy                    = "terraform"
+      Repository                   = "baobab-platform/infrastructure"
+      Owner                        = "baobab-platform"
+      DataClassification           = "confidential"
+      CostCentre                   = "platform"
+      "baobab:environment"         = "staging"
+      "baobab:managed-by"          = "terraform"
+      "baobab:owner"               = "platform-eng"
+      "baobab:cost-center"         = "platform-core-mp2c"
+      "baobab:data-classification" = "confidential"
+      "baobab:isolation-profile"   = "private-mesh"
+      "baobab:repository"          = "baobab-platform/infrastructure"
+      "baobab:release-version"     = var.github_release_tag
     }
   }
 }
+
 
