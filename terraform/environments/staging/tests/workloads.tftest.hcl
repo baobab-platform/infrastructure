@@ -63,6 +63,16 @@ run "reject_unprepared_activation" {
 
 run "prepared_shared_iam_storage" {
   command = plan
+  override_resource {
+    target          = aws_security_group.iam
+    values          = { id = "sg-11111111111111111" }
+    override_during = plan
+  }
+  override_resource {
+    target          = aws_security_group.database["iam"]
+    values          = { id = "sg-22222222222222222" }
+    override_during = plan
+  }
   variables {
     workload_release    = jsondecode(file("tests/release.fixture.json"))
     iam_shared_postgres = true
