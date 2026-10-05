@@ -5,6 +5,8 @@ on:
     paths:
       - "terraform/environments/staging/**"
       - ".github/workflows/terraform-staging.yml"
+      - ".github/workflows/staging-release.yml"
+      - ".github/workflows/_terraform-staging.yml"
       - "deploy/runtime-helper/**"
       - "go.mod"
       - "go.sum"
@@ -16,6 +18,8 @@ on:
     paths:
       - "terraform/environments/staging/**"
       - ".github/workflows/terraform-staging.yml"
+      - ".github/workflows/staging-release.yml"
+      - ".github/workflows/_terraform-staging.yml"
       - "deploy/runtime-helper/**"
       - "go.mod"
       - "go.sum"
@@ -82,3 +86,4 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
           ignore-unfixed: false
+
