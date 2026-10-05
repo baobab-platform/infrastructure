@@ -81,7 +81,7 @@ GitHub artifact-attestation availability for the repository.
 
 The existing main-only manual release workflow remains available for reviewed
 preparation/recovery. It does not automatically select component releases.
-`_terraform-staging.yml` is now callable only and cannot independently deploy
+`staging-deploy.yml` is now callable only and cannot independently deploy
 from a second tag trigger or use a competing Terraform backend.
 
 No staging or release tags are created by this implementation. No AWS deployment

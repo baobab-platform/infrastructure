@@ -45,7 +45,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: ./.github/workflows/_terraform-staging.yml
+    uses: ./.github/workflows/staging-deploy.yml
     with:
       release_path: ${{ needs.select.outputs.release_path }}
       apply: ${{ fromJSON(needs.select.outputs.apply) }}
