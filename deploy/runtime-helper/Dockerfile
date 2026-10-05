@@ -13,4 +13,5 @@ LABEL org.opencontainers.image.source="https://github.com/baobab-platform/infras
 COPY --from=build /runtime-helper /runtime-helper
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 USER 65532:65532
+HEALTHCHECK --interval=30s --timeout=6s --start-period=30s --retries=3 CMD ["/runtime-helper", "-mode=probe", "-url=https://127.0.0.1:8443/_transport/health", "-server-name=cp.staging.baobab.internal", "-cert=/run/baobab/probe.pem", "-key=/run/baobab/probe.key"]
 ENTRYPOINT ["/runtime-helper"]
