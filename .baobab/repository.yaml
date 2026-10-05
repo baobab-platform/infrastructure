@@ -3,11 +3,18 @@ repository:
   lifecycle: active
 capabilities:
   - infrastructure
+  - go
+  - container
 environment:
   baobab_dev:
     required: true
     profile: infra
 artifacts:
-  container: false
+  container:
+    enabled: true
+    dockerfile: deploy/runtime-helper/Dockerfile
+    context: .
+    runtime: true
 security:
   sast_provider: fallback
+
