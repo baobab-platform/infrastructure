@@ -1,7 +1,7 @@
 # Coordinated staging tag releases
 
-A strict `vX.Y.Z-staging` tag triggers component publication in Shared, CP and
-IAM. The matching infrastructure tag triggers the deployment of a reviewed
+A strict `vX.Y.Z-staging` tag triggers component publication in Shared, CP, IAM and
+Pulse. The matching infrastructure tag triggers the deployment of a reviewed
 manifest; it does not build application images. Component version numbers may
 be different: the coordination file selects them explicitly. No component
 repository directly mutates AWS or uses a cross-repository dispatch PAT.
@@ -15,8 +15,9 @@ repository directly mutates AWS or uses a cross-repository dispatch PAT.
    version during publication. Normal package publication excludes staging tags.
 3. Cut component tags on reviewed commits contained in main. The tag publishers
    test/scan, build once, publish to GHCR, attest and retain an SPDX SBOM and
-   `staging-image.json` receipt. IAM produces two distinct artifacts: native
-   federation-authority and Keycloak. Stable aliases are never moved.
+   `staging-image.json` receipt. Pulse publishes its `baobab-pulse` runtime
+   receipt under the explicit `pulse` artifact suffix. IAM produces two distinct
+   artifacts: native federation-authority and Keycloak. Stable aliases are never moved.
 4. Wait for **all** selected tagged publisher workflows to succeed. Download
    their receipts from the Actions artifacts. A failed partial publication
    requires investigation and a fresh version, not overwriting existing tags.
@@ -53,6 +54,7 @@ or federation evidence.
     "shared": {"tag": "v1.2.3-staging", "source_revision": "<40 lowercase hex>", "digest": "sha256:<64 lowercase hex>"},
     "cp": {"tag": "v1.2.3-staging", "source_revision": "<40 lowercase hex>", "digest": "sha256:<64 lowercase hex>"},
     "iam": {"tag": "v1.2.3-staging", "source_revision": "<40 lowercase hex>", "digest": "sha256:<64 lowercase hex>"},
+    "pulse": {"tag": "v1.2.3-staging", "source_revision": "<40 lowercase hex>", "digest": "sha256:<64 lowercase hex>"},
     "keycloak": {"tag": "v1.2.3-staging", "source_revision": "<40 lowercase hex>", "digest": "sha256:<64 lowercase hex>"}
   }
 }
@@ -73,7 +75,7 @@ subjects (`repo:baobab-platform/infrastructure:environment:staging-plan` and
 
 Set `STAGING_RELEASE_READ_TOKEN` in infrastructure to a narrowly scoped GitHub
 App installation token or fine-grained token able to read contents and Actions
-artifacts in Shared, CP and IAM. It is used solely for verification, never for
+artifacts in Shared, CP, IAM and Pulse. It is used solely for verification, never for
 repository writes or AWS. Private cross-repository artifact reads cannot rely
 on infrastructure's own `GITHUB_TOKEN`. Plan credentials have no secret-value
 read capability. GHCR publishers require package creation/write permission and
