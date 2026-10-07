@@ -102,3 +102,11 @@ from a second tag trigger or use a competing Terraform backend.
 
 No staging or release tags are created by this implementation. No AWS deployment
 or account configuration is performed by merging the workflow changes.
+
+## Verify before account assembly
+
+The first complete selection and audit evidence are described in
+[p-cap-08-first-coordinated-release.md](p-cap-08-first-coordinated-release.md).
+Use `release_cut.py --coordination` or the read-only **Verify Coordinated Staging
+Selection** workflow to verify publishers before a real account manifest exists.
+This does not waive deployment-time manifest binding or any protected gate.

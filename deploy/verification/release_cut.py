@@ -45,10 +45,9 @@ def receipt(repo, run, artifact):
         return load(pathlib.Path(directory) / 'staging-image.json')
 
 
-def verify(tag, release_path, release, coordination, fetch=api, read=receipt):
+def verify_selection(tag, coordination, fetch=api, read=receipt):
+    """Verify publisher truth before account-specific deployment inputs exist."""
     if not TAG.fullmatch(tag): raise ValueError('invalid staging cut tag')
-    if release_path != 'deploy/releases/staging/' + tag + '.tfvars.json':
-        raise ValueError('manifest is not bound to this cut')
     if set(coordination) != {'release_tag', 'components'} or coordination['release_tag'] != tag or set(coordination['components']) != set(REPOS):
         raise ValueError('incomplete coordinated release')
     evidence = []
@@ -70,27 +69,48 @@ def verify(tag, release_path, release, coordination, fetch=api, read=receipt):
         run = matches[0]['id']
         value = read(repo, run, 'staging-' + selected['tag'] + '-' + suffix)
         expected = 'ghcr.io/baobab-platform/' + IMAGES[key] + '@' + selected['digest']
+        if value.get('operational_acceptance') is not False:
+            raise ValueError('publisher receipt must not claim operational acceptance')
         if any(value.get(k) != v for k, v in {'release_tag': selected['tag'], 'repository': repo, 'source_revision': selected['source_revision'], 'image': expected, 'run_url': 'https://github.com/' + repo + '/actions/runs/' + str(run), 'operational_acceptance': False}.items()):
             raise ValueError('publisher receipt does not match selected artifact')
-        if key != 'shared':
-            service = release['workload_release']['services'][key]
-            if service['source_revision'] != selected['source_revision'] or service['image'].split('@')[-1] != selected['digest']:
-                raise ValueError('promoted runtime differs from selected component')
         evidence.append({'component': key, **selected, 'run_id': run})
     return {'release_tag': tag, 'components': evidence, 'operational_acceptance': False}
 
 
+def verify(tag, release_path, release, coordination, fetch=api, read=receipt):
+    if release_path != 'deploy/releases/staging/' + tag + '.tfvars.json':
+        raise ValueError('manifest is not bound to this cut')
+    # Account-free selection verification never replaces this runtime binding.
+    for key in REPOS:
+        if key != 'shared':
+            selected = coordination['components'][key]
+            service = release['workload_release']['services'][key]
+            if service['source_revision'] != selected['source_revision'] or service['image'].split('@')[-1] != selected['digest']:
+                raise ValueError('promoted runtime differs from selected component')
+    return verify_selection(tag, coordination, fetch, read)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--release', required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--release')
+    mode.add_argument('--coordination')
+    parser.add_argument('--output', default='staging-cut-verification.json')
     args = parser.parse_args()
+    if args.coordination:
+        coordination = load(args.coordination)
+        evidence = verify_selection(coordination['release_tag'], coordination)
+        with open(args.output, 'x', encoding='utf-8') as stream:
+            json.dump(evidence, stream, indent=2)
+            stream.write('\n')
+        return
     ref = os.environ['GITHUB_REF']
     if ref == 'refs/heads/main': return  # Existing reviewed manual recovery path.
     if not ref.startswith('refs/tags/'): raise ValueError('unreviewed deployment ref')
     release = load(args.release)
     coordination = load(args.release.removesuffix('.tfvars.json') + '.coordination.json')
     evidence = verify(ref.removeprefix('refs/tags/'), args.release, release, coordination)
-    with open('staging-cut-verification.json', 'x') as stream:
+    with open(args.output, 'x', encoding='utf-8') as stream:
         json.dump(evidence, stream, indent=2)
 
 

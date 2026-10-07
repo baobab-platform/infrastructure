@@ -1,0 +1,85 @@
+{
+  "release_tag": "v0.1.0-staging",
+  "components": [
+    {
+      "component": "shared",
+      "tag": "v2.4.1-staging",
+      "source_revision": "8d2b3d9e1c0007522adcba72fd0d88c58ddff047",
+      "digest": "sha256:550d584a77da2ed22b51c5a4d05ccb3af401aa15ebe86a11340dd9426c87340f",
+      "run_id": 37657980282
+    },
+    {
+      "component": "cp",
+      "tag": "v1.1.1-staging",
+      "source_revision": "5501ebb9aacb82e6adfed7132c6273dfc4006337",
+      "digest": "sha256:ffb138e6666febe8c4b622cadca9c1422368e2d97b50202fd89881ac0cf95a35",
+      "run_id": 37657752479
+    },
+    {
+      "component": "iam",
+      "tag": "v0.1.1-staging",
+      "source_revision": "492738ef11481f9fdf66e41d6cf7ca98f418882b",
+      "digest": "sha256:16cda96196e1c4e3cc4e46cdbccb03f0f182512502d954ec19817a57a9ae158c",
+      "run_id": 37670519453
+    },
+    {
+      "component": "pulse",
+      "tag": "v0.1.0-staging",
+      "source_revision": "b355bfa1139efb5e72ac0895a36b49fb1f2e4bc2",
+      "digest": "sha256:1f57b26d017a98dd14dc9b589ef40cfd2431c1241fd928c13027f7f353ea9b80",
+      "run_id": 37627757084
+    },
+    {
+      "component": "keycloak",
+      "tag": "v0.1.1-staging",
+      "source_revision": "492738ef11481f9fdf66e41d6cf7ca98f418882b",
+      "digest": "sha256:6e2d432aaaebaffead6ba6a7787c38fe6d73c5b2ce46640bb7e4ac8e215441bc",
+      "run_id": 37670519453
+    }
+  ],
+  "operational_acceptance": false,
+  "verified_at": "2026-10-07T20:44:18.222393+00:00",
+  "verification_method": "GitHub API tag/workflow reads and downloaded publisher receipts; archive hashes matched GitHub artifact metadata",
+  "artifacts": [
+    {
+      "component": "cp",
+      "artifact_id": 11498599494,
+      "archive_digest": "sha256:fe7d65085adb0d38a201c3f7c19c175f793d3f6f60c28187979ea6b5f8c04040",
+      "run_url": "https://github.com/baobab-platform/baobab-cp/actions/runs/37657752479",
+      "receipt_json_digest": "sha256:44bebaab70c9655bbb5791f796e46235cdd6f1b0cf923e4d07d73c3230a1d973",
+      "sbom_spdx_json_digest": "sha256:3d45ef6f9bf3003a56faa07aa81a5f981f134453b889d9c5001edc158b656236"
+    },
+    {
+      "component": "iam",
+      "artifact_id": 11504083668,
+      "archive_digest": "sha256:4e2893b473adf46867744b62ae1bc0724ccc004c4fe06ee023ed35eca42d833c",
+      "run_url": "https://github.com/baobab-platform/baobab-iam/actions/runs/37670519453",
+      "receipt_json_digest": "sha256:b41fa999d271f97a4b4bde6cde0edc1179b9237701b37d0c2a7808482a83ef78",
+      "sbom_spdx_json_digest": "sha256:cb3b56620617386f389bac1e988e230136d86462e33e5ce25ca539d906cf2880"
+    },
+    {
+      "component": "keycloak",
+      "artifact_id": 11504377459,
+      "archive_digest": "sha256:8a5f625dc15e8fa1ce4d17c78b9ab1b329f54c7754af3e9f2874ed7af48a9f17",
+      "run_url": "https://github.com/baobab-platform/baobab-iam/actions/runs/37670519453",
+      "receipt_json_digest": "sha256:83f985b2a9353d26ea102f858f2f6cbf4e5f6d5141f0b7f194ff3d08ec6d155a",
+      "sbom_spdx_json_digest": "sha256:da7056a70da1adaa02635a83f34724764b3f001f7d56ac25ff61505c418cc472"
+    },
+    {
+      "component": "pulse",
+      "artifact_id": 11484816670,
+      "archive_digest": "sha256:daccf71eaa1377d1290d753888362185cf892d4375bf7d5cd1e85df086a7fe56",
+      "run_url": "https://github.com/baobab-platform/baobab-pulse/actions/runs/37627757084",
+      "receipt_json_digest": "sha256:e56c6b71f057c306634e7d013f9a56c01df6f488bb8bfc2891c185464181a941",
+      "sbom_spdx_json_digest": "sha256:cfe8027b91f472b10348433c2c4d624f4d0eb12304a393e647704b5d74a358ab"
+    },
+    {
+      "component": "shared",
+      "artifact_id": 11498942367,
+      "archive_digest": "sha256:f551f6e3e1ffb166486688f11d52e2db9baf9c965b0d9157a9a28ed12bfe27d9",
+      "run_url": "https://github.com/baobab-platform/shared/actions/runs/37657980282",
+      "receipt_json_digest": "sha256:8fb7d812ee1f0f5ebcc19480f56d167c65004c56100166f3513a21e18f26c81e",
+      "sbom_spdx_json_digest": "sha256:555fb9f52fd5df0f059e5edd7341ad91df0ea14a23ebcca686a28c0f689ac872"
+    }
+  ]
+}

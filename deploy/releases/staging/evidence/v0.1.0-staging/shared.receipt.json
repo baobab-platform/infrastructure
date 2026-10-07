@@ -1,0 +1,8 @@
+{
+  "release_tag": "v2.4.1-staging",
+  "repository": "baobab-platform/shared",
+  "source_revision": "8d2b3d9e1c0007522adcba72fd0d88c58ddff047",
+  "image": "ghcr.io/baobab-platform/baobab-contracts@sha256:550d584a77da2ed22b51c5a4d05ccb3af401aa15ebe86a11340dd9426c87340f",
+  "run_url": "https://github.com/baobab-platform/shared/actions/runs/37657980282",
+  "operational_acceptance": false
+}

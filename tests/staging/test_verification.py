@@ -62,6 +62,23 @@ class ReleaseTests(unittest.TestCase):
         self.assertIs(result['artifacts_available'], False)
         self.assertFalse(any(args[:2] == ('ecr', 'batch-get-image') for args in seen))
 
+    def test_preflight_checks_separate_credential_versions_without_reading_values(self):
+        value=copy.deepcopy(self.release)
+        ref=value['services']['pulse']['secret_environment']['PULSE_IAM_CLIENT_SECRET']
+        arn=ref.rsplit(':',3)[0]
+        value['services']['pulse']['secret_environment']['PULSE_IAM_CLIENT_SECRET']=arn+':client_secret::'+'b'*32
+        seen=[]
+        def aws(*args):
+            seen.append(args)
+            if args[:2]==('sts','get-caller-identity'): return {'Account':'123456789012'}
+            if args[:2]==('secretsmanager','describe-secret'):
+                return {'VersionIdsToStages': {'a'*32:['AWSCURRENT']}}
+            raise AssertionError('unexpected AWS call')
+        with patch.object(s,'aws',side_effect=aws), self.assertRaises(ValueError):
+            s.preflight(value,check_images=False)
+        self.assertIn(('secretsmanager','describe-secret','--secret-id',arn),seen)
+        self.assertFalse(any('get-secret-value' in args for args in seen))
+
     def test_observe_denies_unstable_or_multiple_writer_service(self):
         for service in [
             {'desiredCount': 1, 'runningCount': 2, 'pendingCount': 0, 'deployments': [{'rolloutState': 'COMPLETED'}]},

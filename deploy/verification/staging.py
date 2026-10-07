@@ -101,10 +101,19 @@ def preflight(value, check_images=True):
             manifest = json.loads(images[0]['imageManifest'])
             if 'manifests' in manifest:
                 raise ValueError('release must pin the linux/amd64 platform manifest, not an image index')
+    required_versions = set()
     for service in value['services'].values():
-        metadata = aws('secretsmanager', 'describe-secret', '--secret-id', service['bundle_secret_arn'])
-        if service['bundle_version_id'] not in metadata.get('VersionIdsToStages', {}):
-            raise ValueError('protected bundle version unavailable')
+        required_versions.add((service['bundle_secret_arn'], service['bundle_version_id']))
+        for reference in service['secret_environment'].values():
+            secret_arn, _json_key, stage, version = reference.rsplit(':', 3)
+            if stage or not re.fullmatch(r'[A-Za-z0-9-]{32,64}', version):
+                raise ValueError('immutable credential version required')
+            required_versions.add((secret_arn, version))
+    # Metadata only: validate every pinned credential version without reading values.
+    for secret_arn, version in sorted(required_versions):
+        metadata = aws('secretsmanager', 'describe-secret', '--secret-id', secret_arn)
+        if metadata.get('DeletedDate') or version not in metadata.get('VersionIdsToStages', {}):
+            raise ValueError('protected secret version unavailable')
     cert = aws('acm', 'describe-certificate', '--certificate-arn', value['certificate_arn'])['Certificate']
     hostname = value['public_hostname']
     matches = any(hostname == domain or domain.startswith('*.') and hostname.endswith(domain[1:]) and hostname.count('.') == domain.count('.') for domain in cert.get('SubjectAlternativeNames', []))

@@ -1,0 +1,8 @@
+{
+  "release_tag": "v0.1.1-staging",
+  "repository": "baobab-platform/baobab-iam",
+  "source_revision": "492738ef11481f9fdf66e41d6cf7ca98f418882b",
+  "image": "ghcr.io/baobab-platform/baobab-iam-federation-authority@sha256:16cda96196e1c4e3cc4e46cdbccb03f0f182512502d954ec19817a57a9ae158c",
+  "run_url": "https://github.com/baobab-platform/baobab-iam/actions/runs/37670519453",
+  "operational_acceptance": false
+}

@@ -12,6 +12,8 @@ on:
       - "go.sum"
       - ".dockerignore"
       - "deploy/verification/**"
+      - "deploy/releases/staging/**"
+      - ".github/workflows/verify-staging-selection.yml"
       - "tests/staging/**"
   push:
     branches: [main]
@@ -25,6 +27,8 @@ on:
       - "go.sum"
       - ".dockerignore"
       - "deploy/verification/**"
+      - "deploy/releases/staging/**"
+      - ".github/workflows/verify-staging-selection.yml"
       - "tests/staging/**"
 
 permissions:
