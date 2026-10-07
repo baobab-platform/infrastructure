@@ -13,7 +13,7 @@ repository directly mutates AWS or uses a cross-repository dispatch PAT.
    versions (for example `1.2.3-staging.0`) and consume pending changesets. The
    staging workflow refuses stable package versions and never increments a
    version during publication. Normal package publication excludes staging tags.
-3. Cut component tags on reviewed commits contained in main. The tag publishers
+3. Cut component tags on reviewed commits contained in main. A repository-native tag cutter may explicitly dispatch the publisher at that immutable tag when GitHub's `GITHUB_TOKEN` recursion guard suppresses a tag-push workflow. The coordinator accepts either the direct tag-push run or that exact-tag `workflow_dispatch`; in both cases tag, source SHA, receipt and digest must match. The tag publishers
    test/scan, build once, publish to GHCR, attest and retain an SPDX SBOM and
    `staging-image.json` receipt. Pulse publishes its `baobab-pulse` runtime
    receipt under the explicit `pulse` artifact suffix. IAM produces two distinct
