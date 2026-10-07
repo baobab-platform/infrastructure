@@ -14,9 +14,9 @@ locals {
     cp_iam          = { source = aws_security_group.cp.id, destination = aws_security_group.iam.id, port = 8443 }
     keycloak_iam    = { source = aws_security_group.keycloak.id, destination = aws_security_group.iam.id, port = 8443 }
     iam_keycloak    = { source = aws_security_group.iam.id, destination = aws_security_group.keycloak.id, port = 8443 }
-    pulse_cp         = { source = aws_security_group.pulse.id, destination = aws_security_group.cp.id, port = 8443 }
-    pulse_iam        = { source = aws_security_group.pulse.id, destination = aws_security_group.iam.id, port = 8443 }
-    pulse_keycloak   = { source = aws_security_group.pulse.id, destination = aws_security_group.keycloak.id, port = 8443 }
+    pulse_cp        = { source = aws_security_group.pulse.id, destination = aws_security_group.cp.id, port = 8443 }
+    pulse_iam       = { source = aws_security_group.pulse.id, destination = aws_security_group.iam.id, port = 8443 }
+    pulse_keycloak  = { source = aws_security_group.pulse.id, destination = aws_security_group.keycloak.id, port = 8443 }
   }
 }
 resource "aws_vpc_security_group_ingress_rule" "workload_link" {
