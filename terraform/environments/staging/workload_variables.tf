@@ -35,7 +35,7 @@ variable "workload_release" {
   validation {
     condition = var.workload_release == null ? true : (
       can(regex("^[0-9]{12}$", var.workload_release.account_id)) &&
-      toset(keys(var.workload_release.services)) == toset(["cp", "iam", "keycloak", "apisix"]) &&
+      toset(keys(var.workload_release.services)) == toset(["cp", "iam", "pulse", "keycloak", "apisix"]) &&
       can(regex("^17\\.[0-9]+$", var.workload_release.postgres.engine_version)) &&
       can(regex("^${var.workload_release.account_id}\\.dkr\\.ecr\\.af-south-1\\.amazonaws\\.com/[a-z0-9_/-]+@sha256:[a-f0-9]{64}$", var.workload_release.helper_image)) &&
       length(var.workload_release.browser_realms) >= 1 && length(var.workload_release.browser_realms) <= 2 &&
@@ -44,7 +44,7 @@ variable "workload_release" {
       length(toset(var.workload_release.etcd_endpoints)) == 3 &&
       alltrue([for endpoint in var.workload_release.etcd_endpoints : can(regex("^https://[A-Za-z0-9.-]+:2379$", endpoint))])
     )
-    error_message = "Release requires a staging account, digest-pinned helper, PostgreSQL 17 minor version, all four services and three distinct authenticated TLS etcd endpoints."
+    error_message = "Release requires a staging account, digest-pinned helper, PostgreSQL 17 minor version, all five services and three distinct authenticated TLS etcd endpoints."
   }
   validation {
     condition = var.workload_release == null ? true : alltrue([
@@ -67,7 +67,7 @@ variable "workload_release" {
         (endswith(key, "_FILE") && startswith(value, "/run/baobab/") && contains(service.bundle_files, trimprefix(value, "/run/baobab/")))
       ]) &&
       alltrue([for key, ref in service.secret_environment :
-        contains(name == "cp" ? ["DATABASE_URL"] : name == "keycloak" ? ["KC_DB_USERNAME", "KC_DB_PASSWORD", "KC_BOOTSTRAP_ADMIN_PASSWORD"] : [], key) &&
+        contains(name == "cp" ? ["DATABASE_URL"] : name == "pulse" ? ["PULSE_DATABASE_URL", "PULSE_IAM_CLIENT_SECRET", "PULSE_QDRANT_API_KEY"] : name == "keycloak" ? ["KC_DB_USERNAME", "KC_DB_PASSWORD", "KC_BOOTSTRAP_ADMIN_PASSWORD"] : [], key) &&
         startswith(ref, "arn:aws:secretsmanager:af-south-1:${var.workload_release.account_id}:secret:") &&
         can(regex(":[^:]*::[A-Za-z0-9-]{32,64}$", ref))
       ])
