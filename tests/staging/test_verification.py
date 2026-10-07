@@ -27,7 +27,7 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(s, 'aws', side_effect=AssertionError('AWS called')):
             self.validate(self.release)
     def test_mutable_image_cross_account_extra_file_and_plaintext_deny(self):
-        for mutation in ['image', 'account', 'file', 'plaintext', 'master', 'version', 'missing_pulse']:
+        for mutation in ['image', 'account', 'file', 'plaintext', 'master', 'version', 'missing_pulse', 'pulse_authority']:
             value = copy.deepcopy(self.release)
             if mutation == 'image': value['services']['iam']['image'] = 'repository:latest'
             if mutation == 'account': value['services']['cp']['bundle_secret_arn'] = value['services']['cp']['bundle_secret_arn'].replace('123456789012', '999999999999')
@@ -36,6 +36,7 @@ class ReleaseTests(unittest.TestCase):
             if mutation == 'master': value['browser_realms'] = ['master']
             if mutation == 'version': value['services']['cp']['secret_environment']['DATABASE_URL'] = value['services']['cp']['bundle_secret_arn'] + ':database_url:AWSCURRENT:'
             if mutation == 'missing_pulse': del value['services']['pulse']
+            if mutation == 'pulse_authority': del value['services']['pulse']['environment']['PULSE_IAM_TOKEN_URL']
             with self.subTest(mutation=mutation), self.assertRaises(ValueError): self.validate(value)
     def test_preflight_denies_wrong_account_before_artifact_reads(self):
         with patch.object(s, 'aws', return_value={'Account': '999999999999'}) as calls:
