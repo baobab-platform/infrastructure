@@ -8,9 +8,9 @@ with zero tasks; `activate_workloads=false` is the default.
 
 ## What the code provides
 
-- private CP, IAM, Keycloak and APISIX Fargate services with private Cloud Map;
+- private CP, IAM, Pulse, Keycloak and APISIX Fargate services with private Cloud Map;
 - service-specific security-group paths, including Keycloak→IAM evidence export;
-- separate CP and Keycloak PostgreSQL 17 Multi-AZ instances, TLS enforcement,
+- separate CP, Pulse and Keycloak PostgreSQL 17 Multi-AZ instances, TLS enforcement,
   encryption, backups and deletion protection;
 - managed bootstrap database credentials, never granted to app task roles;
 - HTTPS ALB→APISIX only, with a default deny response and explicit browser realms;
@@ -65,11 +65,12 @@ index. Preserve build run, source revision, SBOM and security/provenance evidenc
 alongside each promotion. Preflight verifies availability and digest identity;
 it does not replace approval of build provenance.
 
-The root requires all four services, a helper image, a real PostgreSQL 17 minor
+The root requires all five services, a helper image, a real PostgreSQL 17 minor
 version, public ACM certificate, public Route 53 zone and host, one or two public
 broker realms, and three distinct TLS etcd endpoints. `master` is forbidden.
-No public listener rule forwards `/admin`, `/internal`, APISIX Admin API or the
-IAM federation authority. IAM has no APISIX ingress rule. The browser CP prefix
+No public listener rule forwards `/admin`, `/internal`, APISIX Admin API, the
+IAM federation authority or Pulse. Pulse is an internal capability provider;
+consumer routing/bindings are intentionally outside this increment. IAM has no APISIX ingress rule. The browser CP prefix
 is `/api/browser/*`; routes must still be governed and registered in CP/APISIX.
 
 APISIX/etcd configuration is a separate reviewed management-plane dependency.
@@ -100,13 +101,14 @@ file manifest, rejects traversal/duplicate fields and writes private files owned
 by the service UID. It also copies the verified helper binary for distroless
 health probes. Application startup depends on init **SUCCESS**. Failures print
 only a generic denial; no secret value enters Terraform or a task definition.
-UIDs are CP/IAM 65532, Keycloak/APISIX 1000. APISIX must use an approved artifact
+UIDs are CP/IAM 65532 and Pulse/Keycloak/APISIX 1000. APISIX must use an approved artifact
 that runs as UID 1000; its protected volume also supplies the writable config
 folder required by the APISIX CLI. This folder is workload-private.
 
 `_FILE` environment references may point only into declared protected files.
-CP's `DATABASE_URL` and Keycloak's supported database/bootstrap credentials may
-use version-pinned ECS secret selectors. Those are runtime environment secrets,
+CP's `DATABASE_URL`, Pulse's `PULSE_DATABASE_URL`, `PULSE_IAM_CLIENT_SECRET`
+(and optional `PULSE_QDRANT_API_KEY`), and Keycloak's supported database/bootstrap
+credentials may use version-pinned ECS secret selectors. Those are runtime environment secrets,
 not plaintext task-definition values. Other services receive credentials only
 through the protected files. Rotate a bundle by publishing a new version and
 reviewing the release change; immutable startup material requires task replacement.
@@ -123,13 +125,14 @@ this module does not invent application schema or grant master credentials to ap
 | --- | --- |
 | CP | `/controlplane`; localhost HTTP 8080 behind helper mTLS 8443; `/healthz` |
 | IAM | `/federation-authority -config /run/baobab/config.json`; HTTPS 8443 `/ready` |
+| Pulse | image-owned Uvicorn entrypoint on localhost HTTP 8000; helper mTLS 8443; `/healthz` |
 | Keycloak | `/opt/keycloak/bin/kc.sh start --optimized`; HTTPS 8443 and private management HTTPS 9000 `/health/ready` |
 | APISIX | owning artifact's supported start command; HTTPS 9443 with configured `/healthz` |
 
 Configure IAM's state directory as `/var/lib/baobab-iam` and explicit enterprise
 mode. Use the UID-65532 EFS access point. Set reviewed native targets, finite
 Shared canonical workload admissions, audience/scope pins and CP credentials.
-CP and IAM require actual canonical engine-instance/provider registrations and
+CP, IAM and Pulse require actual canonical engine-instance/provider registrations and
 approved references; dummy configuration must fail readiness. Publish the exact
 IdentityProviderRuntimeProfile through the authoritative CP path and retain its
 artifact/source/evidence identities. Terraform never marks a capability VERIFIED.
@@ -141,6 +144,17 @@ boundary and private evidence endpoint. Its bridge mapper must use FORCE sync
 mode and the signed upstream claim configuration documented by IAM #75. APISIX
 must validate private backend certificates and use its own client identity for
 CP mTLS. Its Admin API and etcd stay in the private management boundary.
+
+
+Pulse's private TLS sidecar preserves the image contract (HTTP :8000) while the
+service boundary remains mTLS :8443. Its security group has no APISIX ingress.
+It may call only the private CP/IAM/Keycloak authority surfaces declared by the
+staging topology, plus the same private AWS API endpoints used for image/secret
+materialisation. Pulse PostgreSQL is canonical persistence; Qdrant remains an
+external/rebuildable semantic projection dependency and is not invented by this
+infrastructure increment. A real activation manifest must provide the reviewed
+Pulse IAM/Control Plane authority endpoints and least-privilege database secret
+before `activate_workloads=true`.
 
 ECS Exec requires a writable root filesystem, so app containers deliberately
 retain one while dropping Linux capabilities. Protected app volumes remain
