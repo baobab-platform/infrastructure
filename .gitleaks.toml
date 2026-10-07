@@ -1,0 +1,14 @@
+title = "Infrastructure secret scanning with reviewed SPDX metadata exception"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Reviewed Keycloak 26.7.5 Maven package name; two entries in immutable staging SPDX SBOM, not credentials"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^deploy/releases/staging/evidence/v0\.1\.0-staging/keycloak\.sbom\.spdx\.json$''']
+regexes = ['''^\s*"name": "org\.keycloak:keycloak-crypto-fips1402",\s*$''']
