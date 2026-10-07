@@ -165,7 +165,7 @@ resource "aws_ecs_task_definition" "workload" {
       healthCheck            = { command = ["CMD", "/runtime-helper", "-mode=probe", "-url=https://127.0.0.1:8443/_transport/health", "-server-name=${each.value.tls_server_name}", "-cert=/run/baobab/probe.pem", "-key=/run/baobab/probe.key"], interval = 30, timeout = 6, retries = 3, startPeriod = 30 }
       logConfiguration       = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.workload[each.key].name, awslogs-region = "af-south-1", awslogs-stream-prefix = "tls" } }
     }
-  ]))
+  ] : []))
   tags = { Service = each.key, SourceRevision = each.value.source_revision }
 }
 resource "aws_ecs_service" "workload" {
