@@ -253,6 +253,18 @@ resource "aws_security_group" "iam" {
   }
 }
 
+resource "aws_security_group" "pulse" {
+  name        = "${local.name}-pulse"
+  description = "Baobab Pulse intelligence staging workload."
+  vpc_id      = aws_vpc.staging.id
+
+  tags = {
+    Name      = "${local.name}-pulse"
+    TrustZone = "application"
+    Service   = "baobab-pulse"
+  }
+}
+
 resource "aws_security_group" "keycloak" {
   name        = "${local.name}-keycloak"
   description = "Retained enterprise federation Keycloak runtime."
@@ -321,6 +333,7 @@ locals {
     apisix   = aws_security_group.apisix.id
     cp       = aws_security_group.cp.id
     iam      = aws_security_group.iam.id
+    pulse    = aws_security_group.pulse.id
     keycloak = aws_security_group.keycloak.id
   }
 
