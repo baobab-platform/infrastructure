@@ -64,8 +64,8 @@ def verify(tag, release_path, release, coordination, fetch=api, read=receipt):
             obj = fetch('repos/' + repo + '/git/tags/' + obj['sha'])['object']
         if obj['type'] != 'commit' or obj['sha'] != selected['source_revision']:
             raise ValueError('component tag moved or selects different source')
-        runs = fetch('repos/' + repo + '/actions/workflows/' + workflow + '/runs?event=push&head_sha=' + selected['source_revision'] + '&status=success&per_page=100')['workflow_runs']
-        matches = [x for x in runs if x['head_sha'] == selected['source_revision'] and x['head_branch'] == selected['tag'] and x['event'] == 'push' and x['status'] == 'completed' and x['conclusion'] == 'success']
+        runs = fetch('repos/' + repo + '/actions/workflows/' + workflow + '/runs?head_sha=' + selected['source_revision'] + '&status=success&per_page=100')['workflow_runs']
+        matches = [x for x in runs if x['head_sha'] == selected['source_revision'] and x['head_branch'] == selected['tag'] and x['event'] in {'push', 'workflow_dispatch'} and x['status'] == 'completed' and x['conclusion'] == 'success']
         if not matches: raise ValueError('successful component publisher is absent')
         run = matches[0]['id']
         value = read(repo, run, 'staging-' + selected['tag'] + '-' + suffix)
