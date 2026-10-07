@@ -42,6 +42,26 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(s, 'aws', return_value={'Account': '999999999999'}) as calls:
             with self.assertRaises(ValueError): s.preflight(self.release)
             self.assertEqual(calls.call_count, 1)
+    def test_plan_preflight_skips_ecr_but_checks_account_metadata(self):
+        seen = []
+        def aws(*args):
+            seen.append(args)
+            if args[:2] == ('sts', 'get-caller-identity'):
+                return {'Account': '123456789012'}
+            if args[:2] == ('secretsmanager', 'describe-secret'):
+                return {'VersionIdsToStages': {'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': ['AWSCURRENT']}}
+            if args[:2] == ('acm', 'describe-certificate'):
+                return {'Certificate': {'Status': 'ISSUED', 'SubjectAlternativeNames': ['sso.staging.example.test']}}
+            if args[:2] == ('route53', 'get-hosted-zone'):
+                return {'HostedZone': {'Name': 'staging.example.test.', 'Config': {'PrivateZone': False}}}
+            if args[:2] == ('rds', 'describe-db-engine-versions'):
+                return {'DBEngineVersions': [{'EngineVersion': '17.6'}]}
+            raise AssertionError('unexpected AWS call: ' + repr(args))
+        with patch.object(s, 'aws', side_effect=aws):
+            result = s.preflight(self.release, check_images=False)
+        self.assertIs(result['artifacts_available'], False)
+        self.assertFalse(any(args[:2] == ('ecr', 'batch-get-image') for args in seen))
+
     def test_observe_denies_unstable_or_multiple_writer_service(self):
         for service in [
             {'desiredCount': 1, 'runningCount': 2, 'pendingCount': 0, 'deployments': [{'rolloutState': 'COMPLETED'}]},
