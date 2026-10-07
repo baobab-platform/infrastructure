@@ -1,5 +1,5 @@
 locals {
-  workloads      = var.workload_release == null ? {} : var.workload_release.services
+  workloads          = var.workload_release == null ? {} : var.workload_release.services
   workload_users     = { cp = 65532, iam = 65532, pulse = 1000, keycloak = 1000, apisix = 1000 }
   workload_app_ports = { cp = 8080, iam = 8443, pulse = 8000, keycloak = 8443, apisix = 9443 }
   workload_ports     = { cp = 8443, iam = 8443, pulse = 8443, keycloak = 8443, apisix = 9443 }
