@@ -21,10 +21,14 @@ repository directly mutates AWS or uses a cross-repository dispatch PAT.
 4. Wait for **all** selected tagged publisher workflows to succeed. Download
    their receipts from the Actions artifacts. A failed partial publication
    requires investigation and a fresh version, not overwriting existing tags.
-5. Promote the exact Linux/amd64 image manifests into the account's ECR without
-   rebuilding or changing the digest. Prepare the helper and APISIX images using
-   their existing approved promotion procedures. ECR preflight verifies their
-   availability; these images are not rebuilt by the platform tag workflow.
+5. Promotion is performed only in the protected `staging` apply job after the
+   staging apply role is assumed. The workflow pulls each reviewed CP/IAM/Pulse/
+   Keycloak GHCR image by digest, pushes it into the manifest-selected ECR
+   repository without rebuilding, and requires the ECR manifest digest to remain
+   byte-identical. Existing exact digests are idempotent. A digest change fails
+   closed. Shared's contracts image is release evidence rather than an ECS
+   workload; helper and APISIX artifacts retain their existing approved
+   promotion procedures.
 6. Submit a reviewed infrastructure PR containing:
    - `deploy/releases/staging/v1.2.3-staging.tfvars.json`: the complete existing
      typed workload release input, including immutable ECR digests, configuration
@@ -74,12 +78,22 @@ subjects (`repo:baobab-platform/infrastructure:environment:staging-plan` and
 `...:environment:staging`), not an unrestricted organization-wide tag subject.
 
 Set `STAGING_RELEASE_READ_TOKEN` in infrastructure to a narrowly scoped GitHub
-App installation token or fine-grained token able to read contents and Actions
-artifacts in Shared, CP, IAM and Pulse. It is used solely for verification, never for
-repository writes or AWS. Private cross-repository artifact reads cannot rely
+credential able to read contents, Actions artifacts and the selected GHCR
+packages in Shared, CP, IAM and Pulse. It is used for release verification and
+read-only source-registry authentication, never for repository writes or AWS. Private cross-repository artifact reads cannot rely
 on infrastructure's own `GITHUB_TOKEN`. Plan credentials have no secret-value
 read capability. GHCR publishers require package creation/write permission and
 GitHub artifact-attestation availability for the repository.
+
+
+The protected staging apply role performs promotion and therefore needs ECR
+write authority only for the reviewed staging application repositories. Keep
+`ecr:GetAuthorizationToken` on `*`; scope `ecr:BatchCheckLayerAvailability`,
+`ecr:GetDownloadUrlForLayer`, `ecr:BatchGetImage`, `ecr:DescribeImages`,
+`ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`
+and `ecr:PutImage` to the staging CP, IAM federation-authority, Pulse and
+Keycloak ECR repository ARNs. The plan role remains read-only and receives none
+of these mutation permissions.
 
 The existing main-only manual release workflow remains available for reviewed
 preparation/recovery. It does not automatically select component releases.
