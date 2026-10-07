@@ -129,7 +129,7 @@ jobs:
           import json, os, subprocess
           release = json.load(open(os.environ['RELEASE_PATH']))
           if release.get('activate_workloads') is True:
-              subprocess.run(['aws', '--region', 'af-south-1', 'ecs', 'wait', 'services-stable', '--cluster', 'baobab-staging-ecs', '--services', 'baobab-staging-cp', 'baobab-staging-iam', 'baobab-staging-keycloak', 'baobab-staging-apisix'], check=True)
+              subprocess.run(['aws', '--region', 'af-south-1', 'ecs', 'wait', 'services-stable', '--cluster', 'baobab-staging-ecs', '--services', 'baobab-staging-cp', 'baobab-staging-iam', 'baobab-staging-pulse', 'baobab-staging-keycloak', 'baobab-staging-apisix'], check=True)
               subprocess.run(['python', 'deploy/verification/staging.py', 'observe', '--release', os.environ['RELEASE_PATH'], '--cluster', 'baobab-staging-ecs', '--infrastructure-revision', os.environ['GITHUB_SHA'], '--output', 'staging-observation.json'], check=True)
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

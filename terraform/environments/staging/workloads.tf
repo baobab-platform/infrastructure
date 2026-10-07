@@ -1,7 +1,8 @@
 locals {
-  workloads      = var.workload_release == null ? {} : var.workload_release.services
-  workload_users = { cp = 65532, iam = 65532, keycloak = 1000, apisix = 1000 }
-  workload_ports = { cp = 8443, iam = 8443, keycloak = 8443, apisix = 9443 }
+  workloads          = var.workload_release == null ? {} : var.workload_release.services
+  workload_users     = { cp = 65532, iam = 65532, pulse = 1000, keycloak = 1000, apisix = 1000 }
+  workload_app_ports = { cp = 8080, iam = 8443, pulse = 8000, keycloak = 8443, apisix = 9443 }
+  workload_ports     = { cp = 8443, iam = 8443, pulse = 8443, keycloak = 8443, apisix = 9443 }
   task_trust = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -139,7 +140,7 @@ resource "aws_ecs_task_definition" "workload" {
       environment            = [for name, value in each.value.environment : { name = name, value = value }]
       secrets                = [for name, ref in each.value.secret_environment : { name = name, valueFrom = ref }]
       linuxParameters        = { initProcessEnabled = true, capabilities = { drop = ["ALL"] } }
-      portMappings           = [{ containerPort = each.key == "cp" ? 8080 : local.workload_ports[each.key], protocol = "tcp" }]
+      portMappings           = [{ containerPort = local.workload_app_ports[each.key], protocol = "tcp" }]
       mountPoints = concat(
         [{ sourceVolume = "protected", containerPath = "/run/baobab", readOnly = true }],
         each.key == "iam" ? [{ sourceVolume = "ledger", containerPath = "/var/lib/baobab-iam", readOnly = false }] : [],
@@ -151,11 +152,11 @@ resource "aws_ecs_task_definition" "workload" {
       }
       logConfiguration = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.workload[each.key].name, awslogs-region = "af-south-1", awslogs-stream-prefix = "application" } }
     }
-    ], each.key != "cp" ? [] : [
+    ], contains(["cp", "pulse"], each.key) ? [
     {
-      name                   = "private-tls", image = var.workload_release.helper_image, essential = true, user = "65532:65532", cpu = 128, memory = 256
+      name                   = "private-tls", image = var.workload_release.helper_image, essential = true, user = "${local.workload_users[each.key]}:${local.workload_users[each.key]}", cpu = 128, memory = 256
       readonlyRootFilesystem = false
-      command                = ["-mode=proxy", "-listen=:8443", "-upstream=http://127.0.0.1:8080"]
+      command                = ["-mode=proxy", "-listen=:8443", "-upstream=http://127.0.0.1:${local.workload_app_ports[each.key]}"]
       dependsOn              = [{ containerName = "materialize", condition = "SUCCESS" }]
       stopTimeout            = 60
       linuxParameters        = { capabilities = { drop = ["ALL"] } }
@@ -164,7 +165,7 @@ resource "aws_ecs_task_definition" "workload" {
       healthCheck            = { command = ["CMD", "/runtime-helper", "-mode=probe", "-url=https://127.0.0.1:8443/_transport/health", "-server-name=${each.value.tls_server_name}", "-cert=/run/baobab/probe.pem", "-key=/run/baobab/probe.key"], interval = 30, timeout = 6, retries = 3, startPeriod = 30 }
       logConfiguration       = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.workload[each.key].name, awslogs-region = "af-south-1", awslogs-stream-prefix = "tls" } }
     }
-  ]))
+  ] : []))
   tags = { Service = each.key, SourceRevision = each.value.source_revision }
 }
 resource "aws_ecs_service" "workload" {

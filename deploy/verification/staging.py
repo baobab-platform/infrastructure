@@ -40,7 +40,7 @@ def release(path):
     value = doc.get('workload_release', doc)
     if not re.fullmatch(r'[0-9]{12}', value['account_id']):
         raise ValueError('invalid account')
-    if set(value['services']) != {'cp', 'iam', 'keycloak', 'apisix'}:
+    if set(value['services']) != {'cp', 'iam', 'pulse', 'keycloak', 'apisix'}:
         raise ValueError('incomplete services')
     for image in [value['helper_image'], *[service['image'] for service in value['services'].values()]]:
         if not DIGEST.fullmatch(image) or not image.startswith(value['account_id'] + '.'):
@@ -60,13 +60,29 @@ def release(path):
         if len(set(files)) != len(files) or not {'ca.pem', 'service.pem', 'service.key', 'probe.pem', 'probe.key'}.issubset(files) or any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', file) or file == 'runtime-helper' for file in files):
             raise ValueError('invalid protected file manifest')
         for key, content in service['environment'].items():
-            sensitive = re.search(r'password|secret|token|database_url|aws_access|aws_secret', key, re.I)
+            sensitive = re.search(r'password|secret|token|database_url|aws_access|aws_secret', key, re.I) and key != 'PULSE_IAM_TOKEN_URL'
             if sensitive and not (key.endswith('_FILE') and content.startswith('/run/baobab/') and content.removeprefix('/run/baobab/') in files):
                 raise ValueError('plaintext credential environment')
-        allowed = {'DATABASE_URL'} if name == 'cp' else {'KC_DB_USERNAME', 'KC_DB_PASSWORD', 'KC_BOOTSTRAP_ADMIN_PASSWORD'} if name == 'keycloak' else set()
+        allowed = {'DATABASE_URL'} if name == 'cp' else {'PULSE_DATABASE_URL', 'PULSE_IAM_CLIENT_SECRET', 'PULSE_QDRANT_API_KEY'} if name == 'pulse' else {'KC_DB_USERNAME', 'KC_DB_PASSWORD', 'KC_BOOTSTRAP_ADMIN_PASSWORD'} if name == 'keycloak' else set()
         for key, reference in service['secret_environment'].items():
             if key not in allowed or not reference.startswith('arn:aws:secretsmanager:' + REGION + ':' + value['account_id'] + ':secret:') or not re.search(r':[^:]*::[A-Za-z0-9-]{32,64}$', reference):
                 raise ValueError('unapproved or mutable credential reference')
+    pulse = value['services']['pulse']
+    pulse_env = pulse['environment']
+    authority_urls = (
+        pulse_env.get('PULSE_IAM_ISSUER_URL', ''),
+        pulse_env.get('PULSE_IAM_JWKS_URL', ''),
+        pulse_env.get('PULSE_IAM_TOKEN_URL', ''),
+        pulse_env.get('PULSE_CONTROL_PLANE_CONTEXT_VALIDATION_URL', ''),
+    )
+    if (
+        pulse_env.get('PULSE_ENVIRONMENT') != 'staging'
+        or pulse_env.get('PULSE_IAM_CLIENT_ID') != 'baobab-pulse-workload'
+        or pulse_env.get('PULSE_IAM_RESOURCE_AUDIENCE') != 'baobab-pulse'
+        or any(not url.startswith('https://') for url in authority_urls)
+        or not {'PULSE_DATABASE_URL', 'PULSE_IAM_CLIENT_SECRET'}.issubset(pulse['secret_environment'])
+    ):
+        raise ValueError('Pulse staging authority configuration is incomplete')
     return value, hashlib.sha256(raw).hexdigest()
 
 
@@ -134,7 +150,7 @@ def observe(value, cluster, infrastructure_revision):
             raise ValueError('observed application image drift')
         if containers.get('materialize', {}).get('exitCode') != 0:
             raise ValueError('protected material initialization failed')
-        for helper_name in (['materialize', 'private-tls'] if name == 'cp' else ['materialize']):
+        for helper_name in (['materialize', 'private-tls'] if name in {'cp', 'pulse'} else ['materialize']):
             if containers.get(helper_name, {}).get('imageDigest') != value['helper_image'].split('@')[1]:
                 raise ValueError('observed helper image drift')
         definition = aws('ecs', 'describe-task-definition', '--task-definition', task['taskDefinitionArn'])['taskDefinition']

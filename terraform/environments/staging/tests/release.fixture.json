@@ -75,6 +75,42 @@
       "tls_server_name": "iam.staging.baobab.internal",
       "health_path": "/ready"
     },
+    "pulse": {
+      "image": "123456789012.dkr.ecr.af-south-1.amazonaws.com/pulse@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "source_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "cpu": 1024,
+      "memory": 2048,
+      "bundle_secret_arn": "arn:aws:secretsmanager:af-south-1:123456789012:secret:pulse-bundle-abcdef",
+      "bundle_version_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "bundle_files": [
+        "ca.pem",
+        "service.pem",
+        "service.key",
+        "probe.pem",
+        "probe.key",
+        "config.json"
+      ],
+      "secret_kms_arns": [
+        "arn:aws:kms:af-south-1:123456789012:key/00000000-0000-4000-8000-000000000000"
+      ],
+      "entrypoint": [],
+      "command": [],
+      "environment": {
+        "PULSE_ENVIRONMENT": "staging",
+        "PULSE_IAM_ISSUER_URL": "https://keycloak.staging.baobab.internal:8443/realms/workloads",
+        "PULSE_IAM_JWKS_URL": "https://keycloak.staging.baobab.internal:8443/realms/workloads/protocol/openid-connect/certs",
+        "PULSE_IAM_TOKEN_URL": "https://keycloak.staging.baobab.internal:8443/realms/workloads/protocol/openid-connect/token",
+        "PULSE_IAM_CLIENT_ID": "baobab-pulse-workload",
+        "PULSE_IAM_RESOURCE_AUDIENCE": "baobab-pulse",
+        "PULSE_CONTROL_PLANE_CONTEXT_VALIDATION_URL": "https://cp.staging.baobab.internal:8443/v1/platform-context/validate"
+      },
+      "secret_environment": {
+        "PULSE_DATABASE_URL": "arn:aws:secretsmanager:af-south-1:123456789012:secret:pulse-runtime-abcdef:database_url::aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "PULSE_IAM_CLIENT_SECRET": "arn:aws:secretsmanager:af-south-1:123456789012:secret:pulse-runtime-abcdef:iam_client_secret::aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "tls_server_name": "pulse.staging.baobab.internal",
+      "health_path": "/healthz"
+    },
     "keycloak": {
       "image": "123456789012.dkr.ecr.af-south-1.amazonaws.com/keycloak@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "source_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

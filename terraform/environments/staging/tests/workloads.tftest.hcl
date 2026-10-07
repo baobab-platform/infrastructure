@@ -33,8 +33,16 @@ run "prepared_release" {
     error_message = "Only APISIX may receive public listener traffic and unmatched routes must deny."
   }
   assert {
-    condition     = !contains(keys(local.workload_links), "apisix_iam")
-    error_message = "The private federation authority has no gateway edge ingress."
+    condition     = !contains(keys(local.workload_links), "apisix_iam") && !contains(keys(local.workload_links), "apisix_pulse")
+    error_message = "Private IAM and Pulse authority surfaces have no gateway edge ingress."
+  }
+  assert {
+    condition     = contains(keys(local.workload_links), "pulse_cp") && contains(keys(local.workload_links), "pulse_iam") && contains(keys(local.workload_links), "pulse_keycloak")
+    error_message = "Pulse staging may reach only the private authority services required by P-CAP-07."
+  }
+  assert {
+    condition     = aws_db_instance.workloads["pulse"].db_name == "baobab_pulse" && aws_db_instance.workloads["pulse"].multi_az && !aws_db_instance.workloads["pulse"].publicly_accessible
+    error_message = "Pulse canonical evidence persistence requires its own private Multi-AZ PostgreSQL database."
   }
 }
 run "reject_mutable_image" {
@@ -78,7 +86,7 @@ run "prepared_shared_iam_storage" {
     iam_shared_postgres = true
   }
   assert {
-    condition     = length(aws_db_instance.workloads) == 3 && aws_db_instance.workloads["iam"].db_name == "federation" && aws_db_instance.workloads["iam"].multi_az && !aws_db_instance.workloads["iam"].publicly_accessible
+    condition     = length(aws_db_instance.workloads) == 4 && aws_db_instance.workloads["iam"].db_name == "federation" && aws_db_instance.workloads["pulse"].db_name == "baobab_pulse" && aws_db_instance.workloads["iam"].multi_az && !aws_db_instance.workloads["iam"].publicly_accessible
     error_message = "IAM shared state requires its own private encrypted Multi-AZ database."
   }
   assert {

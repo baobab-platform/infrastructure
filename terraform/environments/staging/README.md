@@ -46,9 +46,9 @@ AWS access keys are not an accepted deployment path.
 ## Deliberate exclusions
 
 This foundation does not yet create public DNS/certificates, ALBs, APISIX/etcd,
-RDS, CP/IAM/Keycloak ECS services or dynamic gateway routes. Those depend on
+RDS, CP/IAM/Pulse/Keycloak ECS services or dynamic gateway routes. Those depend on
 immutable application image digests and certificate/secret references and are
 layered in the MP2-C workload release increment.
 
-No resource in this stack grants public access to CP, IAM, Keycloak
+No resource in this stack grants public access to CP, IAM, Pulse, Keycloak
 administration, EFS or a database.

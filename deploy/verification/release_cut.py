@@ -13,9 +13,11 @@ DIGEST = re.compile(r'sha256:[0-9a-f]{64}')
 REPOS = {'shared': ('shared', 'staging-release.yml', 'contracts'),
          'cp': ('baobab-cp', 'staging-ci.yml', 'cp'),
          'iam': ('baobab-iam', 'staging-ci.yml', 'iam'),
+         'pulse': ('baobab-pulse', 'staging-ci.yml', 'pulse'),
          'keycloak': ('baobab-iam', 'staging-ci.yml', 'keycloak')}
 IMAGES = {'shared': 'baobab-contracts', 'cp': 'baobab-cp',
-          'iam': 'baobab-iam-federation-authority', 'keycloak': 'baobab-iam'}
+          'iam': 'baobab-iam-federation-authority', 'pulse': 'baobab-pulse',
+          'keycloak': 'baobab-iam'}
 
 
 def unique(pairs):

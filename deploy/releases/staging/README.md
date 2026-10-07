@@ -12,3 +12,5 @@ A declaration has `workload_release`, `activate_workloads` (false first), and
 `etcd_security_group_id`. The typed Terraform variable is the executable local
 input contract; it is not a new canonical Shared release schema. Canonical
 provider identity and runtime profile contracts remain owned by Shared/CP.
+
+Coordinated P-CAP-08 cuts include Pulse as a required component and runtime service. Its release entry pins the promoted Pulse image/source revision; certification, EngineRelease approval, provider activation, bindings and grants remain Control Plane governance rather than Terraform state.

@@ -3,6 +3,7 @@ locals {
     apisix   = aws_security_group.apisix.id
     cp       = aws_security_group.cp.id
     iam      = aws_security_group.iam.id
+    pulse    = aws_security_group.pulse.id
     keycloak = aws_security_group.keycloak.id
   }
   workload_links = var.workload_release == null ? {} : {
@@ -13,6 +14,9 @@ locals {
     cp_iam          = { source = aws_security_group.cp.id, destination = aws_security_group.iam.id, port = 8443 }
     keycloak_iam    = { source = aws_security_group.keycloak.id, destination = aws_security_group.iam.id, port = 8443 }
     iam_keycloak    = { source = aws_security_group.iam.id, destination = aws_security_group.keycloak.id, port = 8443 }
+    pulse_cp        = { source = aws_security_group.pulse.id, destination = aws_security_group.cp.id, port = 8443 }
+    pulse_iam       = { source = aws_security_group.pulse.id, destination = aws_security_group.iam.id, port = 8443 }
+    pulse_keycloak  = { source = aws_security_group.pulse.id, destination = aws_security_group.keycloak.id, port = 8443 }
   }
 }
 resource "aws_vpc_security_group_ingress_rule" "workload_link" {
