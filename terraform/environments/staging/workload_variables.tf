@@ -64,13 +64,22 @@ variable "workload_release" {
       service.health_path == (name == "iam" ? "/ready" : name == "keycloak" ? "/health/ready" : "/healthz") &&
       alltrue([for key, value in service.environment :
         !can(regex("(?i)(password|secret|token|database_url|aws_access|aws_secret)", key)) ||
+        key == "PULSE_IAM_TOKEN_URL" ||
         (endswith(key, "_FILE") && startswith(value, "/run/baobab/") && contains(service.bundle_files, trimprefix(value, "/run/baobab/")))
       ]) &&
       alltrue([for key, ref in service.secret_environment :
         contains(name == "cp" ? ["DATABASE_URL"] : name == "pulse" ? ["PULSE_DATABASE_URL", "PULSE_IAM_CLIENT_SECRET", "PULSE_QDRANT_API_KEY"] : name == "keycloak" ? ["KC_DB_USERNAME", "KC_DB_PASSWORD", "KC_BOOTSTRAP_ADMIN_PASSWORD"] : [], key) &&
         startswith(ref, "arn:aws:secretsmanager:af-south-1:${var.workload_release.account_id}:secret:") &&
         can(regex(":[^:]*::[A-Za-z0-9-]{32,64}$", ref))
-      ])
+      ]) &&
+      (name != "pulse" || (
+        lookup(service.environment, "PULSE_ENVIRONMENT", "") == "staging" &&
+        lookup(service.environment, "PULSE_IAM_CLIENT_ID", "") == "baobab-pulse-workload" &&
+        lookup(service.environment, "PULSE_IAM_RESOURCE_AUDIENCE", "") == "baobab-pulse" &&
+        alltrue([for key in ["PULSE_IAM_ISSUER_URL", "PULSE_IAM_JWKS_URL", "PULSE_IAM_TOKEN_URL", "PULSE_CONTROL_PLANE_CONTEXT_VALIDATION_URL"] : startswith(lookup(service.environment, key, ""), "https://")]) &&
+        contains(keys(service.secret_environment), "PULSE_DATABASE_URL") &&
+        contains(keys(service.secret_environment), "PULSE_IAM_CLIENT_SECRET")
+      ))
     ])
     error_message = "Service releases must pin images/source/secret versions, use valid Fargate sizes and protected flat files, and carry same-account secret/KMS references. Plaintext credentials are forbidden."
   }
