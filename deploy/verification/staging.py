@@ -86,20 +86,21 @@ def release(path):
     return value, hashlib.sha256(raw).hexdigest()
 
 
-def preflight(value):
+def preflight(value, check_images=True):
     identity = aws('sts', 'get-caller-identity')
     if identity['Account'] != value['account_id']:
         raise ValueError('wrong AWS account')
-    for image in sorted({value['helper_image'], *[service['image'] for service in value['services'].values()]}):
-        repository = image.split('/', 1)[1].split('@')[0]
-        digest = image.split('@')[1]
-        response = aws('ecr', 'batch-get-image', '--repository-name', repository, '--image-ids', 'imageDigest=' + digest)
-        images = response.get('images', [])
-        if response.get('failures') or len(images) != 1 or images[0]['imageId']['imageDigest'] != digest:
-            raise ValueError('unavailable image digest')
-        manifest = json.loads(images[0]['imageManifest'])
-        if 'manifests' in manifest:
-            raise ValueError('release must pin the linux/amd64 platform manifest, not an image index')
+    if check_images:
+        for image in sorted({value['helper_image'], *[service['image'] for service in value['services'].values()]}):
+            repository = image.split('/', 1)[1].split('@')[0]
+            digest = image.split('@')[1]
+            response = aws('ecr', 'batch-get-image', '--repository-name', repository, '--image-ids', 'imageDigest=' + digest)
+            images = response.get('images', [])
+            if response.get('failures') or len(images) != 1 or images[0]['imageId']['imageDigest'] != digest:
+                raise ValueError('unavailable image digest')
+            manifest = json.loads(images[0]['imageManifest'])
+            if 'manifests' in manifest:
+                raise ValueError('release must pin the linux/amd64 platform manifest, not an image index')
     for service in value['services'].values():
         metadata = aws('secretsmanager', 'describe-secret', '--secret-id', service['bundle_secret_arn'])
         if service['bundle_version_id'] not in metadata.get('VersionIdsToStages', {}):
@@ -115,7 +116,7 @@ def preflight(value):
     versions = aws('rds', 'describe-db-engine-versions', '--engine', 'postgres', '--engine-version', value['postgres']['engine_version'])
     if not versions.get('DBEngineVersions'):
         raise ValueError('PostgreSQL minor version unavailable in staging region')
-    return {'account': identity['Account'], 'region': REGION, 'artifacts_available': True, 'bundle_versions_available': True}
+    return {'account': identity['Account'], 'region': REGION, 'artifacts_available': check_images, 'bundle_versions_available': True}
 
 
 def observe(value, cluster, infrastructure_revision):
@@ -170,11 +171,14 @@ def main():
     parser.add_argument('--cluster')
     parser.add_argument('--infrastructure-revision')
     parser.add_argument('--output')
+    parser.add_argument('--skip-images', action='store_true')
     args = parser.parse_args()
+    if args.skip_images and args.mode != 'preflight':
+        parser.error('--skip-images is valid only for preflight')
     value, digest = release(args.release)
     result = {'schema': 'baobab.staging-observation.v1', 'observed_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'release_sha256': digest, 'operational_acceptance': False}
     if args.mode == 'preflight':
-        result['preflight'] = preflight(value)
+        result['preflight'] = preflight(value, check_images=not args.skip_images)
     elif args.mode == 'observe':
         if not args.cluster or not args.infrastructure_revision:
             parser.error('observe requires cluster and infrastructure revision')
