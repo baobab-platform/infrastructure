@@ -1,0 +1,161 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ghcr.io/baobab-platform/baobab-contracts:v2.4.1-staging",
+  "documentNamespace": "http://trivy.dev/container_image/ghcr.io/baobab-platform/baobab-contracts:v2.4.1-staging-e2d2461d-e779-422d-b277-ad605c755ae7",
+  "creationInfo": {
+    "creators": [
+      "Organization: aquasecurity",
+      "Tool: trivy-0.70.0"
+    ],
+    "created": "2026-10-07T17:18:41Z"
+  },
+  "packages": [
+    {
+      "name": "ghcr.io/baobab-platform/baobab-contracts:v2.4.1-staging",
+      "SPDXID": "SPDXRef-ContainerImage-83718a4d6e9695da",
+      "downloadLocation": "NONE",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:oci/baobab-contracts@sha256:550d584a77da2ed22b51c5a4d05ccb3af401aa15ebe86a11340dd9426c87340f?arch=amd64\u0026repository_url=ghcr.io%2Fbaobab-platform%2Fbaobab-contracts"
+        }
+      ],
+      "primaryPackagePurpose": "CONTAINER",
+      "annotations": [
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "DiffID: sha256:3fdd3dbfd44a3177132e1473727152866df82a2b7e4e85ec00a3f1ea09af89e5"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "DiffID: sha256:5e66b3b417f53f67b868329098f1cef6ae930533d67b2952e8736236eb5d1ba4"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "DiffID: sha256:6c0d63d11937bc9137777433be86c17d348b9bcf43e1f86e4401d2b1c164007f"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "DiffID: sha256:6f440c73cc698d19630e1a9bb320b21a8224441ed281d549e17338239f205367"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "DiffID: sha256:85bce4f1c984abff1443f58e3117ef837304a1c78fb6fca51f8ae2f7b17374c9"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "DiffID: sha256:ba91277d6a190c5865aa1d884c5a7631f24ef7a7f792484ddfa2203f5379de6b"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "DiffID: sha256:d8847ff78bf7f400aad112a8a9bc322ba8a670881886fa01607a9a0adec80932"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "DiffID: sha256:e463aa88edfc52529f76c4791dbdeed13415918b1b87363e6235cd1b3f94bca0"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "ImageID: sha256:550d584a77da2ed22b51c5a4d05ccb3af401aa15ebe86a11340dd9426c87340f"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "Labels:org.opencontainers.image.description: Canonical language-neutral contracts for the Baobab Platform"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "Labels:org.opencontainers.image.revision: 8d2b3d9e1c0007522adcba72fd0d88c58ddff047"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "Labels:org.opencontainers.image.source: https://github.com/baobab-platform/shared"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "Labels:org.opencontainers.image.title: Baobab Platform Contracts"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "Labels:org.opencontainers.image.vendor: Baobab-Platform Group Africa"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "Labels:org.opencontainers.image.version: 2.4.1-staging"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "Reference: ghcr.io/baobab-platform/baobab-contracts:v2.4.1-staging"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "RepoDigest: ghcr.io/baobab-platform/baobab-contracts@sha256:550d584a77da2ed22b51c5a4d05ccb3af401aa15ebe86a11340dd9426c87340f"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "RepoTag: ghcr.io/baobab-platform/baobab-contracts:v2.4.1-staging"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "SchemaVersion: 2"
+        },
+        {
+          "annotator": "Tool: trivy-0.70.0",
+          "annotationDate": "2026-10-07T17:18:41Z",
+          "annotationType": "OTHER",
+          "comment": "Size: 2649088"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-ContainerImage-83718a4d6e9695da",
+      "relationshipType": "DESCRIBES"
+    }
+  ]
+}

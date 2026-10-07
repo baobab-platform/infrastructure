@@ -1,0 +1,8 @@
+{
+  "release_tag": "v0.1.0-staging",
+  "repository": "baobab-platform/baobab-pulse",
+  "source_revision": "b355bfa1139efb5e72ac0895a36b49fb1f2e4bc2",
+  "image": "ghcr.io/baobab-platform/baobab-pulse@sha256:1f57b26d017a98dd14dc9b589ef40cfd2431c1241fd928c13027f7f353ea9b80",
+  "run_url": "https://github.com/baobab-platform/baobab-pulse/actions/runs/37627757084",
+  "operational_acceptance": false
+}
