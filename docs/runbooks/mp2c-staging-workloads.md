@@ -36,9 +36,10 @@ Prepare the following non-secret GitHub environment variables:
 Create both environments before dispatch. Protect `staging` with the required
 reviewers and main-only deployment rules. AWS OIDC trust must restrict the exact
 repository and environment subject, plus audience `sts.amazonaws.com`. Use
-separate roles: plan reads the staging infrastructure, artifacts and secret
-metadata; apply changes only the staging resource boundary. Neither needs to
-read application secret values. No access keys belong in GitHub.
+separate roles: plan reads staging infrastructure and prerequisite metadata;
+apply changes only the staging resource boundary and may promote the exact
+reviewed application manifests into the four application ECR repositories.
+Neither role reads application secret values. No access keys belong in GitHub.
 
 The encrypted S3 backend uses native lock files (`use_lockfile=true`). Give the
 plan role read access to the state and the lock-file operations Terraform needs;
@@ -59,11 +60,14 @@ Terraform rejects a stale saved plan if state changed during approval.
 Publish app images in their owning repositories; infrastructure consumes them
 without rebuilding. Build the infrastructure-owned helper from
 the repository root with `docker build -f deploy/runtime-helper/Dockerfile .`
-and scan it. Promote the same artifacts into staging ECR.
-Pin the Linux/amd64 **platform manifest** digest, not a multi-platform image
-index. Preserve build run, source revision, SBOM and security/provenance evidence
-alongside each promotion. Preflight verifies availability and digest identity;
-it does not replace approval of build provenance.
+and scan it. The protected apply job promotes CP, IAM federation-authority, Pulse and
+Keycloak directly from their reviewed GHCR digests into staging ECR; it never
+rebuilds them. Pin the Linux/amd64 **platform manifest** digest, not a
+multi-platform image index. Preserve build run, source revision, SBOM and
+security/provenance evidence alongside each promotion. The plan-stage preflight
+checks account/certificate/secret metadata without requiring not-yet-promoted
+images. After promotion, the apply job performs the full ECR digest preflight
+before Terraform can mutate runtime infrastructure.
 
 The root requires all five services, a helper image, a real PostgreSQL 17 minor
 version, public ACM certificate, public Route 53 zone and host, one or two public
