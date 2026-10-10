@@ -103,3 +103,131 @@ as a side effect of PEO acceptance.
 To avoid falsely reporting complete go-live, require the operator to attach
 outbox/inbox/broker evidence and IAM-registration proof to the acceptance
 review before taking the staging certification decision.
+
+## PEO-02F — Actual CP-governed event and independently observed durable receipt
+
+The acceptance capability is implemented by:
+- `.github/workflows/peo-cross-engine-relay-proof.yml`
+- `scripts/acceptance/peo_cross_engine_relay.py`
+- `scripts/acceptance/test_peo_cross_engine_relay.py`
+
+**This is distinct from the earlier direct HTTP consumer fixture**. The
+PEO-02F proof never creates its own CloudEvent or inserts a CP outbox row.
+An independently authorised *human* must call the existing governed API to
+suspend one already-approved, synthetic ACTIVE sponsorship:
+
+`POST /v2/founding-governance/sponsorships/{grantID}/suspend`
+
+The command is idempotent, has `expected_status=ACTIVE`, names a real human
+reviewer holding `admission:decide`, and sends a unique correlation ID. CP's
+transaction writes its audit and the canonical event to
+`messaging.outbox`; CP #320 relays it with a separately obtained IAM
+`billing:observe` workload token, and Subscriptions #36 receives it,
+authenticates the workload, stores the canonical envelope and verified
+client identity in `billing.founding_event_inbox` and acknowledges only
+after commit. The worker marks `published_at` after that acknowledgement.
+
+### One-time governed fixture prerequisite
+
+An authorised staging administrator and a *different*, already registered
+human approver must have created an ACTIVE sponsorship through the standard
+maker/checker PEO-02 procedure, never directly inserted an unaudited row.
+For the proof to touch only synthetic records, the staging database must
+already contain these immutable facts:
+
+- Sponsor and operating Organisation display names begin `Synthetic PEO `.
+- `authority_basis_reference` begins `staging/peo-relay/`.
+- All `evidence_references` begin `staging/peo-relay/`.
+- Sponsorship scope is `INTERNAL_GROUP_ADMISSION`, status `ACTIVE`,
+  effective window currently valid, and proposed_by differs from approved_by.
+- A different human reviewer holds current CP administrative
+  `admission:decide` authority, from a genuinely signed IAM OIDC token.
+
+**SUSPEND is forward-only.** An attempted second run with that grant must
+fail its ACTIVE preflight, not reinstate the sponsorship. Every run requires
+a separately reviewed new synthetic grant. No real subsidiary, seller of
+record, default legal actor, ERP handoff or accounting entity is touched.
+
+### Protected staging environment values
+
+In addition to the earlier variables and IAM clients, configure the
+following in the protected GitHub `staging` environment:
+
+| Configuration | Origin and controls |
+| --- | --- |
+| `PEO_STAGING_HUMAN_REVIEWER_TOKEN` (secret) | Short-lived real IAM human access token, issued to an independently authorised reviewer immediately before an approved run; delete/rotate after the run, never expose in logs |
+| `PEO_STAGING_CP_EVIDENCE_DB_URL` (secret) | Dedicated CP **SELECT-only** PostgreSQL 17 connection URI; cannot write, must reach only the protected staging database |
+| `PEO_STAGING_SUB_EVIDENCE_DB_URL` (secret) | Separately provisioned Subscriptions **SELECT-only** PostgreSQL 17 connection URI; must not be the CP database |
+| `PEO_STAGING_EVIDENCE_DB_CA_PEM` (secret) | Certificate authority for database `sslmode=verify-full` on both independent endpoints |
+| `PEO_STAGING_ALLOWED_DB_HOSTS` (var) | Exact comma-delimited allowed DB hostnames, no wildcard or loopback hostname substitution |
+| `PEO_STAGING_CP_DEPLOYED_REVISION` (var) | Reviewed currently deployed CP build/commit digest |
+| `PEO_STAGING_SUB_DEPLOYED_REVISION` (var) | Reviewed currently deployed Subscriptions build/commit digest |
+| `inputs.grant_uuid` | The exact reviewed, already ACTIVE synthetic sponsorship UUID; selected by authorised reviewer per run |
+| `inputs.suspend_grant=true` | An explicit protected one-way approval; no unattended recurring or PR-triggered mutation |
+
+SQL credentials should be dedicated to the evidence surfaces. For CP grant
+only SELECT on `messaging.outbox`,
+`admission.founding_group_sponsorship` and the two specific
+`registry.organisation_profile` rows/approved synthetic-only evidence view;
+for Subscriptions grant SELECT on `billing.founding_event_inbox`.
+Where fine-grained staging views are available, **prefer them** to grants on
+the underlying tables. These are **operational verification principals**,
+not engine-to-engine runtime DB access. Do not allow a cross-engine
+application SQL dependency.
+
+Run `PEO CP to Subscriptions Real Staging Relay Proof` manually against
+the merged infrastructure `main`, with the approved one-time UUID and
+boolean consent. A pull request only executes compilation and pure validator
+unit tests; it can never call the staging mutation or produce real evidence.
+
+### Required evidence report
+
+The runner writes a redacted, downloadable GitHub Actions artifact:
+
+`peo-acceptance-evidence/cp-subscriptions-relay.json`
+
+A result of `PROVED` is possible only when all the following are true:
+
+1. IAM issues two genuine, distinct OAuth `client_credentials` tokens for
+   their exact CP and Subscriptions audiences and required scopes.
+2. An independent human's actual OIDC bearer is authorised by the CP API.
+3. One existing, vetted synthetic ACTIVE grant is suspended through CP's
+   governed transition. The original state, evidence reference, maker and
+   approver provenance are checked through read-only SQL *before* mutation.
+4. The CP outbox row has the precise grant UUID, newly generated correlation
+   UUID, canonical event type, canonical envelope, event ID, occurrence
+   timestamp and nonzero attempts; publication is actually recorded.
+5. The independent Subscriptions PostgreSQL inbox has the *same event ID,
+   grant, canonical envelope, type, source*, populated receive/process
+   timestamps and matching canonical SHA-256.
+6. That inbox receipt stores the client ID obtained from a token actually
+   verified at the HTTP edge (Subscriptions V4 migration), and it matches
+   the expected IAM CP workload client identity.
+7. Temporal order is CP occurred ≤ Subscriptions received ≤ CP published.
+   The proof fails if the bounded window is exceeded or any evidence is
+   missing, mismatched or corrupted.
+
+The report also records the GitHub workflow run ID, deployment revision
+assertions, the on-disk subscriber wire digest and cross-engine canonical
+digest. **It does not contain human/engine bearer tokens, DB passwords, raw
+event envelopes, legal identity data or applicant names.**
+
+A failed or timed-out proof **does not roll back the valid SUSPENDED grant**.
+The artifact remains marked `PENDING_DURABLE_DELIVERY` for forensic review.
+Operators should reconcile the specific correlation/event IDs before any
+new scenario. A successful technical relay proof is not statutory
+verification or authority to admit a real operating business.
+
+### Security and staging release prerequisites
+
+This proof requires merged and deployed CP #312/#315/#316/#320,
+Subscriptions #34/#35/#36, Shared #272/#273 and the scoped IAM authority
+configuration. CP #319's progressive registration can be separately
+accepted; it is not automatically certified by a sponsorship suspension.
+Staging must have a reviewed AWS account, IAM federated trust, protected
+environment, operational token refresh sidecars, scoped read-only DB roles,
+TLS certificate trust and deploy provenance. None of these external
+credentials or infrastructure identities may be fabricated by tests.
+
+**Current proof state:** code and CI automation delivered; no live GitHub
+`workflow_dispatch` acceptance success has been reported by this document.
