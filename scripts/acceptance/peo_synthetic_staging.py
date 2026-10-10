@@ -146,6 +146,9 @@ def main() -> int:
     operating = str(uuid.uuid4())
     event = {
         "specversion": "1.0", "id": event_id,
+        "time": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "datacontenttype": "application/json", "baobabscope": "platform",
+        "correlationid": str(uuid.uuid4()),
         "source": "urn:baobab-platform:service:baobab-cp",
         "type": "com.baobab-platform.control-plane.founding-sponsorship.suspended.v1",
         "subject": "founding-governance/" + grant,
