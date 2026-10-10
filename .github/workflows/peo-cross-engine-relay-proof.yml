@@ -1,0 +1,102 @@
+name: PEO CP to Subscriptions Real Staging Relay Proof
+
+on:
+  pull_request:
+    paths:
+      - scripts/acceptance/peo_cross_engine_relay.py
+      - scripts/acceptance/test_peo_cross_engine_relay.py
+      - .github/workflows/peo-cross-engine-relay-proof.yml
+  workflow_dispatch:
+    inputs:
+      grant_uuid:
+        description: "One independently authorised ACTIVE synthetic staging sponsorship UUID (consumed by SUSPEND)"
+        type: string
+        required: true
+      suspend_grant:
+        description: "I authorise one-way SUSPEND of this SYNTHETIC staging sponsorship only"
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peo02f-governed-relay-proof-staging
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+      - name: Compile and test exact persisted evidence comparisons
+        run: |
+          python -m py_compile scripts/acceptance/peo_cross_engine_relay.py scripts/acceptance/peo_synthetic_staging.py
+          python -m unittest discover -s scripts/acceptance -p 'test_peo_cross_engine_relay.py' -v
+
+  real-relay:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.suspend_grant == true
+    needs: preflight
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    environment: staging
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+      - name: Install SQL read-only acceptance CLI
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          psql --version
+      - name: Stage short-lived real IAM human reviewer credential and PostgreSQL CA
+        env:
+          REVIEWER_OIDC_TOKEN: ${{ secrets.PEO_STAGING_HUMAN_REVIEWER_TOKEN }}
+          EVIDENCE_CA_PEM: ${{ secrets.PEO_STAGING_EVIDENCE_DB_CA_PEM }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ -n "$REVIEWER_OIDC_TOKEN" ]] || { echo "::error::Human IAM token not configured by independent staging reviewer"; exit 1; }
+          [[ "$EVIDENCE_CA_PEM" == *"BEGIN CERTIFICATE"* ]] || { echo "::error::Reviewed evidence database CA absent"; exit 1; }
+          printf '%s' "$REVIEWER_OIDC_TOKEN" > "$RUNNER_TEMP/peo-human-reviewer.jwt"
+          printf '%s\n' "$EVIDENCE_CA_PEM" > "$RUNNER_TEMP/peo-staging-db-ca.pem"
+      - name: Governed CP suspension and authenticated CP outbox to Subscriptions inbox
+        env:
+          PEO_ACCEPTANCE_ENVIRONMENT: staging
+          PEO_STAGING_RELAY_MUTATION_APPROVED: 'true'
+          PEO_STAGING_SYNTHETIC_GRANT_UUID: ${{ inputs.grant_uuid }}
+          PEO_STAGING_HUMAN_REVIEWER_TOKEN_FILE: ${{ runner.temp }}/peo-human-reviewer.jwt
+          PEO_STAGING_EVIDENCE_DB_CA_FILE: ${{ runner.temp }}/peo-staging-db-ca.pem
+          PEO_STAGING_CP_EVIDENCE_DB_URL: ${{ secrets.PEO_STAGING_CP_EVIDENCE_DB_URL }}
+          PEO_STAGING_SUB_EVIDENCE_DB_URL: ${{ secrets.PEO_STAGING_SUB_EVIDENCE_DB_URL }}
+          PEO_STAGING_ALLOWED_DB_HOSTS: ${{ vars.PEO_STAGING_ALLOWED_DB_HOSTS }}
+          PEO_STAGING_ALLOWED_HOSTS: ${{ vars.PEO_STAGING_ALLOWED_HOSTS }}
+          PEO_STAGING_CP_BASE_URL: ${{ vars.PEO_STAGING_CP_BASE_URL }}
+          PEO_STAGING_IAM_TOKEN_URL: ${{ vars.PEO_STAGING_IAM_TOKEN_URL }}
+          PEO_STAGING_CP_AUDIENCE: ${{ vars.PEO_STAGING_CP_AUDIENCE }}
+          PEO_STAGING_BILLING_AUDIENCE: ${{ vars.PEO_STAGING_BILLING_AUDIENCE }}
+          PEO_STAGING_CP_DEPLOYED_REVISION: ${{ vars.PEO_STAGING_CP_DEPLOYED_REVISION }}
+          PEO_STAGING_SUB_DEPLOYED_REVISION: ${{ vars.PEO_STAGING_SUB_DEPLOYED_REVISION }}
+          PEO_STAGING_CP_CLIENT_ID: ${{ secrets.PEO_STAGING_CP_CLIENT_ID }}
+          PEO_STAGING_CP_CLIENT_SECRET: ${{ secrets.PEO_STAGING_CP_CLIENT_SECRET }}
+          PEO_STAGING_SUBSCRIPTIONS_CLIENT_ID: ${{ secrets.PEO_STAGING_SUBSCRIPTIONS_CLIENT_ID }}
+          PEO_STAGING_SUBSCRIPTIONS_CLIENT_SECRET: ${{ secrets.PEO_STAGING_SUBSCRIPTIONS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          python scripts/acceptance/peo_cross_engine_relay.py
+      - name: Remove short-lived human IAM credential and DB CA material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/peo-human-reviewer.jwt" "$RUNNER_TEMP/peo-staging-db-ca.pem"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: peo-governed-cp-to-subscriptions-delivery-evidence
+          path: peo-acceptance-evidence/cp-subscriptions-relay.json
+          retention-days: 15
+          if-no-files-found: ignore
