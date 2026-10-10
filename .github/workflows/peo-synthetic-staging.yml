@@ -1,0 +1,83 @@
+name: PEO Synthetic Authenticated Staging Acceptance
+
+on:
+  pull_request:
+    paths:
+      - scripts/acceptance/peo_synthetic_staging.py
+      - .github/workflows/peo-synthetic-staging.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peo-staging-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+      - name: Compile zero-dependency synthetic acceptance code
+        run: python -m py_compile scripts/acceptance/peo_synthetic_staging.py
+
+  authenticated-staging:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: preflight
+    runs-on: ubuntu-26.04
+    environment: staging
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+      - name: Require reviewed, protected staging IAM and fixture configuration
+        env:
+          TOKEN_ENDPOINT: ${{ vars.PEO_STAGING_IAM_TOKEN_URL }}
+          CP_ENDPOINT: ${{ vars.PEO_STAGING_CP_BASE_URL }}
+          BILLING_ENDPOINT: ${{ vars.PEO_STAGING_SUBSCRIPTIONS_BASE_URL }}
+          ALLOWED_HOSTS: ${{ vars.PEO_STAGING_ALLOWED_HOSTS }}
+          SYNTH_TENANT: ${{ vars.PEO_SYNTHETIC_TENANT_ID }}
+          SYNTH_SUB: ${{ vars.PEO_SYNTHETIC_PRODUCT_SUBSCRIPTION_ID }}
+          SYNTH_CLASS: ${{ vars.PEO_SYNTHETIC_CLASSIFICATION_REFERENCE }}
+          CP_CLIENT_ID: ${{ secrets.PEO_STAGING_CP_CLIENT_ID }}
+          CP_CLIENT_SECRET: ${{ secrets.PEO_STAGING_CP_CLIENT_SECRET }}
+          SUB_CLIENT_ID: ${{ secrets.PEO_STAGING_SUBSCRIPTIONS_CLIENT_ID }}
+          SUB_CLIENT_SECRET: ${{ secrets.PEO_STAGING_SUBSCRIPTIONS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          for key in TOKEN_ENDPOINT CP_ENDPOINT BILLING_ENDPOINT ALLOWED_HOSTS SYNTH_TENANT SYNTH_SUB SYNTH_CLASS CP_CLIENT_ID CP_CLIENT_SECRET SUB_CLIENT_ID SUB_CLIENT_SECRET; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Protected staging config ${key} is absent; no synthetic acceptance performed"
+              exit 1
+            fi
+          done
+      - name: Exercise real IAM workload tokens and synthetic staging APIs
+        env:
+          PEO_ACCEPTANCE_ENVIRONMENT: staging
+          PEO_STAGING_IAM_TOKEN_URL: ${{ vars.PEO_STAGING_IAM_TOKEN_URL }}
+          PEO_STAGING_CP_BASE_URL: ${{ vars.PEO_STAGING_CP_BASE_URL }}
+          PEO_STAGING_SUBSCRIPTIONS_BASE_URL: ${{ vars.PEO_STAGING_SUBSCRIPTIONS_BASE_URL }}
+          PEO_STAGING_ALLOWED_HOSTS: ${{ vars.PEO_STAGING_ALLOWED_HOSTS }}
+          PEO_STAGING_CP_AUDIENCE: ${{ vars.PEO_STAGING_CP_AUDIENCE }}
+          PEO_STAGING_BILLING_AUDIENCE: ${{ vars.PEO_STAGING_BILLING_AUDIENCE }}
+          PEO_SYNTHETIC_TENANT_ID: ${{ vars.PEO_SYNTHETIC_TENANT_ID }}
+          PEO_SYNTHETIC_PRODUCT_SUBSCRIPTION_ID: ${{ vars.PEO_SYNTHETIC_PRODUCT_SUBSCRIPTION_ID }}
+          PEO_SYNTHETIC_CLASSIFICATION_REFERENCE: ${{ vars.PEO_SYNTHETIC_CLASSIFICATION_REFERENCE }}
+          PEO_STAGING_CP_CLIENT_ID: ${{ secrets.PEO_STAGING_CP_CLIENT_ID }}
+          PEO_STAGING_CP_CLIENT_SECRET: ${{ secrets.PEO_STAGING_CP_CLIENT_SECRET }}
+          PEO_STAGING_SUBSCRIPTIONS_CLIENT_ID: ${{ secrets.PEO_STAGING_SUBSCRIPTIONS_CLIENT_ID }}
+          PEO_STAGING_SUBSCRIPTIONS_CLIENT_SECRET: ${{ secrets.PEO_STAGING_SUBSCRIPTIONS_CLIENT_SECRET }}
+        run: python scripts/acceptance/peo_synthetic_staging.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: peo-authenticated-staging-evidence
+          path: peo-acceptance-evidence/staging-workload-receipt.json
+          retention-days: 15
+          if-no-files-found: ignore
