@@ -208,8 +208,8 @@ A result of `PROVED` is possible only when all the following are true:
    missing, mismatched or corrupted.
 
 The report also records the GitHub workflow run ID, deployment revision
-assertions, the on-disk subscriber wire digest and cross-engine canonical
-digest. **It does not contain human/engine bearer tokens, DB passwords, raw
+assertions, the SHA-256 fingerprint of the verified workload client ID,
+the on-disk subscriber wire digest and cross-engine canonical digest. **It does not contain human/engine bearer tokens, DB passwords, raw
 event envelopes, legal identity data or applicant names.**
 
 A failed or timed-out proof **does not roll back the valid SUSPENDED grant**.
