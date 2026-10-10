@@ -125,6 +125,18 @@ def initial_fixture(cp: dict[str, str], grant: str) -> dict:
     return row
 
 
+
+def final_governance_status(cp: dict[str, str], grant: str) -> str:
+    row = sql_one(f"""
+      SELECT row_to_json(r) FROM (
+        SELECT status FROM admission.founding_group_sponsorship
+        WHERE sponsorship_id='{grant}'::uuid
+      ) r;""", cp)
+    if row is None:
+        raise RuntimeError("the governed synthetic sponsorship disappeared")
+    return str(row["status"])
+
+
 def cp_outbox(cp: dict[str, str], grant: str, correlation: str) -> dict | None:
     return sql_one(f"""
       SELECT row_to_json(r) FROM (
@@ -316,7 +328,10 @@ def main() -> int:
     # artifact if a request is accepted but later transport evidence fails.
     try:
         transition(cp_url, reviewer_token, grant, correlation)
+        if final_governance_status(cp, grant) != "SUSPENDED":
+            raise RuntimeError("Control Plane database does not reflect independent suspension")
         report["governance"]["status_after"] = "SUSPENDED"
+        report["governance"]["committed_in_cp_database"] = True
         report["status"] = "PENDING_DURABLE_DELIVERY"
         deadline = time.monotonic() + 150
         while time.monotonic() < deadline:
