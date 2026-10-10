@@ -223,7 +223,7 @@ def verify_delivery(outbox: dict, inbox: dict, *, grant: str,
         "consumer_processed_at": inbox["processed_at"],
         "producer_published_at": outbox["published_at"],
         "producer_attempts": outbox["publish_attempts"],
-        "verified_iam_workload_client_id": inbox["received_by_client_id"],
+        "verified_iam_workload_client_id_sha256": hashlib.sha256(expected_client.encode()).hexdigest(),
         "cross_engine_canonical_sha256": producer_hash,
         "receiver_wire_sha256": actual_wire_hash,
         "result": "PROVED",
@@ -303,6 +303,7 @@ def main() -> int:
     if not iam_proof["audiences_distinct"]:
         raise RuntimeError("workload tokens must be minted for distinct CP and Subscriptions audiences")
     fixture = initial_fixture(cp, grant)
+    verified_cp_client = require("PEO_STAGING_CP_CLIENT_ID")
     correlation = str(uuid.uuid4())
     report = {
         "status": "IN_PROGRESS",
@@ -311,7 +312,7 @@ def main() -> int:
         "governed_fixture_id": grant,
         "correlation_id": correlation,
         "human_authz_enforced_by": "Control Plane admission:decide",
-        "expected_workload_client_id": require("PEO_STAGING_CP_CLIENT_ID"),
+        "expected_workload_client_id_sha256": hashlib.sha256(verified_cp_client.encode()).hexdigest(),
         "github_run_id": os.getenv("GITHUB_RUN_ID", "operator-local"),
         "deployment": {
             "cp_revision": require("PEO_STAGING_CP_DEPLOYED_REVISION"),
@@ -342,7 +343,7 @@ def main() -> int:
                 if inbox:
                     report["cross_engine"] = verify_delivery(
                         outbox, inbox, grant=grant, correlation=correlation,
-                        expected_client=report["expected_workload_client_id"])
+                        expected_client=verified_cp_client)
                     report["status"] = "PROVED"
                     break
             time.sleep(3)
