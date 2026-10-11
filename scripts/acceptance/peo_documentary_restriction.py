@@ -182,7 +182,7 @@ def run(env: dict[str, str]) -> dict[str, object]:
     ))
     if (
         not isinstance(token_response, dict)
-        or token_response.get("token_type", "").lower() != "bearer"
+        or str(token_response.get("token_type", "")).lower() != "bearer"
         or not isinstance(token_response.get("access_token"), str)
         or not token_response["access_token"].strip()
     ):
@@ -211,7 +211,7 @@ def run(env: dict[str, str]) -> dict[str, object]:
         checks.append(verify_decision(
             result, context=context, organisation=organisation,
             capability=capability, market=market, operation=operation,
-            expected_blocked=should_blocked(should_block),
+            expected_blocked=should_block,
             now=datetime.now(timezone.utc),
         ))
     return {
@@ -221,10 +221,6 @@ def run(env: dict[str, str]) -> dict[str, object]:
         "checks": checks,
         "provider_or_business_activation_certified": False,
     }
-
-
-def should_blocked(expected: bool) -> bool:
-    return expected
 
 
 def main() -> int:
