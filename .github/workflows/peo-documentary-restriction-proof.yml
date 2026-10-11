@@ -1,0 +1,72 @@
+name: PEO-02T Current Documentary Remediation Staging Proof
+
+on:
+  pull_request:
+    paths:
+      - scripts/acceptance/peo_documentary_restriction.py
+      - scripts/acceptance/test_peo_documentary_restriction.py
+      - .github/workflows/peo-documentary-restriction-proof.yml
+  workflow_dispatch:
+    inputs:
+      confirm_synthetic:
+        type: boolean
+        description: "I confirm the held/clear runtime context is PREEXISTING, SYNTHETIC and independently reviewed"
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peo02t-documentary-scope-staging
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+      - name: Compile and test exact negative-only proof validation
+        run: |
+          python -m py_compile scripts/acceptance/peo_documentary_restriction.py
+          python -m unittest discover -s scripts/acceptance -p 'test_peo_documentary_restriction.py' -v
+
+  real-documentary-pdp:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_synthetic == true
+    needs: preflight
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    environment: staging
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+      - name: Evaluate real IAM-authenticated CP negative scope (read-only)
+        env:
+          PEO_STAGING_DOCUMENTARY_APPROVED: 'true'
+          PEO_STAGING_IAM_TOKEN_URL: ${{ vars.PEO_STAGING_IAM_TOKEN_URL }}
+          PEO_STAGING_CP_BASE_URL: ${{ vars.PEO_STAGING_CP_BASE_URL }}
+          PEO_STAGING_ALLOWED_HOSTS: ${{ vars.PEO_STAGING_ALLOWED_HOSTS }}
+          PEO_STAGING_CP_AUDIENCE: ${{ vars.PEO_STAGING_CP_AUDIENCE }}
+          PEO_STAGING_CP_DEPLOYED_REVISION: ${{ vars.PEO_STAGING_CP_DEPLOYED_REVISION }}
+          PEO_STAGING_DOCUMENTARY_CONTEXT_ID: ${{ vars.PEO_STAGING_DOCUMENTARY_CONTEXT_ID }}
+          PEO_STAGING_DOCUMENTARY_ORGANISATION_ID: ${{ vars.PEO_STAGING_DOCUMENTARY_ORGANISATION_ID }}
+          PEO_STAGING_DOCUMENTARY_MARKET: ${{ vars.PEO_STAGING_DOCUMENTARY_MARKET }}
+          PEO_STAGING_DOCUMENTARY_HELD_CAPABILITY: ${{ vars.PEO_STAGING_DOCUMENTARY_HELD_CAPABILITY }}
+          PEO_STAGING_DOCUMENTARY_CLEAR_CAPABILITY: ${{ vars.PEO_STAGING_DOCUMENTARY_CLEAR_CAPABILITY }}
+          PEO_STAGING_DOCUMENTARY_CLIENT_ID: ${{ secrets.PEO_STAGING_DOCUMENTARY_CLIENT_ID }}
+          PEO_STAGING_DOCUMENTARY_CLIENT_SECRET: ${{ secrets.PEO_STAGING_DOCUMENTARY_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          python scripts/acceptance/peo_documentary_restriction.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: peo02t-documentary-negative-restriction-evidence
+          path: peo-acceptance-evidence/cp-documentary-restriction.json
+          retention-days: 15
+          if-no-files-found: ignore
