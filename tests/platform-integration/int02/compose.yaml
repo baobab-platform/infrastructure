@@ -46,8 +46,11 @@ services:
       # Keep these separate: this is an administration transport, never
       # an issuer override or a substitute for OIDC/CP acceptance.
       KC_URL: http://localhost:8080
+      # Keycloak's JDBC username does not follow POSTGRES_USER automatically.
+      # Without it the optimized server attempts the wrong database role and
+      # never serves its real readiness/OIDC discovery endpoints.
       KC_DB_USERNAME: baobab_iam
-      # Keycloak's JDBC username does not follow POSTGRES_USER automatically.\n      # Without it the optimized server attempts the wrong database role and\n      # never serves its real readiness/OIDC discovery endpoints.\n      KC_DB_USERNAME: baobab_iam\n      KC_DB_PASSWORD: ${L4_IAM_DB_PASSWORD:?required}
+      KC_DB_PASSWORD: ${L4_IAM_DB_PASSWORD:?required}
       KEYCLOAK_ADMIN: l4admin
       KEYCLOAK_ADMIN_PASSWORD: ${L4_KC_ADMIN_PASSWORD:?required}
       KC_BOOTSTRAP_ADMIN_USERNAME: l4admin

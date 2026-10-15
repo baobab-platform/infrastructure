@@ -104,8 +104,43 @@ class ContractTest(unittest.TestCase):
         # authenticate: the application JDBC role must match POSTGRES_USER.
         compose=(BASE/"compose.yaml").read_text()
         self.assertIn("POSTGRES_USER: baobab_iam",compose)
-        self.assertIn("KC_DB_USERNAME: baobab_iam",compose)
-        self.assertIn("KC_DB_PASSWORD: ${L4_IAM_DB_PASSWORD:?required}",compose)
+        env=keycloak_environment(compose)
+        self.assertEqual(env.get("KC_DB_USERNAME"),"baobab_iam")
+        self.assertEqual(env.get("KC_DB_PASSWORD"),"${L4_IAM_DB_PASSWORD:?required}")
+
+    def test_keycloak_environment_is_real_yaml_not_comment_text(self):
+        # A literal "\n" inside a comment once swallowed KC_DB_PASSWORD, so
+        # Keycloak started without database credentials and exited. Substring
+        # checks still passed. Parse the block as YAML keys: every variable
+        # must be an uncommented key, defined exactly once.
+        compose=(BASE/"compose.yaml").read_text()
+        self.assertNotIn("\\n",compose)
+        env=keycloak_environment(compose)
+        for key in ("KC_DB","KC_DB_URL","KC_DB_USERNAME","KC_DB_PASSWORD","KC_URL",
+                    "KEYCLOAK_ADMIN","KEYCLOAK_ADMIN_PASSWORD"):
+            self.assertIn(key,env)
+        with self.assertRaises(AssertionError):
+            keycloak_environment(compose.replace(
+                "      KC_DB_PASSWORD:","      # dropped\\n      KC_DB_PASSWORD:",1))
+
+def keycloak_environment(compose):
+    """The keycloak service's environment mapping, read structurally (standard
+    library only): uncommented `KEY: value` lines at environment indentation.
+    A duplicate or missing key fails; comments never contribute keys."""
+    lines=compose.splitlines()
+    start=lines.index("  keycloak:")
+    env_at=next(i for i in range(start+1,len(lines)) if lines[i]=="    environment:")
+    env={}
+    for line in lines[env_at+1:]:
+        if line.strip()=="" or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith("      "):
+            break
+        key,sep,value=line.strip().partition(":")
+        assert sep and key.isupper() and key not in env, f"invalid or duplicate key {key!r}"
+        env[key]=value.strip()
+    assert "KC_DB_PASSWORD" in env, "KC_DB_PASSWORD is not a real environment key"
+    return env
 
     def test_iam_readiness_requires_real_issuer(self):
         # Management health is optional; the fallback must still contact the
