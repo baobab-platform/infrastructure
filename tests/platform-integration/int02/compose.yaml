@@ -53,9 +53,13 @@ services:
       iam-db: {condition: service_healthy}
     volumes:
       - "${L4_RUNTIME:?private runtime directory}:/run/l4:ro"
-    # Keycloak 26 exposes readiness on the management HTTP interface
-    # (9000), not through `kc.sh health`. A real Python probe in the same
-    # internal-only network checks /health/ready before product bootstrap.
+    # The IAM product Dockerfile embeds `HEALTHCHECK kc.sh health`, which
+    # is not a valid Keycloak CLI operation. A missing Compose healthcheck
+    # would INHERIT that image check and block `docker compose up --wait`.
+    # Turn off only the inherited image check for this disposable profile;
+    # orchestrate.py independently proves Keycloak 9000 /health/ready.
+    healthcheck:
+      disable: true
   cp-migrate:
     build:
       context: ${L4_CP_SOURCE:?pinned CP checkout required}
