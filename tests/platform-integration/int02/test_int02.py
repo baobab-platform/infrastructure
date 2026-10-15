@@ -123,6 +123,32 @@ class ContractTest(unittest.TestCase):
             keycloak_environment(compose.replace(
                 "      KC_DB_PASSWORD:","      # dropped\\n      KC_DB_PASSWORD:",1))
 
+    def test_iam_readiness_requires_real_issuer(self):
+        # Management health is optional; the fallback must still contact the
+        # genuine issuer's OIDC metadata and verify its canonical issuer.
+        source=(BASE/"probe.py").read_text()
+        self.assertIn('"/.well-known/openid-configuration"',source)
+        self.assertIn('document.get("issuer") == ISSUER',source)
+        self.assertIn('status == 200',source)
+        self.assertIn('verified-oidc-discovery',source)
+
+    def test_admin_master_probe_checks_real_token_endpoint(self):
+        source=(BASE/"probe.py").read_text()
+        self.assertIn("def verify_master_administrator():",source)
+        self.assertIn("/realms/master/protocol/openid-connect/token",source)
+        self.assertIn("master-admin",source)
+
+    def test_blocked_cannot_be_certification(self):
+        data=m.load()
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(m,"EVIDENCE",Path(d)):
+                m.write_evidence({"project":"l4-1111111111111111"},data,
+                   {"scenarios":{k:"BLOCKED" for k in m.REQUIRED}},accepted=False)
+            evidence=json.loads(next(Path(d).glob("*.json")).read_text())
+            self.assertFalse(evidence["passed"])
+            self.assertFalse(evidence["protected_staging_accepted"])
+
+
 class ScenarioTruthTest(unittest.TestCase):
     """EA v2.2 matrix: a scenario is PASS only with its positive AND its
     negatives observed in the same run; partial coverage is BLOCKED."""
@@ -173,6 +199,7 @@ class ScenarioTruthTest(unittest.TestCase):
         runner=(BASE/"orchestrate.py").read_text()
         self.assertIn("or not TLS_VERIFIED:",runner)
 
+
 def keycloak_environment(compose):
     """The keycloak service's environment mapping, read structurally (standard
     library only): uncommented `KEY: value` lines at environment indentation.
@@ -192,30 +219,6 @@ def keycloak_environment(compose):
     assert "KC_DB_PASSWORD" in env, "KC_DB_PASSWORD is not a real environment key"
     return env
 
-    def test_iam_readiness_requires_real_issuer(self):
-        # Management health is optional; the fallback must still contact the
-        # genuine issuer's OIDC metadata and verify its canonical issuer.
-        source=(BASE/"probe.py").read_text()
-        self.assertIn('"/.well-known/openid-configuration"',source)
-        self.assertIn('document.get("issuer") == ISSUER',source)
-        self.assertIn('status == 200',source)
-        self.assertIn('verified-oidc-discovery',source)
-
-    def test_admin_master_probe_checks_real_token_endpoint(self):
-        source=(BASE/"probe.py").read_text()
-        self.assertIn("def verify_master_administrator():",source)
-        self.assertIn("/realms/master/protocol/openid-connect/token",source)
-        self.assertIn("master-admin",source)
-
-    def test_blocked_cannot_be_certification(self):
-        data=m.load()
-        with tempfile.TemporaryDirectory() as d:
-            with mock.patch.object(m,"EVIDENCE",Path(d)):
-                m.write_evidence({"project":"l4-1111111111111111"},data,
-                   {"scenarios":{k:"BLOCKED" for k in m.REQUIRED}},accepted=False)
-            evidence=json.loads(next(Path(d).glob("*.json")).read_text())
-            self.assertFalse(evidence["passed"])
-            self.assertFalse(evidence["protected_staging_accepted"])
 
 if __name__=="__main__":
     unittest.main()
