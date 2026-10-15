@@ -283,7 +283,7 @@ def seed_tenants(p, directory, envfile):
             "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
             "-c", statement, capture=True, timeout=35)
     private(directory / "fixtures.json",json.dumps({
-        "tenant":tenant_a,"other_tenant":tenant_b,"organisation":org_a})+"\\n")
+        "tenant":tenant_a,"other_tenant":tenant_b,"organisation":org_a})+"\n")
 
 def test(lock):
     check_prerequisites(lock)

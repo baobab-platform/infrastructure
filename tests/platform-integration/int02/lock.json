@@ -36,7 +36,7 @@
   },
   "runtime_images": {
     "postgres": "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
-    "python_probe": "PENDING_DIGEST_REVIEW"
+    "python_probe": "python@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c"
   },
   "no_protected_credentials": true,
   "no_production_tenant_data": true
