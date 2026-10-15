@@ -74,6 +74,16 @@ class ContractTest(unittest.TestCase):
         self.assertIn('stage = "KCADM_SESSION_UNWRITABLE"',source)
         self.assertIn('"IAM bootstrap class:", "INT-02 fixture class:"',source)
 
+    def test_nonroot_keycloak_receives_private_stdin_fixtures(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        script=(BASE/"keycloak-fixture.sh").read_text()
+        self.assertIn("L4_FIXTURE_DIR=$(mktemp -d)",runner)
+        self.assertIn('prelude.append(content.rstrip',runner)
+        self.assertIn('stdin=script',runner)
+        self.assertIn('rm -rf -- "$L4_FIXTURE_DIR"',script)
+        self.assertIn('"$L4_FIXTURE_DIR/test-client.json"',script)
+        self.assertNotIn('chmod 777',runner+script)
+
     def test_fixture_checks_keycloak_json_not_grep(self):
         source=(BASE/"keycloak-fixture.sh").read_text()
         self.assertIn("jq -e --arg field", source)
