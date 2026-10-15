@@ -95,7 +95,11 @@ def wait_iam():
     # require HTTP 200 AND the exact expected issuer before proceeding.
     # The subsequent master-admin step additionally verifies real token
     # issuance. Neither path mocks IAM, authorises CP access, or certifies L4.
-    discovery = ISSUER + "/.well-known/openid-configuration"
+    # The baobab realm only exists after IAM's bootstrap.sh, which runs
+    # later; the built-in master realm is the pre-bootstrap issuer. Its
+    # exact issuer is verified (Keycloak serves it as hostname + /realms/master).
+    master_issuer = ISSUER.rsplit("/realms/", 1)[0] + "/realms/master"
+    discovery = master_issuer + "/.well-known/openid-configuration"
     last_health = "unavailable"
     last_discovery = "unavailable"
     for _ in range(150):
@@ -110,14 +114,17 @@ def wait_iam():
         try:
             status,document = request("GET",discovery)
             last_discovery = str(status)
-            if status == 200 and document.get("issuer") == ISSUER:
+            if status == 200 and document.get("issuer") == master_issuer:
                 print('{"issuer_ready":true,"method":"verified-oidc-discovery"}')
                 return
         except (OSError, ValueError):
             last_discovery = "unavailable"
         time.sleep(1)
     # Status classes and HTTP codes are safe; never include bodies, URLs
-    # containing credentials, tokens or raw container logs in Actions.
+    # containing credentials, tokens or raw container logs in Actions. This
+    # fixed-format line is the only diagnostic the orchestrator forwards.
+    print("INT02_IAM_READINESS management=" + last_health + " discovery=" + last_discovery,
+          file=sys.stderr)
     raise RuntimeError("real Keycloak readiness unavailable: management="
                        + last_health + ", discovery=" + last_discovery)
 

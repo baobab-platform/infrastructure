@@ -113,7 +113,13 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
                     line)
                 if marker:
                     fixture_http = marker.group(1)
+        readiness = ""
+        marker = re.search(r"^INT02_IAM_READINESS management=(\d{3}|unavailable) "
+                           r"discovery=(\d{3}|unavailable)$", p.stderr, re.M)
+        if marker:
+            readiness = f"management={marker.group(1)}, discovery={marker.group(2)}"
         raise Blocked("External command failed: " + Path(args[0]).name +
+                      (f"; IAM readiness: {readiness}" if readiness else "") +
                       (f"; INT-02 fixture HTTP class: {fixture_http}" if fixture_http else "") +
                       (f"; INT-02 fixture class: {fixture_stage}" if fixture_stage else "") +
                       (f"; IAM bootstrap class: {stage}" if stage else "") +
@@ -175,7 +181,7 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
         safe_cause = str(cause) if any(
             marker in str(cause) for marker in
             ("IAM bootstrap class:", "INT-02 fixture class:",
-             "INT-02 fixture HTTP class:")) else ""
+             "INT-02 fixture HTTP class:", "IAM readiness:")) else ""
         raise Blocked(f"Compose {stage}/{target} failed; service states: "
                       + (", ".join(sorted(snapshot)) if snapshot else "unavailable")
                       + (f"; {safe_cause}" if safe_cause else "")) from cause
@@ -299,8 +305,11 @@ def up(lock):
     # Probe the real Keycloak 26 management listener from inside the private
     # Compose network. No health commands or HTTP clients are needed in the
     # minimal Keycloak runtime image.
-    compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
-            "wait-iam", timeout=190)
+    try:
+        compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
+                "wait-iam", timeout=190)
+    except Blocked as cause:
+        raise Blocked(f"{cause}; Keycloak log classes: {keycloak_log_classes(p, envfile)}") from cause
     # Diagnose a failed master-admin credential before the product bootstrap
     # enters its bounded five-minute login retry loop. This runs against the
     # real Keycloak master realm; token bytes stay inside the probe process.
@@ -318,6 +327,29 @@ def up(lock):
     compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
             "wait", timeout=120)
     print("INT-02 genuine Keycloak issuer + CP binary started")
+
+# Fixed Keycloak startup log markers, mapped to codes. Only the CODES leave
+# this process: never a log line, URL, credential or JDBC message.
+KEYCLOAK_LOG_CLASSES = (
+    ("password authentication failed", "DB_AUTH_FAILED"),
+    ("Connection refused", "DB_OR_PEER_REFUSED"),
+    ("does not exist", "DB_OBJECT_MISSING"),
+    ("Failed to start server", "SERVER_START_FAILED"),
+    ("ERROR [org.keycloak.quarkus.runtime.cli.ExecutionExceptionHandler]", "CLI_EXECUTION_ERROR"),
+    ("Listening on: http://", "HTTP_LISTENING"),
+    ("Management interface listening on http://", "MANAGEMENT_LISTENING"),
+    (" started in ", "SERVER_STARTED"),
+)
+
+def keycloak_log_classes(p, envfile):
+    base = ["docker", "compose", "--env-file", str(envfile), "-f", str(COMPOSE), "-p", p["project"]]
+    try:
+        raw = subprocess.run([*base, "logs", "--no-color", "keycloak"], capture_output=True,
+                             text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return "unavailable"
+    found = [code for marker, code in KEYCLOAK_LOG_CLASSES if marker in raw.stdout + raw.stderr]
+    return ",".join(found) if found else "none"
 
 def seed_keycloak(p, envfile):
     # A Docker bind mount preserves HOST permissions, not the container's

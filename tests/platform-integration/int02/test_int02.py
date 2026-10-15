@@ -128,7 +128,8 @@ class ContractTest(unittest.TestCase):
         # genuine issuer's OIDC metadata and verify its canonical issuer.
         source=(BASE/"probe.py").read_text()
         self.assertIn('"/.well-known/openid-configuration"',source)
-        self.assertIn('document.get("issuer") == ISSUER',source)
+        self.assertIn('document.get("issuer") == master_issuer',source)
+        self.assertIn('"/realms/master"',source)
         self.assertIn('status == 200',source)
         self.assertIn('verified-oidc-discovery',source)
 
@@ -147,6 +148,27 @@ class ContractTest(unittest.TestCase):
             evidence=json.loads(next(Path(d).glob("*.json")).read_text())
             self.assertFalse(evidence["passed"])
             self.assertFalse(evidence["protected_staging_accepted"])
+
+
+class DiagnosticsTest(unittest.TestCase):
+    def test_readiness_codes_are_forwarded_and_nothing_else(self):
+        # A failed probe must surface its fixed status line, not raw output.
+        with mock.patch.object(m.subprocess,"run",return_value=mock.Mock(
+                returncode=2,stdout="",stderr="Traceback secret=abc\n"
+                "INT02_IAM_READINESS management=503 discovery=unavailable\n")):
+            with self.assertRaises(m.Blocked) as raised:
+                m.execute(["docker","compose","exec","-T","probe","python","/app/probe.py","wait-iam"])
+        message=str(raised.exception)
+        self.assertIn("IAM readiness: management=503, discovery=unavailable",message)
+        self.assertNotIn("secret",message)
+
+    def test_keycloak_log_classes_emit_codes_only(self):
+        log=("2026 ERROR jdbc url postgres://u:p@iam-db FATAL: password authentication failed for user x\n"
+             "Listening on: http://0.0.0.0:8080\n")
+        with mock.patch.object(m.subprocess,"run",return_value=mock.Mock(stdout=log,stderr="")):
+            codes=m.keycloak_log_classes({"project":"l4-0000000000000000"},Path("/nonexistent"))
+        self.assertEqual(codes,"DB_AUTH_FAILED,HTTP_LISTENING")
+        self.assertNotIn("postgres://",codes)
 
 
 class ProvenanceTest(unittest.TestCase):
