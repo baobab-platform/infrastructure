@@ -1,0 +1,49 @@
+name: INT-02 real IAM and CP integration
+on:
+  pull_request:
+    paths: [tests/platform-integration/**, .github/workflows/platform-int02.yml]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  static:
+    name: INT-02 source and trust-boundary checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 tests/platform-integration/l4.py preflight iam-cp --static
+      - run: python3 -m unittest discover -s tests/platform-integration/int02 -p test_int02.py -v
+      - run: python3 -m py_compile tests/platform-integration/int02/*.py
+  image-discovery:
+    name: Probe image digest review
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          set -eu
+          docker pull python:3.12.12-slim >/dev/null
+          docker image inspect --format 'PROBE_PIN={{index .RepoDigests 0}}' python:3.12.12-slim
+  live:
+    name: Real Keycloak -> CP L4-01 acceptance
+    needs: [static]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 tests/platform-integration/l4.py materialise iam-cp
+      - run: python3 tests/platform-integration/l4.py up iam-cp
+      - run: python3 tests/platform-integration/l4.py test iam-cp
+      - name: Check real evidence
+        run: python3 tests/platform-integration/l4.py evidence iam-cp >/dev/null
+      - if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: int02-synthetic-real-component-receipt
+          path: tests/platform-integration/evidence/*-int02.json
+          if-no-files-found: error
+      - if: always()
+        name: Destroy all disposable resources
+        run: python3 tests/platform-integration/l4.py down iam-cp
