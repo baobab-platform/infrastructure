@@ -99,6 +99,14 @@ class ContractTest(unittest.TestCase):
         self.assertIn("INT02_FIXTURE_FAILURE_STAGE=([a-z-]+)",runner)
         self.assertIn('"INT-02 fixture class:"',runner)
 
+    def test_keycloak_database_identity_matches_disposable_postgres(self):
+        # A healthy Postgres container is not evidence that Keycloak can
+        # authenticate: the application JDBC role must match POSTGRES_USER.
+        compose=(BASE/"compose.yaml").read_text()
+        self.assertIn("POSTGRES_USER: baobab_iam",compose)
+        self.assertIn("KC_DB_USERNAME: baobab_iam",compose)
+        self.assertIn("KC_DB_PASSWORD: ${L4_IAM_DB_PASSWORD:?required}",compose)
+
     def test_iam_readiness_requires_real_issuer(self):
         # Management health is optional; the fallback must still contact the
         # genuine issuer's OIDC metadata and verify its canonical issuer.
