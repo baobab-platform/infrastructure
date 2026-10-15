@@ -298,11 +298,14 @@ def tls():
         status,document=request("GET",master+"/.well-known/openid-configuration")
         result["tls_iam_verified"]=status==200 and document.get("issuer")==master
     except (OSError,ValueError):
-        pass
+        # A failed handshake, connection or parse is "not verified"; the
+        # error itself is never reported, and acceptance stays blocked.
+        result["tls_iam_verified"]=False
     try:
         result["tls_cp_verified"]=request("GET",CP+"/health/live")[0]==200
     except (OSError,ValueError):
-        pass
+        # As above: any failure leaves CP transport unverified.
+        result["tls_cp_verified"]=False
     # A context that trusts only the image's public roots must refuse the
     # edge: this run's CA is the sole reason the requests above succeed.
     try:
@@ -312,7 +315,9 @@ def tls():
     except ssl.SSLCertVerificationError:
         result["tls_untrusted_refused"]=True
     except (OSError,ValueError):
-        pass
+        # Only a certificate-verification refusal proves the CA is required;
+        # a connection or parse failure proves nothing, so the check fails.
+        result["tls_untrusted_refused"]=False
     print(json.dumps(result,sort_keys=True))
 
 def main():
