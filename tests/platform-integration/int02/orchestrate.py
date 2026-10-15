@@ -239,6 +239,52 @@ def seed_identities(p, envfile, ids):
                 "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
                 "-c", stmt, capture=True, timeout=25)
 
+def seed_tenants(p, directory, envfile):
+    # All objects remain explicitly SYNTHETIC and private to the disposable
+    # PostgreSQL test database; no external registry, legal or onboarding
+    # assertion is made by their presence. PRIMARY Organisation mappings
+    # are real CP schema objects, not fabricated JSON claims.
+    import uuid
+    tenant_a, tenant_b = ("tn_l4" + secrets.token_hex(8) for _ in range(2))
+    org_a, org_b = (str(uuid.uuid4()) for _ in range(2))
+    for tenant, org, legal in ((tenant_a,org_a,"LE-L4-A"),
+                                (tenant_b,org_b,"LE-L4-B")):
+        statement = f"""
+        BEGIN;
+        INSERT INTO legal_entities(legal_entity_id) VALUES ('{legal}');
+        INSERT INTO registry.canonical_entity
+            (canonical_entity_id,tenant_id,entity_type,status)
+            VALUES ('{org}','{tenant}','ORGANISATION','active');
+        INSERT INTO registry.organisation_profile
+            (canonical_entity_id,display_name,source_authority,status,effective_from)
+            VALUES ('{org}','Disposable INT-02 fixture','l4-synthetic','ACTIVE',
+                    now() - interval '1 hour');
+        INSERT INTO registry.legal_entity_profile
+            (legal_entity_id,organisation_id,legal_name,source_authority,
+             effective_from,legal_status)
+            VALUES ('{legal}','{org}','Synthetic fixture','l4-synthetic',
+                    now() - interval '1 hour','ACTIVE');
+        INSERT INTO tenants (tenant_id,legal_entity_id,display_name,
+            isolation_strategy,residency_region,observed_state,
+            primary_organisation_enforced)
+            VALUES ('{tenant}','{legal}','INT-02 disposable test',
+            'row_level_security','af-south-1','active',true);
+        INSERT INTO registry.tenant_organisation_mapping
+            (tenant_id,organisation_id,mapping_role,status,effective_from,provenance)
+            VALUES ('{tenant}','{org}','PRIMARY_ORGANISATION','ACTIVE',
+                    now() - interval '1 hour','int02-synthetic-fixture');
+        INSERT INTO registry.tenant_legal_entity_mapping
+            (tenant_id,legal_entity_id,mapping_role,status,effective_from,provenance)
+            VALUES ('{tenant}','{legal}','DEFAULT','ACTIVE',
+                    now() - interval '1 hour','int02-synthetic-fixture');
+        COMMIT;
+        """
+        compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v",
+            "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
+            "-c", statement, capture=True, timeout=35)
+    private(directory / "fixtures.json",json.dumps({
+        "tenant":tenant_a,"other_tenant":tenant_b,"organisation":org_a})+"\\n")
+
 def test(lock):
     check_prerequisites(lock)
     p, directory, envfile = current()
@@ -247,6 +293,7 @@ def test(lock):
          ids.get("issuer") == "http://keycloak:8080/realms/baobab",
          "IAM evidence is not real issuer issued")
     seed_identities(p, envfile, ids)
+    seed_tenants(p, directory, envfile)
     report = json.loads(run_probe(p, envfile, "test"))
     cases = report.get("scenarios", {})
     required = set(lock["mandatory"])
