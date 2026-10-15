@@ -105,7 +105,16 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
                 marker = re.fullmatch(r"INT02_FIXTURE_FAILURE_STAGE=([a-z-]+)", line)
                 if marker and marker.group(1) in approved:
                     fixture_stage = marker.group(1)
+        fixture_http = ""
+        if args[-2:] == ["/bin/bash", "-se"]:
+            for line in p.stdout.splitlines():
+                marker = re.fullmatch(
+                    r"INT02_FIXTURE_HTTP_CLASS=(HTTP_400|HTTP_401|HTTP_403|HTTP_409|HTTP_500|OTHER)",
+                    line)
+                if marker:
+                    fixture_http = marker.group(1)
         raise Blocked("External command failed: " + Path(args[0]).name +
+                      (f"; INT-02 fixture HTTP class: {fixture_http}" if fixture_http else "") +
                       (f"; INT-02 fixture class: {fixture_stage}" if fixture_stage else "") +
                       (f"; IAM bootstrap class: {stage}" if stage else "") +
                       (f"; last safe IAM bootstrap checkpoint: {checkpoint}" if checkpoint else "") +
@@ -162,7 +171,8 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
         # execute(), never the underlying command output or raw credentials.
         safe_cause = str(cause) if any(
             marker in str(cause) for marker in
-            ("IAM bootstrap class:", "INT-02 fixture class:")) else ""
+            ("IAM bootstrap class:", "INT-02 fixture class:",
+             "INT-02 fixture HTTP class:")) else ""
         raise Blocked(f"Compose {stage}/{target} failed; service states: "
                       + (", ".join(sorted(snapshot)) if snapshot else "unavailable")
                       + (f"; {safe_cause}" if safe_cause else "")) from cause
