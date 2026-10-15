@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 BASE = Path(__file__).resolve().parent
 LOCK = BASE / "lock.json"
 COMPOSE = BASE / "compose.yaml"
@@ -149,6 +149,32 @@ def materialise(lock):
         }
         private(directory / "runtime.env",
                 "".join(k + "=" + v + "\n" for k, v in runtime.items()))
+        # Fixture clients are disposable IAM test records only. Their bounded
+        # password grant is never added to the product IAM client inventory.
+        admin_client = {
+          "clientId":"l4-int02-admin", "enabled":True, "publicClient":False,
+          "secret":runtime["L4_TEST_ADMIN_CLIENT_SECRET"],
+          "serviceAccountsEnabled":False, "standardFlowEnabled":False,
+          "directAccessGrantsEnabled":True, "implicitFlowEnabled":False,
+          "protocol":"openid-connect", "defaultClientScopes":[
+            "openid","actor-type-human","authority:self"
+          ],"optionalClientScopes":[]
+        }
+        other_client = {
+          "clientId":"l4-int02-other-audience","enabled":True,"publicClient":False,
+          "secret":secrets.token_hex(32),
+          "serviceAccountsEnabled":True,"standardFlowEnabled":False,
+          "directAccessGrantsEnabled":False,"implicitFlowEnabled":False,
+          "protocol":"openid-connect","defaultClientScopes":[
+            "openid","actor-type-workload","intelligence:evidence:search"
+          ],"optionalClientScopes":[]
+        }
+        private(directory / "test-client.json",json.dumps(admin_client)+"\n")
+        private(directory / "other-client.json",json.dumps(other_client)+"\n")
+        private(directory / "test-user.json",json.dumps({"username":"l4-int02-human",
+          "enabled":True,"emailVerified":True,"firstName":"Synthetic",
+          "lastName":"L4","email":"l4-int02@example.invalid"})+"\n")
+        private(directory / "other-secret",other_client["secret"]+"\n")
         private(SESSION, json.dumps({"project": project, "directory": str(directory),
                 "started": datetime.now(timezone.utc).isoformat()}) + "\n")
     except BaseException:

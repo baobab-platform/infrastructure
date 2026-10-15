@@ -46,6 +46,8 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: l4admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${L4_KC_ADMIN_PASSWORD:?required}
       BOOTSTRAP_WORKLOAD_CLIENT_SECRET: ${L4_WORKLOAD_SEED:?required}
+      L4_TEST_USER_PASSWORD: ${L4_TEST_USER_PASSWORD:?required}
+      L4_TEST_ADMIN_CLIENT_SECRET: ${L4_TEST_ADMIN_CLIENT_SECRET:?required}
     networks: [lab]
     depends_on:
       iam-db: {condition: service_healthy}
@@ -96,6 +98,7 @@ services:
       L4_WORKLOAD_SEED: ${L4_WORKLOAD_SEED:?required}
       L4_TEST_USER_PASSWORD: ${L4_TEST_USER_PASSWORD:?required}
       L4_TEST_ADMIN_CLIENT_SECRET: ${L4_TEST_ADMIN_CLIENT_SECRET:?required}
+      L4_TEST_OTHER_SECRET_FILE: /run/l4/other-secret
     volumes:
       - "${L4_PROBE_SOURCE:?test code directory}:/app:ro"
       - "${L4_RUNTIME:?private runtime directory}:/run/l4:ro"
