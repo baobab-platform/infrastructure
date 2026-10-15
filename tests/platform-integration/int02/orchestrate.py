@@ -317,11 +317,36 @@ def up(lock):
     print("INT-02 genuine Keycloak issuer + CP binary started")
 
 def seed_keycloak(p, envfile):
-    # kcadm is the Keycloak project's own administration CLI, executes inside
-    # the IAM image with a private session on tmpfs. No secrets in logs.
-    script = (BASE / "keycloak-fixture.sh").read_text()
+    # A Docker bind mount preserves HOST permissions, not the container's
+    # UID. Our host fixture directory is rightly 0700 and files are 0600,
+    # whereas the real Keycloak image runs as UID 1000; reading /run/l4
+    # directly fails before any Keycloak HTTP request. Never relax the host
+    # permissions or run IAM as root merely to satisfy a test harness.
+    #
+    # Stream these three synthetic-only JSON documents over Docker exec's
+    # stdin (NOT command arguments or environment variables). Bash creates
+    # them under its own UID with umask 077; keycloak-fixture.sh removes the
+    # directory in its EXIT trap. execute() suppresses raw stdout/stderr.
+    _, directory, _ = current()
+    prelude = [
+        "set -euo pipefail",
+        "set +x",
+        "umask 077",
+        'L4_FIXTURE_DIR=$(mktemp -d)',
+        'trap \'rm -rf -- "$L4_FIXTURE_DIR"\' EXIT',
+    ]
+    for name in ("test-client.json", "other-client.json", "test-user.json"):
+        content = (directory / name).read_text()
+        must(len(content) < 16384 and isinstance(json.loads(content), dict),
+             "Untrusted or oversized Keycloak test fixture")
+        delimiter = "INT02_" + secrets.token_hex(20)
+        must(delimiter not in content, "Invalid fixture delimiter collision")
+        prelude.append(f'cat > "$L4_FIXTURE_DIR/{name}" <<\'{delimiter}\'')
+        prelude.append(content.rstrip("\n"))
+        prelude.append(delimiter)
+    script = "\n".join(prelude) + "\n" + (BASE / "keycloak-fixture.sh").read_text()
     compose(p, envfile, "exec", "-T", "keycloak",
-            "/bin/bash", "-se", stdin=script, timeout=120)
+            "/bin/bash", "-se", stdin=script, timeout=180)
 
 def run_probe(p, envfile, mode):
     return compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
