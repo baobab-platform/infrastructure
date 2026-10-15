@@ -75,6 +75,22 @@ def other():
                  (RUNTIME/"other-secret").read_text().strip(),
                  "client_credentials")
 
+def wait_iam():
+    # Keycloak 26 health management is on TCP 9000, reachable only from the
+    # disposable private network. Never publish its admin or health ports.
+    for _ in range(150):
+        try:
+            status,_=request("GET","http://keycloak:9000/health/ready")
+            if status==200:
+                print('{"issuer_ready":true}')
+                return
+        except OSError:
+            # The management listener legitimately refuses connections before
+            # the optimised distribution has finished booting. Retry.
+            pass
+        time.sleep(1)
+    raise RuntimeError("real Keycloak management readiness never passed")
+
 def wait():
     for _ in range(90):
         try:
@@ -83,6 +99,8 @@ def wait():
                 print('{"ready":true}')
                 return
         except OSError:
+            # CP may not yet have bound its private HTTP listener; poll until
+            # readiness or the bounded deadline, never skipping the check.
             pass
         time.sleep(1)
     raise RuntimeError("real CP did not become ready")
@@ -166,10 +184,15 @@ def exercise():
         status2,cap=request("POST",CP+"/v1/capabilities/resolve",
             {"context_id":context["context_id"],"capability_key":"intelligence.evidence.search",
              "required_contract_version":1,"correlation_id":str(uuid.uuid4())},good)
-        state["L4-CP-02"]="PASS" if (
-            status2==200 and cap.get("decision")=="RESOLVED"
+        # CP can resolve a synthetic binding without a live provider. A
+        # resolved record is useful diagnostic evidence, but Accepted EA
+        # L4-CP-02 also requires *current certified provider health*.
+        # Do NOT report PASS until a real owner provider is running and
+        # its binding, certification and live readiness are observed.
+        provider_record = (status2==200 and cap.get("decision")=="RESOLVED"
             and cap.get("grant_id") and cap.get("binding_id")
-            and cap.get("invocation",{}).get("engine_instance_id")) else "BLOCKED"
+            and cap.get("invocation",{}).get("engine_instance_id"))
+        state["L4-CP-02"]="BLOCKED" if provider_record else "FAIL"
     else:
         state["L4-CP-02"]="BLOCKED"
     # Tenant-neutral workloads MAY resolve a second tenant context: the
@@ -195,6 +218,8 @@ def main():
     name=sys.argv[1] if len(sys.argv)>1 else ""
     if name=="wait":
         wait()
+    elif name=="wait-iam":
+        wait_iam()
     elif name=="identities":
         identities()
     elif name=="test":

@@ -47,6 +47,11 @@ class ContractTest(unittest.TestCase):
                 with self.assertRaises(m.Blocked):
                     m.load()
 
+    def test_provider_resolution_fixture_cannot_claim_certified_health(self):
+        source=(BASE/"probe.py").read_text()
+        self.assertIn('state["L4-CP-02"]="BLOCKED" if provider_record else "FAIL"',source)
+        self.assertIn("wait-iam",source)
+
     def test_blocked_cannot_be_certification(self):
         data=m.load()
         with tempfile.TemporaryDirectory() as d:

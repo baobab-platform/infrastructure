@@ -198,7 +198,12 @@ def up(lock):
     compose(p, envfile, "build", "cp-migrate", timeout=1800)
     print("INT-02 startup stage: disposable PostgreSQL databases and Keycloak",flush=True)
     compose(p, envfile, "up", "-d", "--wait", "--wait-timeout", "300",
-            "iam-db", "cp-db", "keycloak", timeout=450)
+            "iam-db", "cp-db", "keycloak", "probe", timeout=450)
+    # Probe the real Keycloak 26 management listener from inside the private
+    # Compose network. No health commands or HTTP clients are needed in the
+    # minimal Keycloak runtime image.
+    compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
+            "wait-iam", timeout=190)
     # IAM's own product bootstrap, not a test-issued JWT signature.
     compose(p, envfile, "exec", "-T", "keycloak",
             "/opt/keycloak/bootstrap.sh", timeout=450)
@@ -381,6 +386,10 @@ def write_evidence(p, lock, report, accepted):
     receipt = {"profile":"iam-cp","classification":lock["evidence_class"],
        "scenario_ids":lock["mandatory"],"scenarios":report["scenarios"],
        "source_pins":lock["sources"],"run_id":p["project"],
+       # Source pins are dependency baselines; this is the ACTUAL checked
+       # out integration harness revision, including GitHub's PR merge ref.
+       "harness_candidate_sha":os.environ.get("GITHUB_SHA") or
+           execute(["git","rev-parse","HEAD"],capture=True,timeout=15).strip(),
        "manifest_sha256":hashlib.sha256(LOCK.read_bytes()).hexdigest(),
        "component_integrity":{"iam":"REAL_KEYCLOAK_PINNED_SOURCE","cp":"REAL_CP_PINNED_SOURCE"},
        "tested_at":datetime.now(timezone.utc).isoformat(),

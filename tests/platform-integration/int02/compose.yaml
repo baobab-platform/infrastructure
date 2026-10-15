@@ -53,12 +53,9 @@ services:
       iam-db: {condition: service_healthy}
     volumes:
       - "${L4_RUNTIME:?private runtime directory}:/run/l4:ro"
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/keycloak/bin/kc.sh health"]
-      interval: 10s
-      timeout: 8s
-      retries: 30
-      start_period: 40s
+    # Keycloak 26 exposes readiness on the management HTTP interface
+    # (9000), not through `kc.sh health`. A real Python probe in the same
+    # internal-only network checks /health/ready before product bootstrap.
   cp-migrate:
     build:
       context: ${L4_CP_SOURCE:?pinned CP checkout required}
@@ -88,7 +85,7 @@ services:
     networks: [lab]
     depends_on:
       cp-migrate: {condition: service_completed_successfully}
-      keycloak: {condition: service_healthy}
+      keycloak: {condition: service_started}
   probe:
     image: ${L4_PYTHON_IMAGE:?pinned Python probe required}
     command: ["sleep","infinity"]
@@ -105,7 +102,7 @@ services:
     working_dir: /app
     networks: [lab]
     depends_on:
-      cp: {condition: service_started}
+      keycloak: {condition: service_started}
 networks:
   lab:
     internal: true

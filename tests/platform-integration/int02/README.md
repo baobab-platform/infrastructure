@@ -36,3 +36,11 @@ revocation; the latter may be delayed for locally verified JWTs.
 
 Maintain cross-repo source pins explicitly as IAM/CP develop concurrently.
 Nothing here should be promoted into staging or production.
+
+### Audit note (15 October 2026)
+
+The real issuer's readiness is probed via the private Keycloak management HTTP
+endpoint, not the nonexistent `kc.sh health` command. An ACTIVE synthetic
+capability-binding row is **not** live provider health/certification; CP-02
+remains BLOCKED until a real provider and current evidence are demonstrated.
+Receipts record the candidate harness Git SHA as distinct from dependency pins.
