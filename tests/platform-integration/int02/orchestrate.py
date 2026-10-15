@@ -79,7 +79,22 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
                                 r"Creating client role '[A-Za-z0-9:._/-]+' \.\.\.|"
                                 r"Bootstrap completed\.)", label):
                     checkpoint = label
+        # Export only a tightly allowlisted bootstrap failure class; never
+        # print kcadm stderr (which can include server replies, bearer
+        # material, URLs or command arguments). A missing progress checkpoint
+        # means admin login itself was the last attempted bootstrap stage.
+        stage = ""
+        if args[-1] == "/opt/keycloak/bootstrap.sh":
+            if "Keycloak admin login did not succeed within 5 minutes" in p.stderr:
+                stage = "ADMIN_LOGIN_UNAVAILABLE"
+            elif "Failed to create config file" in p.stderr:
+                stage = "KCADM_SESSION_UNWRITABLE"
+            elif not checkpoint:
+                stage = "BEFORE_REALM_CREATION"
+            else:
+                stage = "AFTER_REALM_CREATION"
         raise Blocked("External command failed: " + Path(args[0]).name +
+                      (f"; IAM bootstrap class: {stage}" if stage else "") +
                       (f"; last safe IAM bootstrap checkpoint: {checkpoint}" if checkpoint else "") +
                       " (raw output suppressed)")
     return p.stdout if capture else ""
@@ -130,8 +145,12 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
         stage = args[0] if args and args[0] in {"up", "build", "wait", "exec", "config", "down"} else "unknown"
         target = (args[2] if len(args)>2 and args[0]=="exec" and args[1]=="-T"
                   and args[2] in {"keycloak","probe","cp-db"} else "service")
+        # Only forward our own allowlisted class/checkpoint strings from
+        # execute(), never the underlying command output or raw credentials.
+        safe_cause = str(cause) if "IAM bootstrap class:" in str(cause) else ""
         raise Blocked(f"Compose {stage}/{target} failed; service states: "
-                      + (", ".join(sorted(snapshot)) if snapshot else "unavailable")) from cause
+                      + (", ".join(sorted(snapshot)) if snapshot else "unavailable")
+                      + (f"; {safe_cause}" if safe_cause else "")) from cause
 
 def check_prerequisites(lock, static=False):
     must((BASE / "cp.Dockerfile").is_file() and (BASE / "probe.py").is_file(),
