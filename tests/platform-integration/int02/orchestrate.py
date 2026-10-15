@@ -65,8 +65,23 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
     p = subprocess.run(args, input=input_text, text=True, capture_output=True,
                        env=env, timeout=timeout, check=False)
     if p.returncode:
+        # IAM's product bootstrap can create dozens of clients/scopes and may
+        # fail long after successful readiness. Emit ONLY a filtered operation
+        # label, never raw stderr, HTTP responses, token material or secrets.
+        checkpoint = ""
+        if args[-1] == "/opt/keycloak/bootstrap.sh":
+            for line in p.stdout.splitlines():
+                label = line.strip()
+                if re.fullmatch(r"(Creating realm 'baobab'\.\.\.|"
+                                r"Creating client scope '[A-Za-z0-9:._-]+' \.\.\.|"
+                                r"Creating workload client '[A-Za-z0-9._-]+' \.\.\.|"
+                                r"Importing client '[A-Za-z0-9._-]+' \.\.\.|"
+                                r"Creating client role '[A-Za-z0-9:._/-]+' \.\.\.|"
+                                r"Bootstrap completed\.)", label):
+                    checkpoint = label
         raise Blocked("External command failed: " + Path(args[0]).name +
-                      " (details confined to protected ephemeral runner)")
+                      (f"; last safe IAM bootstrap checkpoint: {checkpoint}" if checkpoint else "") +
+                      " (raw output suppressed)")
     return p.stdout if capture else ""
 
 def private(path, value):

@@ -62,8 +62,10 @@ def decode(token_value):
 
 def workload():
     prefix=os.environ["L4_WORKLOAD_SEED"]
-    return token("baobab-cms-workload",prefix+"-baobab-cms-workload",
-                 "client_credentials")
+    # IAM bootstrap.sh deliberately suffixes ONLY the independent
+    # zuribeans-backend and thamani-backend test clients. Platform-owned
+    # baobab-cms-workload receives the literal BOOTSTRAP seed.
+    return token("baobab-cms-workload",prefix,"client_credentials")
 
 def human():
     return token("l4-int02-admin",os.environ["L4_TEST_ADMIN_CLIENT_SECRET"],

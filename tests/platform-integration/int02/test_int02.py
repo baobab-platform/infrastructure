@@ -52,6 +52,11 @@ class ContractTest(unittest.TestCase):
         self.assertIn('state["L4-CP-02"]="BLOCKED" if provider_record else "FAIL"',source)
         self.assertIn("wait-iam",source)
 
+    def test_iam_bootstrap_workload_secret_contract(self):
+        source=(BASE/"probe.py").read_text()
+        self.assertIn('return token("baobab-cms-workload",prefix,"client_credentials")',source)
+        self.assertNotIn('prefix+"-baobab-cms-workload"',source)
+
     def test_blocked_cannot_be_certification(self):
         data=m.load()
         with tempfile.TemporaryDirectory() as d:
