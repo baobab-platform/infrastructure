@@ -89,20 +89,37 @@ def verify_master_administrator():
     print('{"master_admin_token_verified":true}')
 
 def wait_iam():
-    # Keycloak 26 health management is on TCP 9000, reachable only from the
-    # disposable private network. Never publish its admin or health ports.
+    # Keycloak's management health listener is private and may be disabled or
+    # inaccessible in an otherwise operational optimised image. The actual
+    # OIDC discovery document is a second, independent readiness signal:
+    # require HTTP 200 AND the exact expected issuer before proceeding.
+    # The subsequent master-admin step additionally verifies real token
+    # issuance. Neither path mocks IAM, authorises CP access, or certifies L4.
+    discovery = ISSUER + "/.well-known/openid-configuration"
+    last_health = "unavailable"
+    last_discovery = "unavailable"
     for _ in range(150):
         try:
-            status,_=request("GET","http://keycloak:9000/health/ready")
-            if status==200:
-                print('{"issuer_ready":true}')
+            status,_ = request("GET","http://keycloak:9000/health/ready")
+            last_health = str(status)
+            if status == 200:
+                print('{"issuer_ready":true,"method":"management-health"}')
                 return
-        except OSError:
-            # The management listener legitimately refuses connections before
-            # the optimised distribution has finished booting. Retry.
-            pass
+        except (OSError, ValueError):
+            last_health = "unavailable"
+        try:
+            status,document = request("GET",discovery)
+            last_discovery = str(status)
+            if status == 200 and document.get("issuer") == ISSUER:
+                print('{"issuer_ready":true,"method":"verified-oidc-discovery"}')
+                return
+        except (OSError, ValueError):
+            last_discovery = "unavailable"
         time.sleep(1)
-    raise RuntimeError("real Keycloak management readiness never passed")
+    # Status classes and HTTP codes are safe; never include bodies, URLs
+    # containing credentials, tokens or raw container logs in Actions.
+    raise RuntimeError("real Keycloak readiness unavailable: management="
+                       + last_health + ", discovery=" + last_discovery)
 
 def wait():
     for _ in range(90):
