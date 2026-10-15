@@ -192,7 +192,11 @@ def up(lock):
     compose(p, envfile, "config", "--quiet", timeout=60)
     # Keycloak and CP may require significant build resources; never hide
     # build failure as a skip or replace the source binary with a mock.
-    compose(p, envfile, "build", "keycloak", "cp-migrate", timeout=1800)
+    print("INT-02 build stage: Keycloak from pinned IAM source",flush=True)
+    compose(p, envfile, "build", "keycloak", timeout=1800)
+    print("INT-02 build stage: Control Plane + migrator from pinned source",flush=True)
+    compose(p, envfile, "build", "cp-migrate", timeout=1800)
+    print("INT-02 startup stage: disposable PostgreSQL databases and Keycloak",flush=True)
     compose(p, envfile, "up", "-d", "--wait", "--wait-timeout", "300",
             "iam-db", "cp-db", "keycloak", timeout=450)
     # IAM's own product bootstrap, not a test-issued JWT signature.

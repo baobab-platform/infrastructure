@@ -146,7 +146,11 @@ def exercise():
                 and request("POST",CP+"/v1/platform-context/resolve",
                             {"tenant_id":tenant},wrong)[0]==401)
     state={}
-    state["L4-IAM-01"]=verify("positive genuine token",auth_good)
+    # The positive check proves actual signed token and CP acceptance.
+    # Shared's L4-IAM-01 additionally REQUIRES human code+PKCE, single-use
+    # state/nonce and callback replay denial; password-grant test fixture
+    # alone is not that proof and MUST NOT be reported as accepted.
+    state["L4-IAM-01"]="BLOCKED" if auth_good() else "FAIL"
     # Different-client wrong-audience denial is a useful real negative,
     # but is NOT sufficient for isolated same-client audience-only proof.
     # Until the same-client audience-differential test runs, BLOCKED.
