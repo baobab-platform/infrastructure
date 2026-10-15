@@ -21,21 +21,41 @@ cleanup() {
 trap cleanup EXIT
 "$KCADM" config credentials --server http://localhost:8080 --realm master \
   --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" --config "$CONFIG" >/dev/null
+# JSON-aware existence test. Parsing the Keycloak CLI's pretty-printed
+# output with grep -q is unsafe with pipefail (SIGPIPE can classify an
+# existing client as missing). A failed kcadm lookup must not be confused
+# with an empty result.
+exists() {
+  local resource="$1" filter="$2" field="$3" wanted="$4" response
+  response=$("$KCADM" get "$resource" -r baobab --config "$CONFIG" -q "$filter") || return 2
+  jq -e --arg field "$field" --arg wanted "$wanted" \
+    'any(.[]; .[$field] == $wanted)' <<< "$response" >/dev/null
+}
+
 STAGE=admin-client-lookup
-if ! "$KCADM" get clients -r baobab --config "$CONFIG" -q clientId=l4-int02-admin |
-     grep -q '"clientId" : "l4-int02-admin"'; then
+if exists clients clientId=l4-int02-admin clientId l4-int02-admin; then
+  :
+else
+  code=$?
+  [ "$code" -eq 1 ] || exit "$code"
   STAGE=admin-client-create
   "$KCADM" create clients -r baobab -f /run/l4/test-client.json --config "$CONFIG" >/dev/null
 fi
 STAGE=audience-client-lookup
-if ! "$KCADM" get clients -r baobab --config "$CONFIG" -q clientId=l4-int02-other-audience |
-     grep -q '"clientId" : "l4-int02-other-audience"'; then
+if exists clients clientId=l4-int02-other-audience clientId l4-int02-other-audience; then
+  :
+else
+  code=$?
+  [ "$code" -eq 1 ] || exit "$code"
   STAGE=audience-client-create
   "$KCADM" create clients -r baobab -f /run/l4/other-client.json --config "$CONFIG" >/dev/null
 fi
 STAGE=human-user-lookup
-if ! "$KCADM" get users -r baobab --config "$CONFIG" -q username=l4-int02-human |
-     grep -q '"username" : "l4-int02-human"'; then
+if exists users username=l4-int02-human username l4-int02-human; then
+  :
+else
+  code=$?
+  [ "$code" -eq 1 ] || exit "$code"
   STAGE=human-user-create
   "$KCADM" create users -r baobab -f /run/l4/test-user.json --config "$CONFIG" >/dev/null
 fi
