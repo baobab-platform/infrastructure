@@ -47,6 +47,30 @@ class L4ContractTest(unittest.TestCase):
                 with self.assertRaises(mod.Blocked):
                     mod.load()
 
+    def test_failed_teardown_preserves_retry_state(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d)
+            project = "l4-0123456789abcdef"
+            env = folder / (project + ".env")
+            env.write_text("L4_PROJECT=" + project + "\n")
+            env.chmod(0o600)
+            session = folder / "session.json"
+            session.write_text(json.dumps({"project": project}))
+            session.chmod(0o600)
+            with mock.patch.object(mod, "STATE", folder), mock.patch.object(
+                     mod, "SESSION", session), mock.patch.object(
+                     mod, "compose", side_effect=subprocess.CalledProcessError(1,"docker")):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    mod.down()
+                self.assertTrue(session.exists())
+                self.assertTrue(env.exists())
+            with mock.patch.object(mod, "STATE", folder), mock.patch.object(
+                     mod, "SESSION", session), mock.patch.object(mod, "compose"):
+                mod.down()
+                self.assertFalse(session.exists())
+                self.assertFalse(env.exists())
+
     def test_public_host_port_denied(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d)/"compose.yaml"

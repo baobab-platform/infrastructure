@@ -161,6 +161,10 @@ def test(m):
                "time_utc": datetime.now(timezone.utc).isoformat(),
                "manifest_sha256": hashlib.sha256(LOCK.read_bytes()).hexdigest(),
                "source_pins": m["provenance"],
+               # The accepted baseline remains pinned in the manifest; an
+               # actual PR candidate SHA is additionally recorded for review.
+               "candidate_source_sha": os.environ.get("GITHUB_SHA") or
+                   invoke(["git", "rev-parse", "HEAD"], output=True, timeout=10).stdout.strip(),
                "image_digests": {k: v["digest"] for k,v in m["foundation_images"].items()},
                "scenarios": [{"id": k, "outcome": "PASS"} for k in REQUIRED],
                "protected_staging_accepted": False, "production_authorized": False}
@@ -174,12 +178,13 @@ def down():
         print("No active L4 session")
         return
     obj, env = current()
-    try:
-        compose(obj, env, "down", "--volumes", "--remove-orphans",
-                "--timeout", "15", timeout=140)
-    finally:
-        env.unlink(missing_ok=True)
-        SESSION.unlink(missing_ok=True)
+    # Preserve recovery metadata and owner-private passwords if Docker fails.
+    # A subsequent "down" must be able to retry deletion of any orphaned
+    # containers, networks and volumes; never erase the only cleanup handle.
+    compose(obj, env, "down", "--volumes", "--remove-orphans",
+            "--timeout", "15", timeout=140)
+    env.unlink()
+    SESSION.unlink()
     print("Isolated L4 project/volumes removed")
 
 def main():
