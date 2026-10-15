@@ -144,6 +144,22 @@ def identities():
     print(json.dumps({"source":"keycloak-issued","issuer":ISSUER,
                       "human_sub":h["sub"],"workload_sub":w["sub"]}))
 
+DENIED=(401,403)
+
+def denied(token_value,body):
+    """A real CP denial: 401/403 only. A 404, 5xx or transport error is not
+    proof of policy and must never be counted as a negative PASS."""
+    status,_=request("POST",CP+"/v1/platform-context/resolve",body,token_value)
+    return status in DENIED
+
+def unmapped():
+    # Runs BEFORE the harness links this Keycloak subject to a CP Principal:
+    # a validly signed, correctly scoped token for an unmapped principal
+    # must be refused (L4-CP-01 negative "unmapped principal").
+    fixtures=json.loads((RUNTIME/"fixtures.json").read_text())
+    print(json.dumps({"unmapped_denied":denied(workload(),
+        {"tenant_id":fixtures["tenant"],"organisation_id":fixtures["organisation"]})}))
+
 def verify(expected,fn):
     try:
         return "PASS" if fn() is True else "FAIL"
@@ -164,7 +180,7 @@ def confirm_revoked():
     code, data = request("POST", CP + "/v1/platform-context/resolve",
                          {"tenant_id":fixtures["tenant"],
                           "organisation_id":fixtures["organisation"]},raw)
-    print(json.dumps({"revocation_denied": code in (401,403,404)}))
+    print(json.dumps({"revocation_denied": code in DENIED}))
 
 def exercise():
     fixture=json.loads((RUNTIME/"fixtures.json").read_text())
@@ -205,12 +221,19 @@ def exercise():
     state["L4-IAM-02"]="BLOCKED" if wrong_audience() else "FAIL"
     status,context=request("POST",CP+"/v1/platform-context/resolve",
                            {"tenant_id":tenant,"organisation_id":organisation},good)
-    state["L4-CP-01"]="PASS" if (
-        status==200 and context.get("tenant_id")==tenant and
-        context.get("organisation_id")==organisation and
-        context.get("context_id")) else "FAIL"
-    if state["L4-CP-01"]=="PASS":
-        state["L4-CP-01"]="PASS"
+    positive=bool(status==200 and context.get("tenant_id")==tenant and
+        context.get("organisation_id")==organisation and context.get("context_id"))
+    # L4-CP-01 negatives (matrix): a swapped Organisation (tenant B's PRIMARY
+    # Organisation under tenant A) and a fabricated tenant must be refused.
+    # The unmapped-principal and revoked-identity negatives run in the
+    # orchestrator, which alone may promote CP-01 to PASS.
+    checks={"cp01_positive":positive,
+            "cp01_swapped_organisation_denied":denied(good,
+                {"tenant_id":tenant,"organisation_id":fixture["other_organisation"]}),
+            "cp01_fabricated_tenant_denied":denied(good,
+                {"tenant_id":"tn_l4fabricated"+uuid.uuid4().hex[:12]})}
+    state["L4-CP-01"]="BLOCKED" if all(checks.values()) else "FAIL"
+    if positive:
         status2,cap=request("POST",CP+"/v1/capabilities/resolve",
             {"context_id":context["context_id"],"capability_key":"intelligence.evidence.search",
              "required_contract_version":1,"correlation_id":str(uuid.uuid4())},good)
@@ -238,11 +261,12 @@ def exercise():
            "required_contract_version":1,"correlation_id":str(uuid.uuid4())},good)
         sibling_deny=(sc==200 and r.get("decision")=="DENIED" and
                       not r.get("invocation"))
-    # Canonical revocation is effective even while IAM's signed JWT remains
-    # cryptographically valid. Do not use raw JWT expiry as revocation proof.
-    # The harness updates identity.external_identity after successful tests.
+    # L4-CP-03 also requires parent, independently governed subsidiary and
+    # external-user cases (matrix). Only the sibling case runs here, so a
+    # sibling denial is recorded but CP-03 stays BLOCKED, never PASS.
+    checks["cp03_sibling_denied"]=sibling_deny
     state["L4-CP-03"]="BLOCKED" if sibling_deny else "FAIL"
-    print(json.dumps({"scenarios":state},sort_keys=True))
+    print(json.dumps({"scenarios":state,"checks":checks},sort_keys=True))
 
 def main():
     name=sys.argv[1] if len(sys.argv)>1 else ""
@@ -258,6 +282,8 @@ def main():
         exercise()
     elif name=="revoked":
         confirm_revoked()
+    elif name=="unmapped":
+        unmapped()
     else:
         raise SystemExit("unsupported integration operation")
 if __name__=="__main__":

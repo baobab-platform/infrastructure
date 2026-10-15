@@ -123,6 +123,56 @@ class ContractTest(unittest.TestCase):
             keycloak_environment(compose.replace(
                 "      KC_DB_PASSWORD:","      # dropped\\n      KC_DB_PASSWORD:",1))
 
+class ScenarioTruthTest(unittest.TestCase):
+    """EA v2.2 matrix: a scenario is PASS only with its positive AND its
+    negatives observed in the same run; partial coverage is BLOCKED."""
+
+    def test_cp01_needs_every_matrix_negative(self):
+        probe=(BASE/"probe.py").read_text()
+        runner=(BASE/"orchestrate.py").read_text()
+        for check in ("cp01_swapped_organisation_denied","cp01_fabricated_tenant_denied"):
+            self.assertIn(f'"{check}"',probe)
+        for check in ("cp01_unmapped_principal_denied","cp01_revoked_identity_denied"):
+            self.assertIn(f'checks["{check}"]',runner)
+        # Only the orchestrator, after unmapped and revoked negatives, may
+        # promote CP-01; the probe alone reports at most BLOCKED.
+        self.assertIn('state["L4-CP-01"]="BLOCKED" if all(checks.values()) else "FAIL"',probe)
+        self.assertNotIn('state["L4-CP-01"]="PASS"',probe)
+
+    def test_unmapped_negative_runs_before_identity_link(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        body=runner.split("def test(lock):")[1]
+        self.assertLess(body.index('run_probe(p, envfile, "unmapped")'),
+                        body.index("seed_identities(p, envfile, ids)"))
+
+    def test_revocation_never_promotes_cp03(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertNotIn('cases["L4-CP-03"] = ("PASS"',runner)
+        probe=(BASE/"probe.py").read_text()
+        self.assertIn('state["L4-CP-03"]="BLOCKED" if sibling_deny else "FAIL"',probe)
+
+    def test_only_401_or_403_is_a_policy_denial(self):
+        probe=(BASE/"probe.py").read_text()
+        self.assertIn("DENIED=(401,403)",probe)
+        self.assertNotIn("(401,403,404)",probe)
+
+    def test_receipt_carries_ea_v22_fields_and_tls_blocks_acceptance(self):
+        data=m.load()
+        self.assertFalse(m.TLS_VERIFIED)
+        all_pass={"scenarios":{k:"PASS" for k in m.REQUIRED},"checks":{"cp01_positive":True}}
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(m,"EVIDENCE",Path(d)):
+                m.write_evidence({"project":"l4-2222222222222222"},data,all_pass,accepted=False)
+            evidence=json.loads(next(Path(d).glob("*.json")).read_text())
+        for field in ("source_pins","harness_candidate_sha","images","executing_profile",
+                      "components","scenario_ids","scenarios","checks","transport",
+                      "evidence_sha256","manifest_sha256"):
+            self.assertIn(field,evidence)
+        self.assertFalse(evidence["transport"]["tls_verified"])
+        self.assertFalse(evidence["passed"])
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertIn("or not TLS_VERIFIED:",runner)
+
 def keycloak_environment(compose):
     """The keycloak service's environment mapping, read structurally (standard
     library only): uncommented `KEY: value` lines at environment indentation.

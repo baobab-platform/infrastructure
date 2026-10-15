@@ -461,7 +461,8 @@ def seed_tenants(p, directory, envfile):
             "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
             "-c", statement, capture=True, timeout=30)
     private(directory / "fixtures.json",json.dumps({
-        "tenant":tenant_a,"other_tenant":tenant_b,"organisation":org_a})+"\n")
+        "tenant":tenant_a,"other_tenant":tenant_b,"organisation":org_a,
+        "other_organisation":org_b})+"\n")
 
 def test(lock):
     check_prerequisites(lock)
@@ -470,8 +471,12 @@ def test(lock):
     must(ids.get("source") == "keycloak-issued" and
          ids.get("issuer") == "http://keycloak:8080/realms/baobab",
          "IAM evidence is not real issuer issued")
-    seed_identities(p, envfile, ids)
+    # Tenants first: the unmapped-principal negative (L4-CP-01) needs a real
+    # tenant and Organisation, and must run BEFORE the Keycloak subject is
+    # linked to a CP Principal.
     seed_tenants(p, directory, envfile)
+    unmapped = json.loads(run_probe(p, envfile, "unmapped"))
+    seed_identities(p, envfile, ids)
     report = json.loads(run_probe(p, envfile, "test"))
     # An already-issued IAM token must lose CP authority when its canonical
     # (issuer,subject) link is revoked. Keycloak continues to verify that
@@ -493,22 +498,63 @@ def test(lock):
     must(result.strip() != "", "Expected canonical external identity not revoked")
     after = json.loads(run_probe(p, envfile, "revoked"))
     cases = report.get("scenarios", {})
-    if cases.get("L4-CP-03") == "BLOCKED":
-        cases["L4-CP-03"] = ("PASS" if after.get("revocation_denied") is True
-                              else "FAIL")
+    checks = report.setdefault("checks", {})
+    checks["cp01_unmapped_principal_denied"] = unmapped.get("unmapped_denied") is True
+    checks["cp01_revoked_identity_denied"] = after.get("revocation_denied") is True
+    # L4-CP-01 is PASS only with its positive AND every matrix negative
+    # (swapped Organisation, fabricated tenant, unmapped principal, revoked
+    # identity), all observed in this run. Revocation never promotes L4-CP-03.
+    if cases.get("L4-CP-01") == "BLOCKED":
+        cases["L4-CP-01"] = ("PASS" if checks["cp01_unmapped_principal_denied"]
+                             and checks["cp01_revoked_identity_denied"] else "FAIL")
     required = set(lock["mandatory"])
     must(set(cases) == required, "Mandatory IAM/CP scenarios missing")
-    if any(cases[x] != "PASS" for x in required):
+    if any(cases[x] != "PASS" for x in required) or not TLS_VERIFIED:
         # Preserve the sanitized report for triage, NEVER promote to PASS.
         write_evidence(p, lock, report, accepted=False)
-        raise Blocked("Real IAM/CP scenario denied or unavailable; see scrubbed evidence")
+        raise Blocked("Real IAM/CP scenario denied or unavailable, or local TLS "
+                      "not verified (EA v2.2 INT-02); see scrubbed evidence")
     write_evidence(p, lock, report, accepted=True)
     print("INT-02 actual IAM↔CP profile PASS; not protected staging")
 
+# EA v2.2 matrix (INT-02 backlog): the real IAM/CP process test runs "over
+# verified local TLS". This profile still uses plain HTTP on its internal
+# network, so no run can be accepted until TLS is implemented and verified.
+TLS_VERIFIED = False
+
+def image_id(envfile, variable):
+    """The locally built image's content ID (build provenance, EA v2.2 §4.4)."""
+    for line in envfile.read_text().splitlines():
+        name, _, value = line.partition("=")
+        if name == variable and re.fullmatch(r"l4-(iam|cp)-l4-[0-9a-f]{16}", value):
+            try:
+                return execute(["docker", "image", "inspect", "--format", "{{.Id}}", value],
+                               capture=True, timeout=20).strip()
+            except Blocked:
+                return "unavailable"
+    return "unavailable"
+
 def write_evidence(p, lock, report, accepted):
     EVIDENCE.mkdir(exist_ok=True)
+    envfile = Path(p.get("directory", "")) / "runtime.env"
+    built = {"iam": image_id(envfile, "L4_IAM_IMAGE"), "cp": image_id(envfile, "L4_CP_IMAGE")} \
+        if envfile.is_file() else {"iam": "unavailable", "cp": "unavailable"}
     receipt = {"profile":"iam-cp","classification":lock["evidence_class"],
        "scenario_ids":lock["mandatory"],"scenarios":report["scenarios"],
+       # Named positive/negative sub-checks (booleans only; no responses).
+       "checks":report.get("checks", {}),
+       # EA v2.2 §4.4 (iv)-(vi): build provenance, executing profile and
+       # limits, and actual vs simulated components.
+       "images":{"built_from_pinned_source":built,
+                 "runtime_pins":lock["runtime_images"]},
+       "executing_profile":{"name":"iam-cp","requirements":lock["requirements"],
+                            "runner":"github-actions" if os.environ.get("GITHUB_ACTIONS") else "local"},
+       "components":{"real":["keycloak (pinned baobab-iam source)","control plane (pinned baobab-cp source)",
+                             "postgresql"],
+                     "simulated":["synthetic tenants, organisations, grants and provider binding"],
+                     "provider":"synthetic resolution fixture only; no live certified provider"},
+       "transport":{"tls_verified":TLS_VERIFIED,
+                    "mode":"plaintext-http-on-internal-network"},
        "source_pins":lock["sources"],"run_id":p["project"],
        # Source pins are dependency baselines; this is the ACTUAL checked
        # out integration harness revision, including GitHub's PR merge ref.
@@ -519,6 +565,9 @@ def write_evidence(p, lock, report, accepted):
        "tested_at":datetime.now(timezone.utc).isoformat(),
        "synthetic_only":True,"passed":accepted,
        "protected_staging_accepted":False,"production_authorized":False}
+    body = json.dumps(receipt, sort_keys=True, indent=2)
+    # (ix) scrubbed evidence digest, computed over the receipt without it.
+    receipt["evidence_sha256"] = hashlib.sha256(body.encode()).hexdigest()
     (EVIDENCE / (p["project"] + "-int02.json")).write_text(json.dumps(
         receipt,sort_keys=True,indent=2)+"\n")
 

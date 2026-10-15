@@ -44,3 +44,27 @@ endpoint, not the nonexistent `kc.sh health` command. An ACTIVE synthetic
 capability-binding row is **not** live provider health/certification; CP-02
 remains BLOCKED until a real provider and current evidence are demonstrated.
 Receipts record the candidate harness Git SHA as distinct from dependency pins.
+
+### Audit note (15 October 2026, EA v2.2 conformance)
+
+- **Startup:** a literal `\n` inside a YAML comment had swallowed `KC_DB_PASSWORD`, so Keycloak started without
+  database credentials and exited (live job: `keycloak=exited`). The static test now parses the keycloak environment
+  structurally and rejects literal `\n`.
+- **L4-CP-01** is PASS only with its positive and every matrix negative from the same run. The negatives are:
+  - a swapped Organisation;
+  - a fabricated tenant;
+  - an unmapped principal, probed before its Keycloak subject is linked;
+  - a revoked identity, using a token issued before the revocation.
+
+  A denial means HTTP 401/403 only; a 404, a 5xx or a transport error is never counted.
+- **L4-CP-03** covers only the sibling case here; the parent, independently governed subsidiary and external cases are
+  not exercised. A sibling denial is recorded in `checks`, but CP-03 stays BLOCKED. Revocation no longer promotes it.
+- **Receipt (EA v2.2 §4.4)** now records:
+  - the built image IDs and runtime pins;
+  - the executing profile and its resource requirements;
+  - real versus simulated components and the provider classification;
+  - named positive and negative checks;
+  - the transport;
+  - an evidence digest.
+- **Transport:** the matrix requires INT-02 "over verified local TLS". This profile is still plain HTTP on its internal
+  network (`TLS_VERIFIED = False`), so no run can be accepted until TLS is implemented and verified.
