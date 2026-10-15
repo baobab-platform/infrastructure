@@ -254,6 +254,11 @@ def up(lock):
     # minimal Keycloak runtime image.
     compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
             "wait-iam", timeout=190)
+    # Diagnose a failed master-admin credential before the product bootstrap
+    # enters its bounded five-minute login retry loop. This runs against the
+    # real Keycloak master realm; token bytes stay inside the probe process.
+    compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
+            "master-admin", timeout=35)
     # IAM's own product bootstrap, not a test-issued JWT signature.
     compose(p, envfile, "exec", "-T", "keycloak",
             "/opt/keycloak/bootstrap.sh", timeout=450)

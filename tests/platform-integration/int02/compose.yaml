@@ -39,6 +39,10 @@ services:
       BAOBAB_ENVIRONMENT: ci
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://iam-db:5432/baobab_iam
+      # Keycloak is advertised as keycloak:8080 inside the isolated network.
+      # IAM's product bootstrap defaults to localhost:8080; use its actual
+      # configured hostname for the admin-cli token issuance and discovery.
+      KC_URL: http://keycloak:8080
       KC_DB_USERNAME: baobab_iam
       KC_DB_PASSWORD: ${L4_IAM_DB_PASSWORD:?required}
       KEYCLOAK_ADMIN: l4admin
@@ -100,6 +104,7 @@ services:
       L4_TEST_USER_PASSWORD: ${L4_TEST_USER_PASSWORD:?required}
       L4_TEST_ADMIN_CLIENT_SECRET: ${L4_TEST_ADMIN_CLIENT_SECRET:?required}
       L4_TEST_OTHER_SECRET_FILE: /run/l4/other-secret
+      L4_KC_ADMIN_PASSWORD: ${L4_KC_ADMIN_PASSWORD:?test-only Keycloak admin password}
     volumes:
       - "${L4_PROBE_SOURCE:?test code directory}:/app:ro"
       - "${L4_RUNTIME:?private runtime directory}:/run/l4:ro"

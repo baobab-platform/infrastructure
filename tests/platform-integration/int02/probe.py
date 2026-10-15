@@ -77,6 +77,17 @@ def other():
                  (RUNTIME/"other-secret").read_text().strip(),
                  "client_credentials")
 
+def verify_master_administrator():
+    # Use Keycloak's unmodified built-in master/admin-cli grant. This is the
+    # same password grant used by IAM's kcadm.sh product bootstrap, issued
+    # by the REAL Keycloak process. Never print an access token or password.
+    code,body=request("POST","http://keycloak:8080/realms/master/protocol/openid-connect/token",{
+        "grant_type":"password","client_id":"admin-cli",
+        "username":"l4admin","password":os.environ["L4_KC_ADMIN_PASSWORD"]})
+    if code!=200 or not body.get("access_token"):
+        raise RuntimeError("Keycloak master admin credential was not accepted")
+    print('{"master_admin_token_verified":true}')
+
 def wait_iam():
     # Keycloak 26 health management is on TCP 9000, reachable only from the
     # disposable private network. Never publish its admin or health ports.
@@ -222,6 +233,8 @@ def main():
         wait()
     elif name=="wait-iam":
         wait_iam()
+    elif name=="master-admin":
+        verify_master_administrator()
     elif name=="identities":
         identities()
     elif name=="test":

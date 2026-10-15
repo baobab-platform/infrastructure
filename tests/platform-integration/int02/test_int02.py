@@ -57,6 +57,12 @@ class ContractTest(unittest.TestCase):
         self.assertIn('return token("baobab-cms-workload",prefix,"client_credentials")',source)
         self.assertNotIn('prefix+"-baobab-cms-workload"',source)
 
+    def test_admin_master_probe_checks_real_token_endpoint(self):
+        source=(BASE/"probe.py").read_text()
+        self.assertIn("def verify_master_administrator():",source)
+        self.assertIn("/realms/master/protocol/openid-connect/token",source)
+        self.assertIn("master-admin",source)
+
     def test_blocked_cannot_be_certification(self):
         data=m.load()
         with tempfile.TemporaryDirectory() as d:
