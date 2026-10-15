@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Baobab INT-01 immutable integration manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "adr",
+    "ea_plan",
+    "harness",
+    "classification",
+    "provenance",
+    "foundation_images",
+    "profiles",
+    "simulators",
+    "contains_real_legal_actors",
+    "contains_production_credentials"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "adr": {
+      "const": "ADR-SHARED-036"
+    },
+    "ea_plan": {
+      "const": "EA-v2.2"
+    },
+    "harness": {
+      "const": "L4-00"
+    },
+    "classification": {
+      "const": "REAL_COMPONENT_SYNTHETIC_DATA"
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "shared",
+        "infrastructure",
+        "baobab-iam",
+        "baobab-cp",
+        "nabhold"
+      ],
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{40}$"
+      }
+    },
+    "foundation_images": {
+      "type": "object",
+      "required": [
+        "postgres",
+        "redis",
+        "rabbitmq"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "postgres": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tag",
+            "digest"
+          ],
+          "properties": {
+            "tag": {
+              "type": "string",
+              "minLength": 5
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^(PENDING_VERIFIED_DIGEST|sha256:[0-9a-f]{64})$"
+            }
+          }
+        },
+        "redis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tag",
+            "digest"
+          ],
+          "properties": {
+            "tag": {
+              "type": "string",
+              "minLength": 5
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^(PENDING_VERIFIED_DIGEST|sha256:[0-9a-f]{64})$"
+            }
+          }
+        },
+        "rabbitmq": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tag",
+            "digest"
+          ],
+          "properties": {
+            "tag": {
+              "type": "string",
+              "minLength": 5
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^(PENDING_VERIFIED_DIGEST|sha256:[0-9a-f]{64})$"
+            }
+          }
+        }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "required": [
+        "foundation"
+      ],
+      "properties": {
+        "foundation": {
+          "type": "object",
+          "required": [
+            "services",
+            "mandatory",
+            "min_memory_gib",
+            "min_cpus"
+          ]
+        }
+      }
+    },
+    "simulators": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "contains_real_legal_actors": {
+      "const": false
+    },
+    "contains_production_credentials": {
+      "const": false
+    }
+  }
+}

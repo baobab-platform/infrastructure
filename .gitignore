@@ -7,3 +7,9 @@ compose/*.override.yaml
 *.tfstate.*
 .terraform/
 
+
+# INT-01 transient private service environment and scrubbed evidence
+/tests/platform-integration/.runtime/*
+!/tests/platform-integration/.runtime/.gitignore
+/tests/platform-integration/evidence/*
+!/tests/platform-integration/evidence/.gitignore
