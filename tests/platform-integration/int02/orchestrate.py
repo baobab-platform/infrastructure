@@ -163,6 +163,9 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
                     if service in {"iam-db", "cp-db", "keycloak", "cp-migrate", "cp", "probe"}:
                         snapshot.append(f"{service}={entry.get('State','unknown')}/{entry.get('Health','none')}")
         except (OSError, ValueError, subprocess.TimeoutExpired):
+            # Best-effort status only: the original Blocked error below is
+            # what the run reports; a failed snapshot must never replace it
+            # or surface Docker's raw output.
             pass
         stage = args[0] if args and args[0] in {"up", "build", "wait", "exec", "config", "down"} else "unknown"
         target = (args[2] if len(args)>2 and args[0]=="exec" and args[1]=="-T"

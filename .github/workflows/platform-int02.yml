@@ -38,12 +38,16 @@ jobs:
       - run: python3 tests/platform-integration/l4.py test iam-cp
       - name: Check real evidence
         run: python3 tests/platform-integration/l4.py evidence iam-cp >/dev/null
-      - if: success()
+      # The scrubbed receipt is written for BLOCKED/FAIL runs too (passed=false)
+      # and is the triage record; upload it whatever the outcome. The job
+      # keeps its failing status, and "Check real evidence" still requires a
+      # receipt on success.
+      - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: int02-synthetic-real-component-receipt
           path: tests/platform-integration/evidence/*-int02.json
-          if-no-files-found: error
+          if-no-files-found: warn
       - if: always()
         name: Destroy all disposable resources
         run: python3 tests/platform-integration/l4.py down iam-cp

@@ -149,6 +149,22 @@ class ContractTest(unittest.TestCase):
             self.assertFalse(evidence["protected_staging_accepted"])
 
 
+class ProvenanceTest(unittest.TestCase):
+    def test_cp_build_stages_are_digest_pinned(self):
+        # EA v2.2 §4.4 (iv): a mutable tag would let one source lock build a
+        # different CP binary or runtime.
+        import re
+        froms=[l for l in (BASE/"cp.Dockerfile").read_text().splitlines() if l.startswith("FROM ")]
+        self.assertEqual(len(froms),2)
+        for line in froms:
+            self.assertRegex(line,r"^FROM \S+@sha256:[0-9a-f]{64}( AS \w+)?$")
+
+    def test_receipt_is_uploaded_for_blocked_runs(self):
+        workflow=(BASE.parents[2]/".github/workflows/platform-int02.yml").read_text()
+        upload=workflow.split("actions/upload-artifact@")[0].rsplit("- if:",1)[1]
+        self.assertTrue(upload.strip().startswith("always()"))
+
+
 class ScenarioTruthTest(unittest.TestCase):
     """EA v2.2 matrix: a scenario is PASS only with its positive AND its
     negatives observed in the same run; partial coverage is BLOCKED."""
