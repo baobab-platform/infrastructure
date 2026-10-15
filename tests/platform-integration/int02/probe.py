@@ -51,6 +51,9 @@ def token(client,secret,grant,**params):
                          {"grant_type":grant,"client_id":client,
                           "client_secret":secret,**params})
     if status!=200 or not reply.get("access_token"):
+        error=reply.get("error") if isinstance(reply,dict) else None
+        diagnostic(step="token_"+grant, client=client if client.replace("-","").isalnum() else "other",
+                   status=status, error=error if error in OAUTH_ERRORS else "other")
         raise RuntimeError("real IAM token grant not accepted")
     return reply["access_token"]
 
@@ -77,6 +80,16 @@ def other():
                  (RUNTIME/"other-secret").read_text().strip(),
                  "client_credentials")
 
+# Standard OAuth 2.0 / Keycloak error codes are public protocol vocabulary,
+# never credentials; anything else is reported as "other".
+OAUTH_ERRORS={"invalid_grant","invalid_client","unauthorized_client","invalid_request",
+              "invalid_scope","unsupported_grant_type","access_denied","temporarily_unavailable"}
+
+def diagnostic(**fields):
+    """One fixed-format diagnostic line (short tokens only) that the
+    orchestrator may forward to CI; never bodies, tokens or credentials."""
+    print("INT02_DIAG " + " ".join(f"{k}={v}" for k,v in fields.items()), file=sys.stderr)
+
 def verify_master_administrator():
     # Use Keycloak's unmodified built-in master/admin-cli grant. This is the
     # same password grant used by IAM's kcadm.sh product bootstrap, issued
@@ -85,6 +98,9 @@ def verify_master_administrator():
         "grant_type":"password","client_id":"admin-cli",
         "username":"l4admin","password":os.environ["L4_KC_ADMIN_PASSWORD"]})
     if code!=200 or not body.get("access_token"):
+        error=body.get("error") if isinstance(body,dict) else None
+        diagnostic(step="master_admin", status=code,
+                   error=error if error in OAUTH_ERRORS else "other")
         raise RuntimeError("Keycloak master admin credential was not accepted")
     print('{"master_admin_token_verified":true}')
 
@@ -123,8 +139,7 @@ def wait_iam():
     # Status classes and HTTP codes are safe; never include bodies, URLs
     # containing credentials, tokens or raw container logs in Actions. This
     # fixed-format line is the only diagnostic the orchestrator forwards.
-    print("INT02_IAM_READINESS management=" + last_health + " discovery=" + last_discovery,
-          file=sys.stderr)
+    diagnostic(step="iam_readiness", management=last_health, discovery=last_discovery)
     raise RuntimeError("real Keycloak readiness unavailable: management="
                        + last_health + ", discovery=" + last_discovery)
 

@@ -113,13 +113,12 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
                     line)
                 if marker:
                     fixture_http = marker.group(1)
-        readiness = ""
-        marker = re.search(r"^INT02_IAM_READINESS management=(\d{3}|unavailable) "
-                           r"discovery=(\d{3}|unavailable)$", p.stderr, re.M)
-        if marker:
-            readiness = f"management={marker.group(1)}, discovery={marker.group(2)}"
+        # Only the probe's fixed INT02_DIAG lines (key=token pairs, tokens of
+        # at most 40 safe characters) leave this process.
+        diags = [line[len("INT02_DIAG "):] for line in p.stderr.splitlines()
+                 if re.fullmatch(r"INT02_DIAG( [a-z_]{1,24}=[A-Za-z0-9_.-]{1,40}){1,6}", line)]
         raise Blocked("External command failed: " + Path(args[0]).name +
-                      (f"; IAM readiness: {readiness}" if readiness else "") +
+                      (f"; IAM diagnostics: {' | '.join(diags[-3:])}" if diags else "") +
                       (f"; INT-02 fixture HTTP class: {fixture_http}" if fixture_http else "") +
                       (f"; INT-02 fixture class: {fixture_stage}" if fixture_stage else "") +
                       (f"; IAM bootstrap class: {stage}" if stage else "") +
@@ -181,7 +180,7 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
         safe_cause = str(cause) if any(
             marker in str(cause) for marker in
             ("IAM bootstrap class:", "INT-02 fixture class:",
-             "INT-02 fixture HTTP class:", "IAM readiness:")) else ""
+             "INT-02 fixture HTTP class:", "IAM diagnostics:")) else ""
         raise Blocked(f"Compose {stage}/{target} failed; service states: "
                       + (", ".join(sorted(snapshot)) if snapshot else "unavailable")
                       + (f"; {safe_cause}" if safe_cause else "")) from cause
@@ -306,10 +305,22 @@ def up(lock):
     # Compose network. No health commands or HTTP clients are needed in the
     # minimal Keycloak runtime image.
     try:
-        compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
-                "wait-iam", timeout=190)
+        startup_with_iam(p, envfile)
     except Blocked as cause:
+        # Any failure while IAM is involved also reports Keycloak's startup
+        # log CLASSES (fixed codes only).
         raise Blocked(f"{cause}; Keycloak log classes: {keycloak_log_classes(p, envfile)}") from cause
+    compose(p, envfile, "up", "-d", "cp-migrate", timeout=240)
+    compose(p, envfile, "wait", "cp-migrate", timeout=360)
+    compose(p, envfile, "up", "-d", "cp", "probe", timeout=180)
+    compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
+            "wait", timeout=120)
+    print("INT-02 genuine Keycloak issuer + CP binary started")
+
+def startup_with_iam(p, envfile):
+    compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
+            "wait-iam", timeout=190)
+    print("INT-02 startup: IAM ready; verifying master administrator",flush=True)
     # Diagnose a failed master-admin credential before the product bootstrap
     # enters its bounded five-minute login retry loop. This runs against the
     # real Keycloak master realm; token bytes stay inside the probe process.
@@ -320,13 +331,8 @@ def up(lock):
             "/opt/keycloak/bootstrap.sh", timeout=450)
     # A test-only Keycloak client/user is separately configured after product
     # config. Never turn on password grant on a committed production client.
+    print("INT-02 startup: IAM product bootstrap complete; seeding synthetic fixtures",flush=True)
     seed_keycloak(p, envfile)
-    compose(p, envfile, "up", "-d", "cp-migrate", timeout=240)
-    compose(p, envfile, "wait", "cp-migrate", timeout=360)
-    compose(p, envfile, "up", "-d", "cp", "probe", timeout=180)
-    compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
-            "wait", timeout=120)
-    print("INT-02 genuine Keycloak issuer + CP binary started")
 
 # Fixed Keycloak startup log markers, mapped to codes. Only the CODES leave
 # this process: never a log line, URL, credential or JDBC message.
@@ -339,6 +345,12 @@ KEYCLOAK_LOG_CLASSES = (
     ("Listening on: http://", "HTTP_LISTENING"),
     ("Management interface listening on http://", "MANAGEMENT_LISTENING"),
     (" started in ", "SERVER_STARTED"),
+    ("Created temporary admin user", "TEMP_ADMIN_CREATED"),
+    ("error=user_not_found", "LOGIN_USER_NOT_FOUND"),
+    ("error=invalid_user_credentials", "LOGIN_INVALID_USER_CREDENTIALS"),
+    ("error=invalid_client_credentials", "LOGIN_INVALID_CLIENT_CREDENTIALS"),
+    ("error=resolve_required_actions", "LOGIN_REQUIRED_ACTIONS"),
+    ("error=not_allowed", "LOGIN_NOT_ALLOWED"),
 )
 
 def keycloak_log_classes(p, envfile):

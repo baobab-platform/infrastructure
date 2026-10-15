@@ -155,12 +155,14 @@ class DiagnosticsTest(unittest.TestCase):
         # A failed probe must surface its fixed status line, not raw output.
         with mock.patch.object(m.subprocess,"run",return_value=mock.Mock(
                 returncode=2,stdout="",stderr="Traceback secret=abc\n"
-                "INT02_IAM_READINESS management=503 discovery=unavailable\n")):
+                "INT02_DIAG step=iam_readiness management=503 discovery=unavailable\n"
+                "INT02_DIAG step=x leak=postgres://u:p@h/db\n")):
             with self.assertRaises(m.Blocked) as raised:
                 m.execute(["docker","compose","exec","-T","probe","python","/app/probe.py","wait-iam"])
         message=str(raised.exception)
-        self.assertIn("IAM readiness: management=503, discovery=unavailable",message)
+        self.assertIn("IAM diagnostics: step=iam_readiness management=503 discovery=unavailable",message)
         self.assertNotIn("secret",message)
+        self.assertNotIn("postgres://",message)
 
     def test_keycloak_log_classes_emit_codes_only(self):
         log=("2026 ERROR jdbc url postgres://u:p@iam-db FATAL: password authentication failed for user x\n"
@@ -169,6 +171,19 @@ class DiagnosticsTest(unittest.TestCase):
             codes=m.keycloak_log_classes({"project":"l4-0000000000000000"},Path("/nonexistent"))
         self.assertEqual(codes,"DB_AUTH_FAILED,HTTP_LISTENING")
         self.assertNotIn("postgres://",codes)
+
+
+    def test_probe_diagnostics_are_allowlisted_tokens(self):
+        probe=(BASE/"probe.py").read_text()
+        self.assertIn('error=error if error in OAUTH_ERRORS else "other"',probe)
+        self.assertIn('diagnostic(step="master_admin"',probe)
+        self.assertNotIn("error_description",probe)
+
+    def test_every_iam_startup_failure_reports_log_classes(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        body=runner.split("def startup_with_iam(p, envfile):")[1].split("\ndef ")[0]
+        for step in ('"wait-iam"','"master-admin"','"/opt/keycloak/bootstrap.sh"','seed_keycloak(p, envfile)'):
+            self.assertIn(step,body)
 
 
 class ProvenanceTest(unittest.TestCase):
