@@ -39,8 +39,8 @@ Nothing here should be promoted into staging or production.
 
 ### Audit note (15 October 2026)
 
-The real issuer's readiness is probed via the private Keycloak management HTTP
-endpoint, not the nonexistent `kc.sh health` command. An ACTIVE synthetic
+The real issuer's readiness is its master-realm OIDC discovery document, fetched over verified TLS through
+the edge, not the nonexistent `kc.sh health` command. An ACTIVE synthetic
 capability-binding row is **not** live provider health/certification; CP-02
 remains BLOCKED until a real provider and current evidence are demonstrated.
 Receipts record the candidate harness Git SHA as distinct from dependency pins.
@@ -66,5 +66,15 @@ Receipts record the candidate harness Git SHA as distinct from dependency pins.
   - named positive and negative checks;
   - the transport;
   - an evidence digest.
-- **Transport:** the matrix requires INT-02 "over verified local TLS". This profile is still plain HTTP on its internal
-  network (`TLS_VERIFIED = False`), so no run can be accepted until TLS is implemented and verified.
+- **Transport:** the matrix requires INT-02 "over verified local TLS". Every hop that crosses the Compose network now
+  reaches Keycloak and CP through a digest-pinned nginx TLS 1.3 edge (`edge.conf`), as `iam.int02.test` and
+  `cp.int02.test`:
+  - `materialise` generates a one-day throwaway CA and edge certificate for that run only. The CA key is destroyed as
+    soon as the edge certificate is signed, so no container can read it.
+  - The issuer is `https://iam.int02.test/realms/baobab`. CP at the pin refuses any non-loopback HTTP issuer, which is
+    why the plain-HTTP profile's CP exited at startup. CP trusts only the run CA (`SSL_CERT_FILE`).
+  - The probe verifies against the run CA with hostname checking and TLS 1.3 minimum.
+  - Acceptance requires three checks, all observed in the same run: IAM over verified TLS, CP over verified TLS, and
+    the same endpoint refused without the run CA.
+  - Keycloak's in-container kcadm administration stays on loopback HTTP, and the edge-to-upstream hop is HTTP on the
+    internal network. The receipt records both.

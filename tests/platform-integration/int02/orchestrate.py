@@ -30,6 +30,13 @@ EVIDENCE = ROOT / "tests/platform-integration/evidence"
 REQUIRED = {"L4-IAM-01", "L4-IAM-02", "L4-CP-01", "L4-CP-02", "L4-CP-03"}
 SHA40 = re.compile(r"[0-9a-f]{40}\Z")
 IMAGE = re.compile(r"^[a-z0-9][a-z0-9./_-]*@sha256:[0-9a-f]{64}$")
+# EA v2.2 INT-02 runs "over verified local TLS": every hop that crosses the
+# Compose network reaches IAM and CP through the TLS edge, under these names,
+# with a certificate from a throwaway CA generated for this run only.
+IAM_HOST = "iam.int02.test"
+CP_HOST = "cp.int02.test"
+ISSUER = "https://" + IAM_HOST + "/realms/baobab"
+SERVICES = {"keycloak", "iam-db", "cp", "cp-db", "edge", "probe"}
 
 class Blocked(Exception):
     pass
@@ -52,12 +59,12 @@ def load():
          "Floating source ref is prohibited")
     must(all(data["sources"].get(x) for x in ("baobab-iam", "baobab-cp", "shared", "infrastructure")),
          "Missing source pin")
-    must(set(data["services"]) == {"keycloak", "iam-db", "cp", "cp-db", "probe"},
-         "Unexpected services")
+    must(set(data["services"]) == SERVICES, "Unexpected services")
     must(data["requirements"]["public_ports"] == 0 and
          not re.search(r"(?m)^\s+ports\s*:", COMPOSE.read_text()), "Host ports forbidden")
-    must(IMAGE.fullmatch(data["runtime_images"]["postgres"]) is not None,
-         "Postgres must be digest pinned")
+    must(IMAGE.fullmatch(data["runtime_images"]["postgres"]) is not None and
+         IMAGE.fullmatch(data["runtime_images"]["tls_edge"]) is not None,
+         "Postgres and the TLS edge must be digest pinned")
     return data
 
 def execute(args, capture=False, input_text=None, env=None, timeout=300):
@@ -165,7 +172,7 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
                 rows = [json.loads(line) for line in raw.stdout.splitlines() if line.strip()]
                 for entry in rows:
                     service = entry.get("Service", "")
-                    if service in {"iam-db", "cp-db", "keycloak", "cp-migrate", "cp", "probe"}:
+                    if service in SERVICES | {"cp-migrate"}:
                         snapshot.append(f"{service}={entry.get('State','unknown')}/{entry.get('Health','none')}")
         except (OSError, ValueError, subprocess.TimeoutExpired):
             # Best-effort status only: the original Blocked error below is
@@ -186,14 +193,14 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
                       + (f"; {safe_cause}" if safe_cause else "")) from cause
 
 def check_prerequisites(lock, static=False):
-    must((BASE / "cp.Dockerfile").is_file() and (BASE / "probe.py").is_file(),
-         "INT-02 source incomplete")
+    must((BASE / "cp.Dockerfile").is_file() and (BASE / "probe.py").is_file()
+         and (BASE / "edge.conf").is_file(), "INT-02 source incomplete")
     if static:
         return
     must(IMAGE.fullmatch(lock["runtime_images"]["python_probe"]) is not None,
          "Probe OCI digest not reviewed")
-    must(shutil.which("git") is not None and shutil.which("docker") is not None,
-         "Git and Docker required")
+    must(all(shutil.which(x) is not None for x in ("git", "docker", "openssl")),
+         "Git, Docker and OpenSSL required")
     must((os.cpu_count() or 0) >= lock["requirements"]["min_cpus"],
          "Insufficient CPU capacity")
     if sys.platform == "linux":
@@ -230,6 +237,9 @@ def materialise(lock):
             "L4_PROBE_SOURCE": str(BASE),
             "L4_POSTGRES_IMAGE": lock["runtime_images"]["postgres"],
             "L4_PYTHON_IMAGE": lock["runtime_images"]["python_probe"],
+            "L4_EDGE_IMAGE": lock["runtime_images"]["tls_edge"],
+            "L4_EDGE_CONFIG": str(BASE / "edge.conf"),
+            "L4_TLS": str(directory / "tls"),
             "L4_IAM_IMAGE": "l4-iam-" + project,
             "L4_CP_IMAGE": "l4-cp-" + project,
             "L4_IAM_DB_PASSWORD": secrets.token_hex(28),
@@ -239,6 +249,7 @@ def materialise(lock):
             "L4_TEST_USER_PASSWORD": secrets.token_hex(28),
             "L4_TEST_ADMIN_CLIENT_SECRET": secrets.token_hex(28),
         }
+        throwaway_tls(directory / "tls")
         private(directory / "runtime.env",
                 "".join(k + "=" + v + "\n" for k, v in runtime.items()))
         # Fixture clients are disposable IAM test records only. Their bounded
@@ -278,6 +289,34 @@ def materialise(lock):
         raise
     print("INT-02 source materialised at audited IAM and CP commit IDs")
 
+def throwaway_tls(tls):
+    """A CA and edge certificate that exist only for this run (one day).
+
+    The tls directory is the only TLS state the edge and CP mount. The CA key
+    is created outside it and destroyed as soon as the edge certificate is
+    signed, so no container can ever read it and nothing else can be issued
+    under this CA. The edge key is a disposable key for synthetic data only.
+    """
+    tls.mkdir(mode=0o755)
+    ca_key, ca, key, csr, ext = (tls.parent / "ca.key", tls / "ca.pem", tls / "edge.key",
+                                 tls.parent / "edge.csr", tls.parent / "edge.ext")
+    execute(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+             "-subj", "/CN=Baobab INT-02 throwaway CA", "-addext",
+             "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign",
+             "-keyout", str(ca_key), "-out", str(ca)], timeout=60)
+    execute(["openssl", "req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=int02.test",
+             "-keyout", str(key), "-out", str(csr)], timeout=60)
+    ext.write_text(f"subjectAltName=DNS:{IAM_HOST},DNS:{CP_HOST}\n"
+                   "extendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n")
+    execute(["openssl", "x509", "-req", "-in", str(csr), "-CA", str(ca), "-CAkey", str(ca_key),
+             "-CAserial", str(tls.parent / "ca.srl"), "-CAcreateserial", "-days", "1",
+             "-extfile", str(ext), "-out", str(tls / "edge.pem")], timeout=60)
+    for leftover in (ca_key, csr, ext, tls.parent / "ca.srl"):
+        leftover.unlink()
+    # The edge (nginx, non-root workers) and CP (distroless nonroot) read these.
+    for name in ("ca.pem", "edge.pem", "edge.key"):
+        os.chmod(tls / name, 0o644)
+
 def up(lock):
     check_prerequisites(lock)
     p, directory, envfile = current()
@@ -294,7 +333,7 @@ def up(lock):
     # the IAM Dockerfile, and certain Compose versions make `--wait` fail
     # despite both databases healthy and Keycloak actually running. Start
     # processes, then rely on explicit real application-level checks below.
-    compose(p, envfile, "up", "-d", "iam-db", "cp-db", "keycloak", "probe",
+    compose(p, envfile, "up", "-d", "iam-db", "cp-db", "keycloak", "edge", "probe",
             timeout=180)
     # The database must be reachable from its own process, not just "up".
     for service, user in (("iam-db", "baobab_iam"), ("cp-db", "controlplane")):
@@ -413,7 +452,7 @@ def seed_identities(p, envfile, ids):
         stmt = ("INSERT INTO identity.principal(principal_id,actor_type,status) "
                 "VALUES ('" + identity + "','" + name + "','ACTIVE'); "
                 "INSERT INTO identity.external_identity(principal_id,issuer,subject,status) "
-                "VALUES ('" + identity + "','http://keycloak:8080/realms/baobab','"
+                "VALUES ('" + identity + "','" + ISSUER + "','"
                 + subject + "','ACTIVE');")
         compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v",
                 "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
@@ -516,7 +555,7 @@ def test(lock):
     p, directory, envfile = current()
     ids = json.loads(run_probe(p, envfile, "identities"))
     must(ids.get("source") == "keycloak-issued" and
-         ids.get("issuer") == "http://keycloak:8080/realms/baobab",
+         ids.get("issuer") == ISSUER,
          "IAM evidence is not real issuer issued")
     # Tenants first: the unmapped-principal negative (L4-CP-01) needs a real
     # tenant and Organisation, and must run BEFORE the Keycloak subject is
@@ -535,7 +574,7 @@ def test(lock):
          "Invalid workload subject for revocation")
     revoked = ("""
       UPDATE identity.external_identity SET status='REVOKED'
-      WHERE issuer='http://keycloak:8080/realms/baobab'
+      WHERE issuer='""" + ISSUER + """'
       AND subject='""" + subject + """' AND status='ACTIVE'
       RETURNING external_identity_id;
     """)
@@ -548,6 +587,10 @@ def test(lock):
     checks = report.setdefault("checks", {})
     checks["cp01_unmapped_principal_denied"] = unmapped.get("unmapped_denied") is True
     checks["cp01_revoked_identity_denied"] = after.get("revocation_denied") is True
+    # Verified local TLS (EA v2.2 INT-02) is observed in this run, never assumed.
+    transport = json.loads(run_probe(p, envfile, "tls"))
+    for name in TLS_CHECKS:
+        checks[name] = transport.get(name) is True
     # L4-CP-01 is PASS only with its positive AND every matrix negative
     # (swapped Organisation, fabricated tenant, unmapped principal, revoked
     # identity), all observed in this run. Revocation never promotes L4-CP-03.
@@ -556,7 +599,7 @@ def test(lock):
                              and checks["cp01_revoked_identity_denied"] else "FAIL")
     required = set(lock["mandatory"])
     must(set(cases) == required, "Mandatory IAM/CP scenarios missing")
-    if any(cases[x] != "PASS" for x in required) or not TLS_VERIFIED:
+    if any(cases[x] != "PASS" for x in required) or not tls_verified(checks):
         # Preserve the sanitized report for triage, NEVER promote to PASS.
         write_evidence(p, lock, report, accepted=False)
         raise Blocked("Real IAM/CP scenario denied or unavailable, or local TLS "
@@ -565,9 +608,13 @@ def test(lock):
     print("INT-02 actual IAM↔CP profile PASS; not protected staging")
 
 # EA v2.2 matrix (INT-02 backlog): the real IAM/CP process test runs "over
-# verified local TLS". This profile still uses plain HTTP on its internal
-# network, so no run can be accepted until TLS is implemented and verified.
-TLS_VERIFIED = False
+# verified local TLS". All three must be observed by the probe in this run:
+# IAM and CP each answer over TLS verified against this run's CA and edge
+# hostname, and the same endpoint is refused without that CA.
+TLS_CHECKS = ("tls_iam_verified", "tls_cp_verified", "tls_untrusted_refused")
+
+def tls_verified(checks):
+    return all(checks.get(name) is True for name in TLS_CHECKS)
 
 def image_id(envfile, variable):
     """The locally built image's content ID (build provenance, EA v2.2 §4.4)."""
@@ -600,8 +647,10 @@ def write_evidence(p, lock, report, accepted):
                              "postgresql"],
                      "simulated":["synthetic tenants, organisations, grants and provider binding"],
                      "provider":"synthetic resolution fixture only; no live certified provider"},
-       "transport":{"tls_verified":TLS_VERIFIED,
-                    "mode":"plaintext-http-on-internal-network"},
+       "transport":{"tls_verified":tls_verified(report.get("checks", {})),
+                    "mode":"tls1.3-edge-verified-per-run-ca",
+                    "edge_to_upstream":"http-on-internal-compose-network",
+                    "issuer":ISSUER},
        "source_pins":lock["sources"],"run_id":p["project"],
        # Source pins are dependency baselines; this is the ACTUAL checked
        # out integration harness revision, including GitHub's PR merge ref.

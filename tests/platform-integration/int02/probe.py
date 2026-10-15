@@ -9,6 +9,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import ssl
 import sys
 import time
 import urllib.error
@@ -19,8 +20,13 @@ import uuid
 ISSUER=os.environ["L4_ISSUER"]
 CP=os.environ["L4_CP"]
 RUNTIME=Path("/run/l4")
+# EA v2.2 INT-02 "verified local TLS": every request to IAM and CP is
+# verified against THIS run's throwaway CA, with hostname checking on. The
+# probe never disables verification and never trusts any other root.
+TLS=ssl.create_default_context(cafile=os.environ["L4_CA_FILE"])
+TLS.minimum_version=ssl.TLSVersion.TLSv1_3
 
-def request(method,url,body=None,token=None):
+def request(method,url,body=None,token=None,context=None):
     data = (urllib.parse.urlencode(body).encode() if body is not None and
             url.endswith("/token") else
             json.dumps(body).encode() if body is not None else None)
@@ -32,7 +38,7 @@ def request(method,url,body=None,token=None):
         hdr["Authorization"]="Bearer "+token
     req=urllib.request.Request(url,data=data,method=method,headers=hdr)
     try:
-        with urllib.request.urlopen(req,timeout=8) as response:
+        with urllib.request.urlopen(req,timeout=8,context=context or TLS) as response:
             status=response.status
             raw=response.read(65537)
     except urllib.error.HTTPError as exc:
@@ -94,7 +100,8 @@ def verify_master_administrator():
     # Use Keycloak's unmodified built-in master/admin-cli grant. This is the
     # same password grant used by IAM's kcadm.sh product bootstrap, issued
     # by the REAL Keycloak process. Never print an access token or password.
-    code,body=request("POST","http://keycloak:8080/realms/master/protocol/openid-connect/token",{
+    master=ISSUER.rsplit("/realms/",1)[0]+"/realms/master"
+    code,body=request("POST",master+"/protocol/openid-connect/token",{
         "grant_type":"password","client_id":"admin-cli",
         "username":"l4admin","password":os.environ["L4_KC_ADMIN_PASSWORD"]})
     if code!=200 or not body.get("access_token"):
@@ -105,43 +112,36 @@ def verify_master_administrator():
     print('{"master_admin_token_verified":true}')
 
 def wait_iam():
-    # Keycloak's management health listener is private and may be disabled or
-    # inaccessible in an otherwise operational optimised image. The actual
-    # OIDC discovery document is a second, independent readiness signal:
-    # require HTTP 200 AND the exact expected issuer before proceeding.
-    # The subsequent master-admin step additionally verifies real token
-    # issuance. Neither path mocks IAM, authorises CP access, or certifies L4.
-    # The baobab realm only exists after IAM's bootstrap.sh, which runs
-    # later; the built-in master realm is the pre-bootstrap issuer. Its
-    # exact issuer is verified (Keycloak serves it as hostname + /realms/master).
+    # Readiness is the real OIDC discovery document, fetched over verified TLS
+    # through the edge: HTTP 200 AND the exact expected issuer. The baobab
+    # realm only exists after IAM's bootstrap.sh, which runs later; the
+    # built-in master realm is the pre-bootstrap issuer (hostname +
+    # /realms/master). The master-admin step then verifies real token
+    # issuance. Neither mocks IAM, authorises CP access, or certifies L4.
     master_issuer = ISSUER.rsplit("/realms/", 1)[0] + "/realms/master"
     discovery = master_issuer + "/.well-known/openid-configuration"
-    last_health = "unavailable"
-    last_discovery = "unavailable"
+    last = "unavailable"
     for _ in range(150):
         try:
-            status,_ = request("GET","http://keycloak:9000/health/ready")
-            last_health = str(status)
-            if status == 200:
-                print('{"issuer_ready":true,"method":"management-health"}')
-                return
-        except (OSError, ValueError):
-            last_health = "unavailable"
-        try:
             status,document = request("GET",discovery)
-            last_discovery = str(status)
+            last = str(status)
             if status == 200 and document.get("issuer") == master_issuer:
-                print('{"issuer_ready":true,"method":"verified-oidc-discovery"}')
+                print('{"issuer_ready":true,"method":"verified-tls-oidc-discovery"}')
                 return
+            if status == 200:
+                last = "issuer_mismatch"
+        except ssl.SSLCertVerificationError:
+            last = "tls_unverified"
+        except urllib.error.URLError as exc:
+            last = "tls_unverified" if isinstance(exc.reason, ssl.SSLCertVerificationError) else "unavailable"
         except (OSError, ValueError):
-            last_discovery = "unavailable"
+            last = "unavailable"
         time.sleep(1)
     # Status classes and HTTP codes are safe; never include bodies, URLs
     # containing credentials, tokens or raw container logs in Actions. This
     # fixed-format line is the only diagnostic the orchestrator forwards.
-    diagnostic(step="iam_readiness", management=last_health, discovery=last_discovery)
-    raise RuntimeError("real Keycloak readiness unavailable: management="
-                       + last_health + ", discovery=" + last_discovery)
+    diagnostic(step="iam_readiness", discovery=last)
+    raise RuntimeError("real Keycloak readiness unavailable: discovery=" + last)
 
 def wait():
     for _ in range(90):
@@ -290,6 +290,31 @@ def exercise():
     state["L4-CP-03"]="BLOCKED" if sibling_deny else "FAIL"
     print(json.dumps({"scenarios":state,"checks":checks},sort_keys=True))
 
+def tls():
+    """Observe verified TLS on both edge names, and refusal without the CA."""
+    result={"tls_iam_verified":False,"tls_cp_verified":False,"tls_untrusted_refused":False}
+    try:
+        master=ISSUER.rsplit("/realms/",1)[0]+"/realms/master"
+        status,document=request("GET",master+"/.well-known/openid-configuration")
+        result["tls_iam_verified"]=status==200 and document.get("issuer")==master
+    except (OSError,ValueError):
+        pass
+    try:
+        result["tls_cp_verified"]=request("GET",CP+"/health/live")[0]==200
+    except (OSError,ValueError):
+        pass
+    # A context that trusts only the image's public roots must refuse the
+    # edge: this run's CA is the sole reason the requests above succeed.
+    try:
+        request("GET",CP+"/health/live",context=ssl.create_default_context())
+    except urllib.error.URLError as exc:
+        result["tls_untrusted_refused"]=isinstance(exc.reason,ssl.SSLCertVerificationError)
+    except ssl.SSLCertVerificationError:
+        result["tls_untrusted_refused"]=True
+    except (OSError,ValueError):
+        pass
+    print(json.dumps(result,sort_keys=True))
+
 def main():
     name=sys.argv[1] if len(sys.argv)>1 else ""
     if name=="wait":
@@ -306,6 +331,8 @@ def main():
         confirm_revoked()
     elif name=="unmapped":
         unmapped()
+    elif name=="tls":
+        tls()
     else:
         raise SystemExit("unsupported integration operation")
 if __name__=="__main__":

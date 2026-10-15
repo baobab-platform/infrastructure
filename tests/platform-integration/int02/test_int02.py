@@ -63,8 +63,9 @@ class ContractTest(unittest.TestCase):
         # client probe continues to validate the advertised OIDC issuer.
         compose=(BASE/"compose.yaml").read_text()
         self.assertIn("KC_URL: http://localhost:8080",compose)
-        self.assertIn("L4_ISSUER: http://keycloak:8080/realms/baobab",compose)
-        self.assertIn("ADMIN_OIDC_ISSUER: http://keycloak:8080/realms/baobab",compose)
+        self.assertIn("L4_ISSUER: https://iam.int02.test/realms/baobab",compose)
+        self.assertIn("ADMIN_OIDC_ISSUER: https://iam.int02.test/realms/baobab",compose)
+        self.assertIn('"--hostname=https://iam.int02.test"',compose)
 
     def test_bootstrap_failure_classification_is_allowlisted(self):
         # Raw stderr can contain credentials; CI may receive only fixed
@@ -131,12 +132,13 @@ class ContractTest(unittest.TestCase):
         self.assertIn('document.get("issuer") == master_issuer',source)
         self.assertIn('"/realms/master"',source)
         self.assertIn('status == 200',source)
-        self.assertIn('verified-oidc-discovery',source)
+        self.assertIn('verified-tls-oidc-discovery',source)
 
     def test_admin_master_probe_checks_real_token_endpoint(self):
         source=(BASE/"probe.py").read_text()
         self.assertIn("def verify_master_administrator():",source)
-        self.assertIn("/realms/master/protocol/openid-connect/token",source)
+        self.assertIn('master=ISSUER.rsplit("/realms/",1)[0]+"/realms/master"',source)
+        self.assertIn('request("POST",master+"/protocol/openid-connect/token"',source)
         self.assertIn("master-admin",source)
 
     def test_blocked_cannot_be_certification(self):
@@ -237,8 +239,9 @@ class ScenarioTruthTest(unittest.TestCase):
 
     def test_receipt_carries_ea_v22_fields_and_tls_blocks_acceptance(self):
         data=m.load()
-        self.assertFalse(m.TLS_VERIFIED)
+        # Every scenario PASS but no observed TLS checks: never verified.
         all_pass={"scenarios":{k:"PASS" for k in m.REQUIRED},"checks":{"cp01_positive":True}}
+        self.assertFalse(m.tls_verified(all_pass["checks"]))
         with tempfile.TemporaryDirectory() as d:
             with mock.patch.object(m,"EVIDENCE",Path(d)):
                 m.write_evidence({"project":"l4-2222222222222222"},data,all_pass,accepted=False)
@@ -250,7 +253,80 @@ class ScenarioTruthTest(unittest.TestCase):
         self.assertFalse(evidence["transport"]["tls_verified"])
         self.assertFalse(evidence["passed"])
         runner=(BASE/"orchestrate.py").read_text()
-        self.assertIn("or not TLS_VERIFIED:",runner)
+        self.assertIn("or not tls_verified(checks):",runner)
+
+    def test_tls_verified_only_when_every_observation_holds(self):
+        full={name:True for name in m.TLS_CHECKS}
+        self.assertTrue(m.tls_verified(full))
+        for name in m.TLS_CHECKS:
+            self.assertFalse(m.tls_verified({**full,name:False}))
+            self.assertFalse(m.tls_verified({k:v for k,v in full.items() if k!=name}))
+        self.assertFalse(m.tls_verified({**full,"tls_untrusted_refused":"true"}))
+
+
+class TransportTest(unittest.TestCase):
+    """EA v2.2 INT-02 runs over verified local TLS."""
+
+    def test_no_cross_container_plain_http_to_iam_or_cp(self):
+        # Only the edge's upstreams and Keycloak's in-container loopback
+        # administration may name plain HTTP.
+        compose=(BASE/"compose.yaml").read_text()
+        probe=(BASE/"probe.py").read_text()
+        self.assertNotIn("http://keycloak",compose+probe)
+        self.assertNotIn("http://cp",compose+probe)
+        self.assertNotIn("http://",probe)
+        edge=(BASE/"edge.conf").read_text()
+        self.assertIn("set $u http://keycloak:8080;",edge)
+        self.assertIn("set $u http://cp:8080;",edge)
+        self.assertIn("ssl_protocols TLSv1.3;",edge)
+        self.assertIn("return 421;",edge)
+
+    def test_probe_verifies_only_against_the_run_ca(self):
+        probe=(BASE/"probe.py").read_text()
+        self.assertIn('ssl.create_default_context(cafile=os.environ["L4_CA_FILE"])',probe)
+        self.assertNotIn("CERT_NONE",probe)
+        self.assertNotIn("check_hostname=False",probe)
+        self.assertNotIn("_create_unverified_context",probe)
+        self.assertIn("context=context or TLS",probe)
+
+    def test_cp_trusts_the_run_ca_and_only_https_issuers(self):
+        compose=(BASE/"compose.yaml").read_text()
+        self.assertIn("SSL_CERT_FILE: /run/l4-tls/ca.pem",compose)
+        self.assertIn("WORKLOAD_OIDC_ISSUER: https://iam.int02.test/realms/baobab",compose)
+        self.assertIn("aliases: [iam.int02.test, cp.int02.test]",compose)
+
+    def test_edge_is_digest_pinned_and_a_declared_service(self):
+        data=m.load()
+        self.assertIn("edge",data["services"])
+        self.assertRegex(data["runtime_images"]["tls_edge"],r"^nginx@sha256:[0-9a-f]{64}$")
+
+    def test_throwaway_ca_signs_a_verifiable_edge_certificate(self):
+        import shutil, ssl, subprocess
+        if shutil.which("openssl") is None:
+            self.skipTest("openssl unavailable")
+        with tempfile.TemporaryDirectory() as d:
+            tls=Path(d)/"tls"
+            m.throwaway_tls(tls)
+            self.assertEqual(sorted(x.name for x in tls.iterdir()),["ca.pem","edge.key","edge.pem"])
+            # The CA key is destroyed once the edge certificate is signed.
+            self.assertEqual(sorted(x.name for x in Path(d).iterdir()),["tls"])
+            out=subprocess.run(["openssl","verify","-CAfile",str(tls/"ca.pem"),
+                                "-purpose","sslserver",str(tls/"edge.pem")],
+                               capture_output=True,text=True)
+            self.assertEqual(out.returncode,0,out.stdout+out.stderr)
+            text=subprocess.run(["openssl","x509","-noout","-ext","subjectAltName",
+                                 "-in",str(tls/"edge.pem")],capture_output=True,text=True).stdout
+            self.assertIn("DNS:iam.int02.test",text)
+            self.assertIn("DNS:cp.int02.test",text)
+            # The CA loads as a trust anchor for Python's verifier.
+            ssl.create_default_context(cafile=str(tls/"ca.pem"))
+
+    def test_every_tls_check_is_collected_from_the_probe(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertIn('transport = json.loads(run_probe(p, envfile, "tls"))',runner)
+        probe=(BASE/"probe.py").read_text()
+        for name in m.TLS_CHECKS:
+            self.assertIn('"'+name+'"',probe)
 
 
 def keycloak_environment(compose):
