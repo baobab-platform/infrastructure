@@ -74,6 +74,14 @@ class ContractTest(unittest.TestCase):
         self.assertIn('stage = "KCADM_SESSION_UNWRITABLE"',source)
         self.assertIn('"IAM bootstrap class:" in str(cause)',source)
 
+    def test_fixture_failures_report_only_fixed_safe_stage(self):
+        shell=(BASE/"keycloak-fixture.sh").read_text()
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertIn("INT02_FIXTURE_FAILURE_STAGE=%s",shell)
+        self.assertIn("trap cleanup EXIT",shell)
+        self.assertIn("INT02_FIXTURE_FAILURE_STAGE=([a-z-]+)",runner)
+        self.assertIn('"INT-02 fixture class:"',runner)
+
     def test_iam_readiness_requires_real_issuer(self):
         # Management health is optional; the fallback must still contact the
         # genuine issuer's OIDC metadata and verify its canonical issuer.
