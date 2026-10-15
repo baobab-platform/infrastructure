@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest import mock
+import unittest.mock as mock
 
 BASE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("l4", BASE / "l4.py")
