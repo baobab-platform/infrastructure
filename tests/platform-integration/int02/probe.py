@@ -144,17 +144,27 @@ def wait_iam():
     raise RuntimeError("real Keycloak readiness unavailable: discovery=" + last)
 
 def wait():
+    # CP at the pin serves readiness at /readyz (it pings its database) and
+    # liveness at /healthz (api/router.go). Readiness, over verified TLS.
+    last="unavailable"
     for _ in range(90):
         try:
-            s,_=request("GET",CP+"/health/live")
+            s,_=request("GET",CP+"/readyz")
+            last=str(s)
             if s==200:
                 print('{"ready":true}')
                 return
-        except OSError:
-            # CP may not yet have bound its private HTTP listener; poll until
-            # readiness or the bounded deadline, never skipping the check.
-            pass
+        except ssl.SSLCertVerificationError:
+            last="tls_unverified"
+        except urllib.error.URLError as exc:
+            # CP may not yet have bound its listener; poll until readiness or
+            # the bounded deadline, never skipping the check.
+            last=("tls_unverified" if isinstance(exc.reason,ssl.SSLCertVerificationError)
+                  else "unavailable")
+        except (OSError,ValueError):
+            last="unavailable"
         time.sleep(1)
+    diagnostic(step="cp_readiness", readyz=last)
     raise RuntimeError("real CP did not become ready")
 
 def identities():
@@ -302,14 +312,14 @@ def tls():
         # error itself is never reported, and acceptance stays blocked.
         result["tls_iam_verified"]=False
     try:
-        result["tls_cp_verified"]=request("GET",CP+"/health/live")[0]==200
+        result["tls_cp_verified"]=request("GET",CP+"/healthz")[0]==200
     except (OSError,ValueError):
         # As above: any failure leaves CP transport unverified.
         result["tls_cp_verified"]=False
     # A context that trusts only the image's public roots must refuse the
     # edge: this run's CA is the sole reason the requests above succeed.
     try:
-        request("GET",CP+"/health/live",context=ssl.create_default_context())
+        request("GET",CP+"/healthz",context=ssl.create_default_context())
     except urllib.error.URLError as exc:
         result["tls_untrusted_refused"]=isinstance(exc.reason,ssl.SSLCertVerificationError)
     except ssl.SSLCertVerificationError:

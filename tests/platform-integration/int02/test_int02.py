@@ -321,6 +321,14 @@ class TransportTest(unittest.TestCase):
             # The CA loads as a trust anchor for Python's verifier.
             ssl.create_default_context(cafile=str(tls/"ca.pem"))
 
+    def test_probe_uses_the_pinned_cp_health_routes(self):
+        # CP b0385fa serves /healthz and /readyz; /health/live never existed.
+        probe=(BASE/"probe.py").read_text()
+        self.assertIn('request("GET",CP+"/readyz")',probe)
+        self.assertIn('CP+"/healthz"',probe)
+        self.assertNotIn("/health/live",probe)
+        self.assertIn('diagnostic(step="cp_readiness", readyz=last)',probe)
+
     def test_every_tls_check_is_collected_from_the_probe(self):
         runner=(BASE/"orchestrate.py").read_text()
         self.assertIn('transport = json.loads(run_probe(p, envfile, "tls"))',runner)
