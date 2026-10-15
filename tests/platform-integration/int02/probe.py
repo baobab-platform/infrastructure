@@ -102,11 +102,30 @@ def verify(expected,fn):
     except Exception:
         return "BLOCKED"
 
+def confirm_revoked():
+    # Same in-memory-container token issued before CP link was revoked.
+    # The token remains time-valid and Keycloak-signed, but CP must deny
+    # identity or context lookup after the canonical external link change.
+    token_path = Path("/tmp/l4-workload-issued-before-revocation")
+    raw = token_path.read_text()
+    token_path.unlink(missing_ok=True)
+    claims = decode(raw)
+    if claims.get("iss") != ISSUER or int(claims.get("exp", 0)) <= time.time():
+        raise RuntimeError("Previously issued IAM token is not live")
+    fixtures = json.loads((RUNTIME / "fixtures.json").read_text())
+    code, data = request("POST", CP + "/v1/platform-context/resolve",
+                         {"tenant_id":fixtures["tenant"],
+                          "organisation_id":fixtures["organisation"]},raw)
+    print(json.dumps({"revocation_denied": code in (401,403,404)}))
+
 def exercise():
     fixture=json.loads((RUNTIME/"fixtures.json").read_text())
     tenant,other_tenant=fixture["tenant"],fixture["other_tenant"]
     organisation=fixture["organisation"]
     good,human_token=workload(),human()
+    tok = Path("/tmp/l4-workload-issued-before-revocation")
+    tok.write_text(good)
+    tok.chmod(0o600)
     wclaims=decode(good)
     hclaims=decode(human_token)
     def auth_good():
@@ -176,6 +195,8 @@ def main():
         identities()
     elif name=="test":
         exercise()
+    elif name=="revoked":
+        confirm_revoked()
     else:
         raise SystemExit("unsupported integration operation")
 if __name__=="__main__":

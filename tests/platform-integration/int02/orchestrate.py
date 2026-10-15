@@ -340,7 +340,29 @@ def test(lock):
     seed_identities(p, envfile, ids)
     seed_tenants(p, directory, envfile)
     report = json.loads(run_probe(p, envfile, "test"))
+    # An already-issued IAM token must lose CP authority when its canonical
+    # (issuer,subject) link is revoked. Keycloak continues to verify that
+    # JWT cryptographically; CP is responsible for enforcing current mapping.
+    # This UPDATE is an *explicit synthetic-fixture operation* in a private
+    # throwaway integration DB, not a production identity lifecycle API.
+    subject = ids["workload_sub"]
+    must(re.fullmatch(r"[0-9a-f-]{36}", subject) is not None,
+         "Invalid workload subject for revocation")
+    revoked = ("""
+      UPDATE identity.external_identity SET status='REVOKED'
+      WHERE issuer='http://keycloak:8080/realms/baobab'
+      AND subject='""" + subject + """' AND status='ACTIVE'
+      RETURNING external_identity_id;
+    """)
+    result = compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X",
+                     "-At", "-v", "ON_ERROR_STOP=1", "-U", "controlplane",
+                     "-d", "controlplane", "-c", revoked, capture=True, timeout=35)
+    must(result.strip() != "", "Expected canonical external identity not revoked")
+    after = json.loads(run_probe(p, envfile, "revoked"))
     cases = report.get("scenarios", {})
+    if cases.get("L4-CP-03") == "BLOCKED":
+        cases["L4-CP-03"] = ("PASS" if after.get("revocation_denied") is True
+                              else "FAIL")
     required = set(lock["mandatory"])
     must(set(cases) == required, "Mandatory IAM/CP scenarios missing")
     if any(cases[x] != "PASS" for x in required):
