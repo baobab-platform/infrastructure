@@ -57,6 +57,15 @@ class ContractTest(unittest.TestCase):
         self.assertIn('return token("baobab-cms-workload",prefix,"client_credentials")',source)
         self.assertNotIn('prefix+"-baobab-cms-workload"',source)
 
+    def test_iam_readiness_requires_real_issuer(self):
+        # Management health is optional; the fallback must still contact the
+        # genuine issuer's OIDC metadata and verify its canonical issuer.
+        source=(BASE/"probe.py").read_text()
+        self.assertIn('"/.well-known/openid-configuration"',source)
+        self.assertIn('document.get("issuer") == ISSUER',source)
+        self.assertIn('status == 200',source)
+        self.assertIn('verified-oidc-discovery',source)
+
     def test_admin_master_probe_checks_real_token_endpoint(self):
         source=(BASE/"probe.py").read_text()
         self.assertIn("def verify_master_administrator():",source)
