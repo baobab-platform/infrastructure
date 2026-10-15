@@ -74,6 +74,13 @@ class ContractTest(unittest.TestCase):
         self.assertIn('stage = "KCADM_SESSION_UNWRITABLE"',source)
         self.assertIn('"IAM bootstrap class:", "INT-02 fixture class:"',source)
 
+    def test_fixture_checks_keycloak_json_not_grep(self):
+        source=(BASE/"keycloak-fixture.sh").read_text()
+        self.assertIn("jq -e --arg field", source)
+        self.assertNotIn("grep -q", source.split("STAGE=admin-client-lookup")[-1])
+        self.assertIn("INT02_FIXTURE_HTTP_CLASS=%s", source)
+        self.assertIn("return 2", source)
+
     def test_fixture_failures_report_only_fixed_safe_stage(self):
         shell=(BASE/"keycloak-fixture.sh").read_text()
         runner=(BASE/"orchestrate.py").read_text()
