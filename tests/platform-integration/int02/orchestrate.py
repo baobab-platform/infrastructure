@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 BASE = Path(__file__).resolve().parent
 LOCK = BASE / "lock.json"
 COMPOSE = BASE / "compose.yaml"
@@ -282,6 +282,51 @@ def seed_tenants(p, directory, envfile):
         compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v",
             "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
             "-c", statement, capture=True, timeout=35)
+    # A capability binding is NOT its own grant. One ACTIVE scoped grant is
+    # intentionally given to A only, so sibling B receives a real CP denial.
+    # This synthetic provider is a resolution fixture, not a published or
+    # executable Baobab Pulse implementation and never satisfies INT-08.
+    statement = f"""
+    WITH c AS (
+      INSERT INTO capability.capability(code,name,status,maturity)
+      VALUES ('intelligence.evidence.search','INT-02 resolver fixture','ACTIVE','SUPPORTED')
+      RETURNING capability_id
+    ), e AS (
+      INSERT INTO topology.engine(code,name)
+      VALUES ('baobab-pulse','INT-02 synthetic pulse provider')
+      RETURNING engine_id
+    ), i AS (
+      INSERT INTO topology.engine_instance(engine_id,region,environment,status)
+      SELECT engine_id,'af-south-1','integration','ACTIVE' FROM e
+      RETURNING engine_instance_id
+    ), p AS (
+      INSERT INTO capability.capability_provider
+      (provider_key,name,provider_type,engine_id,status,
+       service_reference,invocation_protocol)
+      SELECT 'int02.synthetic-pulse','INT-02 provider-resolution only',
+             'BAOBAB_ENGINE',engine_id,'ACTIVE',
+             'service://baobab-pulse/evidence','http' FROM e
+      RETURNING provider_id
+    ), s AS (
+      INSERT INTO capability.capability_scope(tenant_id)
+      VALUES ('{tenant_a}') RETURNING scope_id
+    ), b AS (
+      INSERT INTO capability.capability_binding
+      (capability_id,engine_instance_id,scope_id,
+       binding_mode,status,contract_version,effective_from,provider_id)
+      SELECT c.capability_id,i.engine_instance_id,s.scope_id,
+             'PRIMARY','ACTIVE','1',now()-interval '1 hour',p.provider_id
+      FROM c,i,s,p RETURNING id
+    )
+    INSERT INTO capability.capability_grant
+      (tenant_id,capability_id,scope_id,source,status,effective_from)
+    SELECT '{tenant_a}',c.capability_id,s.scope_id,
+           'PLATFORM_BASELINE','ACTIVE',now()-interval '1 hour'
+    FROM c,s;
+    """
+    compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v",
+            "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
+            "-c", statement, capture=True, timeout=30)
     private(directory / "fixtures.json",json.dumps({
         "tenant":tenant_a,"other_tenant":tenant_b,"organisation":org_a})+"\n")
 

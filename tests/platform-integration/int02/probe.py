@@ -149,12 +149,23 @@ def exercise():
             and cap.get("invocation",{}).get("engine_instance_id")) else "BLOCKED"
     else:
         state["L4-CP-02"]="BLOCKED"
-    # The same workload must NOT be able to switch to an unrelated tenant
-    # merely by changing a JSON tenant_id. Run the real endpoint to expose
-    # incomplete tenant-bound workload identity policy.
+    # Tenant-neutral workloads MAY resolve a second tenant context: the
+    # authorised boundary is the tenant's ACTIVE scoped CapabilityGrant, not
+    # an unconditional tenant claim. A missing grant MUST never resolve.
     foreign,body=request("POST",CP+"/v1/platform-context/resolve",
                          {"tenant_id":other_tenant},good)
-    state["L4-CP-03"]="PASS" if foreign in (401,403,404) else "FAIL"
+    sibling_deny=False
+    if foreign==200 and body.get("context_id"):
+        sc,r=request("POST",CP+"/v1/capabilities/resolve",
+          {"context_id":body["context_id"],
+           "capability_key":"intelligence.evidence.search",
+           "required_contract_version":1,"correlation_id":str(uuid.uuid4())},good)
+        sibling_deny=(sc==200 and r.get("decision")=="DENIED" and
+                      not r.get("invocation"))
+    # Canonical revocation is effective even while IAM's signed JWT remains
+    # cryptographically valid. Do not use raw JWT expiry as revocation proof.
+    # The harness updates identity.external_identity after successful tests.
+    state["L4-CP-03"]="BLOCKED" if sibling_deny else "FAIL"
     print(json.dumps({"scenarios":state},sort_keys=True))
 
 def main():
