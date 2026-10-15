@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "adr": "ADR-SHARED-036",
+  "ea_plan": "EA-v2.2",
+  "harness": "L4-00",
+  "classification": "REAL_COMPONENT_SYNTHETIC_DATA",
+  "provenance": {
+    "shared": "4030b2744b5567b4ce8136b431d206334cc7b9e5",
+    "infrastructure": "a7e5b842b87060695fa7ac47b0d2106e0a0a2331",
+    "baobab-iam": "5dae8c44e943fc0106c1d4a8867a1c8a999a2234",
+    "baobab-cp": "8c129a16912cb7a2d90b0ccfbaab420aafcdb47b",
+    "nabhold": "09425a818b8a7f032c146088c2f58d64a8e86147"
+  },
+  "foundation_images": {
+    "postgres": {
+      "tag": "postgres:17.11-alpine3.24",
+      "digest": "PENDING_VERIFIED_DIGEST"
+    },
+    "rabbitmq": {
+      "tag": "rabbitmq:4.3.5-management-alpine",
+      "digest": "PENDING_VERIFIED_DIGEST"
+    },
+    "redis": {
+      "tag": "redis:7.4.11-alpine",
+      "digest": "PENDING_VERIFIED_DIGEST"
+    }
+  },
+  "profiles": {
+    "foundation": {
+      "services": [
+        "postgres",
+        "rabbitmq",
+        "redis"
+      ],
+      "mandatory": [
+        "L4-MAN-01",
+        "L4-MAN-02",
+        "L4-MAN-03",
+        "L4-MAN-04"
+      ],
+      "min_memory_gib": 4,
+      "min_cpus": 2
+    }
+  },
+  "simulators": [],
+  "contains_real_legal_actors": false,
+  "contains_production_credentials": false
+}
