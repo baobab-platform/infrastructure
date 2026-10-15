@@ -57,6 +57,23 @@ class ContractTest(unittest.TestCase):
         self.assertIn('return token("baobab-cms-workload",prefix,"client_credentials")',source)
         self.assertNotIn('prefix+"-baobab-cms-workload"',source)
 
+    def test_local_admin_transport_does_not_rewrite_public_issuer(self):
+        # The product kcadm CLI lives in the Keycloak container. It must
+        # use loopback for its own administration, while the independent
+        # client probe continues to validate the advertised OIDC issuer.
+        compose=(BASE/"compose.yaml").read_text()
+        self.assertIn("KC_URL: http://localhost:8080",compose)
+        self.assertIn("L4_ISSUER: http://keycloak:8080/realms/baobab",compose)
+        self.assertIn("ADMIN_OIDC_ISSUER: http://keycloak:8080/realms/baobab",compose)
+
+    def test_bootstrap_failure_classification_is_allowlisted(self):
+        # Raw stderr can contain credentials; CI may receive only fixed
+        # stage codes and an audited progress label.
+        source=(BASE/"orchestrate.py").read_text()
+        self.assertIn('stage = "ADMIN_LOGIN_UNAVAILABLE"',source)
+        self.assertIn('stage = "KCADM_SESSION_UNWRITABLE"',source)
+        self.assertIn('"IAM bootstrap class:" in str(cause)',source)
+
     def test_iam_readiness_requires_real_issuer(self):
         # Management health is optional; the fallback must still contact the
         # genuine issuer's OIDC metadata and verify its canonical issuer.
