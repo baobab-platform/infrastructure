@@ -32,6 +32,25 @@ exists() {
     'any(.[]; .[$field] == $wanted)' <<< "$response" >/dev/null
 }
 
+# Keep client-provisioning error responses private; emit a fixed HTTP
+# classification for diagnostics only. No server response or client secret is
+# sent to the workflow log.
+create_client() {
+  local file="$1" response="" code=OTHER
+  if response=$("$KCADM" create clients -r baobab -f "$file" --config "$CONFIG" 2>&1); then
+    return 0
+  fi
+  case "$response" in
+    *"400 Bad Request"*) code=HTTP_400 ;;
+    *"401 Unauthorized"*) code=HTTP_401 ;;
+    *"403 Forbidden"*) code=HTTP_403 ;;
+    *"409 Conflict"*) code=HTTP_409 ;;
+    *"500 Internal Server Error"*) code=HTTP_500 ;;
+  esac
+  printf 'INT02_FIXTURE_HTTP_CLASS=%s\n' "$code"
+  return 1
+}
+
 STAGE=admin-client-lookup
 if exists clients clientId=l4-int02-admin clientId l4-int02-admin; then
   :
@@ -39,7 +58,7 @@ else
   code=$?
   [ "$code" -eq 1 ] || exit "$code"
   STAGE=admin-client-create
-  "$KCADM" create clients -r baobab -f /run/l4/test-client.json --config "$CONFIG" >/dev/null
+  create_client /run/l4/test-client.json
 fi
 STAGE=audience-client-lookup
 if exists clients clientId=l4-int02-other-audience clientId l4-int02-other-audience; then
@@ -48,7 +67,7 @@ else
   code=$?
   [ "$code" -eq 1 ] || exit "$code"
   STAGE=audience-client-create
-  "$KCADM" create clients -r baobab -f /run/l4/other-client.json --config "$CONFIG" >/dev/null
+  create_client /run/l4/other-client.json
 fi
 STAGE=human-user-lookup
 if exists users username=l4-int02-human username l4-int02-human; then
