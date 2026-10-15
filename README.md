@@ -5,6 +5,13 @@ platform. It owns declarative infrastructure and deployment automation; it does
 not own tenant-management business logic or canonical cross-repository
 contracts.
 
+## Accepted ADR-SHARED-036 / EA v2.2 integration
+
+The Infrastructure-owned INT-01 [Codespaces/Actions L4 runbook](tests/platform-integration/README.md)
+defines an isolated Compose foundation, immutable image/source lock, no-public-port
+service topology and identical Python lifecycle commands for Codespaces and CI.
+No source-only run qualifies IAM/CP integration, protected staging or production.
+
 ## Foundation status
 
 Foundation 0 established the architecture and trust boundaries. Foundation 1

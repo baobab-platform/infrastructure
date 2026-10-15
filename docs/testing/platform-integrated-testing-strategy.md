@@ -1,6 +1,6 @@
 # Platform integrated testing strategy
 
-- **Status:** Phase A–D implemented on `main`; Phase E matrix drafted; L4 staging foundation is the next infrastructure increment
+- **Status:** Phase A–D implemented on `main`; Phase E matrix drafted; L4 nonproduction real-component foundation implements Accepted ADR-SHARED-036
 - **Owner:** Platform / infrastructure
 - **Related:** ADR-Infra-0001, ADR-Infra-0020, ADR-Infra-0021, ADR-Infra-0022
 - **Date:** 2026-10-04
@@ -19,13 +19,13 @@ contracts from `shared`, and Foundation evidence culture.
 | L1 | Contract | `shared` + consumers | PR + main |
 | L2 | Dependency integration | Engine + this repo | PR optional / nightly |
 | L3 | Platform critical path | This repo | Nightly / release / dispatch |
-| L4 | Staging | Ops + engines | Gated / manual |
+| L4 | Real-component integration with synthetic data | Infrastructure + engine owners | Codespaces/Actions, separate from protected staging |
 
 ## Design principles
 
 1. No shared databases between engines.
 2. Control plane owns context.
-3. Regulations is the PDP.
+3. Regulations provides governed assessment; CP and resource servers retain accepted authorisation and veto ownership.
 4. Local-first Compose topology.
 5. Thin new engines inherit L0–L2 from day one.
 6. Evidence over green checkmarks.
@@ -44,7 +44,8 @@ contracts from `shared`, and Foundation evidence culture.
 | C CP/IAM L2 | Present in engines; topology documented |
 | D L3 harness | Implemented on `main`; v0.3.0 includes L3-08..10 |
 | E Governance | [required-checks-matrix.md](./required-checks-matrix.md) |
-| L4 Staging | MP2-C production-shaped AWS staging foundation next |
+| L4 nonproduction | INT-01 Codespaces/Actions foundation; IAM/CP and Nabhold/CMS in INT-02/03 |
+| Protected staging | Separately governed release/operations acceptance |
 
 ## References
 
@@ -52,3 +53,7 @@ contracts from `shared`, and Foundation evidence culture.
 - [Required checks matrix](./required-checks-matrix.md)
 - [Platform test topology](./platform-test-topology.md)
 - [Local platform runbook](../runbooks/local-platform.md)
+
+## ADR-SHARED-036 terminology update
+
+Earlier L4=staging language is superseded by Accepted ADR-SHARED-036: L4 is real-component nonproduction cross-repository testing; PROTECTED_STAGING remains a distinct gate. See tests/platform-integration/README.md and Accepted EA v2.2. Missing mandatory scenarios cannot pass.

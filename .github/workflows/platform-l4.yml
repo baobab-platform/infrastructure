@@ -1,0 +1,70 @@
+name: Platform L4 INT-01 Codespaces/Actions parity
+on:
+  pull_request:
+    paths: [".devcontainer/platform-integration/**", "tests/platform-integration/**", ".github/workflows/platform-l4.yml"]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: l4-int01-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-preflight:
+    name: L4 source and negative contract checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Static fail-closed preflight
+        run: python3 tests/platform-integration/l4.py preflight --static
+      - name: Negative security contracts
+        run: python3 -m unittest discover -s tests/platform-integration -p "test_l4.py" -v
+  image-lock-discovery:
+    name: Immutable OCI digest discovery for reviewer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Resolve approved tags to digest-bearing refs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/images
+          import json
+          from pathlib import Path
+          m=json.loads(Path("tests/platform-integration/manifest.lock.json").read_text())
+          for k,v in sorted(m["foundation_images"].items()):
+              print(k, v["tag"])
+          PY
+          while read -r name tag; do
+            docker pull "$tag" >/dev/null
+            ref="$(docker image inspect --format '{{index .RepoDigests 0}}' "$tag")"
+            echo "L4_IMAGE_PIN $name $ref"
+          done < /tmp/images
+  real-foundation:
+    name: L4-00 real dependency runtime and cleanup
+    needs: [source-preflight]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Preflight immutable lock and Docker
+        run: python3 tests/platform-integration/l4.py preflight foundation
+      - name: Start real isolated services
+        run: python3 tests/platform-integration/l4.py up foundation
+      - name: Execute mandatory real process tests
+        run: python3 tests/platform-integration/l4.py test foundation
+      - name: Verify evidence produced
+        run: python3 tests/platform-integration/l4.py evidence > /dev/null
+      - name: Upload scrubbed synthetic receipt
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+        with:
+          name: l4-int01-evidence
+          path: tests/platform-integration/evidence/*.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Destroy transient containers, networks and volumes
+        if: always()
+        run: python3 tests/platform-integration/l4.py down foundation
