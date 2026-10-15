@@ -22,9 +22,11 @@ The down command deletes the project, volumes and generated credentials;
 run it in an unconditional CI cleanup step.
 
 Preflight --static is an offline SOURCE-ONLY check and cannot satisfy L4.
-Before starting runtime, replace PENDING_VERIFIED_DIGEST with independently
-verified OCI image digests in the version-locked manifest. The runtime
-preflight deliberately rejects unresolved or mutable container references.
+The manifest now records verified OCI digests for the three container images,
+obtained from GitHub Actions immutable reference discovery on 15 October 2026.
+Changing a tag requires an explicit reviewed digest re-lock. Runtime preflight
+refuses unresolved or mutable images; source SHA pins remain independently
+governed dependency baselines, not a claim that their services run in L4-00.
 
 Minimum resources: Docker with Compose v2, Python 3.12+, >=2 CPU and >=4 GiB
 RAM. Do not supply AWS production secrets, live IAM principals, CIPC/SARS
