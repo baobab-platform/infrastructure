@@ -223,9 +223,17 @@ def up(lock):
     compose(p, envfile, "build", "cp-migrate", timeout=1800)
     print("INT-02 startup stage: disposable PostgreSQL databases and Keycloak",flush=True)
     print("INT-02 startup: Docker Compose private DB/IAM/probe services",flush=True)
-    compose(p, envfile, "up", "-d", "--wait", "--wait-timeout", "300",
-            "iam-db", "cp-db", "keycloak", "probe", timeout=450)
-    print("INT-02 startup: verified real Keycloak management readiness",flush=True)
+    # The image-level Keycloak healthcheck was incorrectly implemented in
+    # the IAM Dockerfile, and certain Compose versions make `--wait` fail
+    # despite both databases healthy and Keycloak actually running. Start
+    # processes, then rely on explicit real application-level checks below.
+    compose(p, envfile, "up", "-d", "iam-db", "cp-db", "keycloak", "probe",
+            timeout=180)
+    # The database must be reachable from its own process, not just "up".
+    for service, user in (("iam-db", "baobab_iam"), ("cp-db", "controlplane")):
+        compose(p, envfile, "exec", "-T", service,
+                "pg_isready", "-U", user, timeout=25)
+    print("INT-02 startup: probing actual IAM management readiness",flush=True)
     # Probe the real Keycloak 26 management listener from inside the private
     # Compose network. No health commands or HTTP clients are needed in the
     # minimal Keycloak runtime image.
