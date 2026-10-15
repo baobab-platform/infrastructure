@@ -1,0 +1,111 @@
+# INT-02 / real issuer + real Control Plane / completely private ephemeral network.
+# IAM and CP images are built FROM exact pinned repository commits in lock.json.
+# Never expose issuer/admin, database, or Control Plane host ports.
+name: ${L4_PROJECT:?explicit disposable project required}
+services:
+  iam-db:
+    image: ${L4_POSTGRES_IMAGE:?locked PostgreSQL required}
+    environment:
+      POSTGRES_DB: baobab_iam
+      POSTGRES_USER: baobab_iam
+      POSTGRES_PASSWORD: ${L4_IAM_DB_PASSWORD:?required}
+    volumes: [iamdata:/var/lib/postgresql/data]
+    networks: [lab]
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U baobab_iam -d baobab_iam"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+  cp-db:
+    image: ${L4_POSTGRES_IMAGE:?locked PostgreSQL required}
+    environment:
+      POSTGRES_DB: controlplane
+      POSTGRES_USER: controlplane
+      POSTGRES_PASSWORD: ${L4_CP_DB_PASSWORD:?required}
+    volumes: [cpdata:/var/lib/postgresql/data]
+    networks: [lab]
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U controlplane -d controlplane"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+  keycloak:
+    build:
+      context: ${L4_IAM_SOURCE:?pinned IAM checkout required}
+      dockerfile: Dockerfile
+    image: ${L4_IAM_IMAGE:?project-scoped built image}
+    command: ["start","--optimized","--http-enabled=true","--hostname=http://keycloak:8080","--hostname-strict=false"]
+    environment:
+      BAOBAB_ENVIRONMENT: ci
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://iam-db:5432/baobab_iam
+      KC_DB_USERNAME: baobab_iam
+      KC_DB_PASSWORD: ${L4_IAM_DB_PASSWORD:?required}
+      KEYCLOAK_ADMIN: l4admin
+      KEYCLOAK_ADMIN_PASSWORD: ${L4_KC_ADMIN_PASSWORD:?required}
+      KC_BOOTSTRAP_ADMIN_USERNAME: l4admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${L4_KC_ADMIN_PASSWORD:?required}
+      BOOTSTRAP_WORKLOAD_CLIENT_SECRET: ${L4_WORKLOAD_SEED:?required}
+    networks: [lab]
+    depends_on:
+      iam-db: {condition: service_healthy}
+    volumes:
+      - "${L4_RUNTIME:?private runtime directory}:/run/l4:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/keycloak/bin/kc.sh health"]
+      interval: 10s
+      timeout: 8s
+      retries: 30
+      start_period: 40s
+  cp-migrate:
+    build:
+      context: ${L4_CP_SOURCE:?pinned CP checkout required}
+      dockerfile: ${L4_CP_DOCKERFILE:?reviewed builder required}
+    image: ${L4_CP_IMAGE:?project-scoped built image}
+    entrypoint: ["/migrate"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://controlplane:${L4_CP_DB_PASSWORD}@cp-db:5432/controlplane?sslmode=disable
+    networks: [lab]
+    depends_on:
+      cp-db: {condition: service_healthy}
+  cp:
+    image: ${L4_CP_IMAGE:?project-scoped built image}
+    restart: "no"
+    environment:
+      BAOBAB_ENVIRONMENT: integration
+      HTTP_ADDRESS: ":8080"
+      DATABASE_URL: postgres://controlplane:${L4_CP_DB_PASSWORD}@cp-db:5432/controlplane?sslmode=disable
+      PLATFORM_CONTEXT_TTL: 5m
+      ADMIN_OIDC_ISSUER: http://keycloak:8080/realms/baobab
+      WORKLOAD_OIDC_ISSUER: http://keycloak:8080/realms/baobab
+      ADMIN_OIDC_AUDIENCE: baobab-control-plane
+      WORKLOAD_OIDC_AUDIENCE: baobab-control-plane
+      ADMIN_OIDC_CLIENT_ID: baobab-control-plane-admin
+      TENANT_BOOTSTRAP_REGISTRATION: enabled
+    networks: [lab]
+    depends_on:
+      cp-migrate: {condition: service_completed_successfully}
+      keycloak: {condition: service_healthy}
+  probe:
+    image: ${L4_PYTHON_IMAGE:?pinned Python probe required}
+    command: ["sleep","infinity"]
+    environment:
+      L4_ISSUER: http://keycloak:8080/realms/baobab
+      L4_CP: http://cp:8080
+      L4_WORKLOAD_SEED: ${L4_WORKLOAD_SEED:?required}
+      L4_TEST_USER_PASSWORD: ${L4_TEST_USER_PASSWORD:?required}
+      L4_TEST_ADMIN_CLIENT_SECRET: ${L4_TEST_ADMIN_CLIENT_SECRET:?required}
+    volumes:
+      - "${L4_PROBE_SOURCE:?test code directory}:/app:ro"
+      - "${L4_RUNTIME:?private runtime directory}:/run/l4:ro"
+    working_dir: /app
+    networks: [lab]
+    depends_on:
+      cp: {condition: service_started}
+networks:
+  lab:
+    internal: true
+volumes:
+  iamdata: {}
+  cpdata: {}

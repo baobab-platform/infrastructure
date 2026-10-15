@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "profile": "iam-cp",
+  "authority": [
+    "ADR-SHARED-036",
+    "EA-v2.2"
+  ],
+  "evidence_class": "REAL_COMPONENT_SYNTHETIC_DATA",
+  "sources": {
+    "infrastructure": "09d3774fbcbcf08b190330429915a6f9393839e6",
+    "baobab-iam": "49aa42c93164050fc9421e7978d3866df9bef99c",
+    "baobab-cp": "b0385fabb0f3becce13e0408f732e49e690651a6",
+    "shared": "1d0e5c2a1374ec8a000d5bb8822a14749caf09ff"
+  },
+  "services": [
+    "keycloak",
+    "iam-db",
+    "cp",
+    "cp-db",
+    "probe"
+  ],
+  "synthetic_fixture": true,
+  "mandatory": [
+    "L4-IAM-01",
+    "L4-IAM-02",
+    "L4-CP-01",
+    "L4-CP-02",
+    "L4-CP-03"
+  ],
+  "requirements": {
+    "min_cpus": 4,
+    "min_ram_gib": 8,
+    "real_iam": true,
+    "real_cp": true,
+    "public_ports": 0
+  },
+  "runtime_images": {
+    "postgres": "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+    "python_probe": "PENDING_DIGEST_REVIEW"
+  },
+  "no_protected_credentials": true,
+  "no_production_tenant_data": true
+}
