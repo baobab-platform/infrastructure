@@ -93,7 +93,20 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
                 stage = "BEFORE_REALM_CREATION"
             else:
                 stage = "AFTER_REALM_CREATION"
+        # The fixture shell also emits only a fixed, pre-approved stage
+        # marker on failure. Do not propagate any other fixture stdout.
+        fixture_stage = ""
+        if args[-2:] == ["/bin/bash", "-se"]:
+            approved = {"admin-login", "admin-client-lookup", "admin-client-create",
+                        "audience-client-lookup", "audience-client-create",
+                        "human-user-lookup", "human-user-create",
+                        "human-password-set", "human-role-add"}
+            for line in p.stdout.splitlines():
+                marker = re.fullmatch(r"INT02_FIXTURE_FAILURE_STAGE=([a-z-]+)", line)
+                if marker and marker.group(1) in approved:
+                    fixture_stage = marker.group(1)
         raise Blocked("External command failed: " + Path(args[0]).name +
+                      (f"; INT-02 fixture class: {fixture_stage}" if fixture_stage else "") +
                       (f"; IAM bootstrap class: {stage}" if stage else "") +
                       (f"; last safe IAM bootstrap checkpoint: {checkpoint}" if checkpoint else "") +
                       " (raw output suppressed)")
@@ -147,7 +160,9 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
                   and args[2] in {"keycloak","probe","cp-db"} else "service")
         # Only forward our own allowlisted class/checkpoint strings from
         # execute(), never the underlying command output or raw credentials.
-        safe_cause = str(cause) if "IAM bootstrap class:" in str(cause) else ""
+        safe_cause = str(cause) if any(
+            marker in str(cause) for marker in
+            ("IAM bootstrap class:", "INT-02 fixture class:")) else ""
         raise Blocked(f"Compose {stage}/{target} failed; service states: "
                       + (", ".join(sorted(snapshot)) if snapshot else "unavailable")
                       + (f"; {safe_cause}" if safe_cause else "")) from cause
