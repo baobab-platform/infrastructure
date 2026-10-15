@@ -72,7 +72,7 @@ class ContractTest(unittest.TestCase):
         source=(BASE/"orchestrate.py").read_text()
         self.assertIn('stage = "ADMIN_LOGIN_UNAVAILABLE"',source)
         self.assertIn('stage = "KCADM_SESSION_UNWRITABLE"',source)
-        self.assertIn('"IAM bootstrap class:" in str(cause)',source)
+        self.assertIn('"IAM bootstrap class:", "INT-02 fixture class:"',source)
 
     def test_fixture_failures_report_only_fixed_safe_stage(self):
         shell=(BASE/"keycloak-fixture.sh").read_text()
