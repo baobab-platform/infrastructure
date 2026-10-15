@@ -14,7 +14,7 @@ STAGE=admin-login
 cleanup() {
   local rc=$?
   if [ "$rc" -ne 0 ]; then
-    printf 'INT02_FIXTURE_FAILURE_STAGE=%s\\n' "$STAGE"
+    printf 'INT02_FIXTURE_FAILURE_STAGE=%s\n' "$STAGE"
   fi
   rm -f -- "$CONFIG"
 }
