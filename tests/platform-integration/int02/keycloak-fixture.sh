@@ -17,6 +17,9 @@ cleanup() {
     printf 'INT02_FIXTURE_FAILURE_STAGE=%s\n' "$STAGE"
   fi
   rm -f -- "$CONFIG"
+  # The fixture documents are injected over Compose stdin into a private
+  # directory owned by Keycloak's non-root UID; never chmod host files.
+  if [ -n "${L4_FIXTURE_DIR:-}" ]; then rm -rf -- "$L4_FIXTURE_DIR"; fi
 }
 trap cleanup EXIT
 "$KCADM" config credentials --server http://localhost:8080 --realm master \
@@ -58,7 +61,7 @@ else
   code=$?
   [ "$code" -eq 1 ] || exit "$code"
   STAGE=admin-client-create
-  create_client /run/l4/test-client.json
+  create_client "$L4_FIXTURE_DIR/test-client.json"
 fi
 STAGE=audience-client-lookup
 if exists clients clientId=l4-int02-other-audience clientId l4-int02-other-audience; then
@@ -67,7 +70,7 @@ else
   code=$?
   [ "$code" -eq 1 ] || exit "$code"
   STAGE=audience-client-create
-  create_client /run/l4/other-client.json
+  create_client "$L4_FIXTURE_DIR/other-client.json"
 fi
 STAGE=human-user-lookup
 if exists users username=l4-int02-human username l4-int02-human; then
@@ -76,7 +79,7 @@ else
   code=$?
   [ "$code" -eq 1 ] || exit "$code"
   STAGE=human-user-create
-  "$KCADM" create users -r baobab -f /run/l4/test-user.json --config "$CONFIG" >/dev/null
+  "$KCADM" create users -r baobab -f "$L4_FIXTURE_DIR/test-user.json" --config "$CONFIG" >/dev/null
 fi
 STAGE=human-password-set
 "$KCADM" set-password -r baobab --username l4-int02-human \
