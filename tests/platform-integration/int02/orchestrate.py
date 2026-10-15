@@ -89,9 +89,34 @@ def current():
     return p, directory, envfile
 
 def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
-    return execute(["docker", "compose", "--env-file", str(envfile), "-f",
-                    str(COMPOSE), "-p", p["project"], *args], capture=capture,
-                   input_text=stdin, timeout=timeout)
+    base = ["docker", "compose", "--env-file", str(envfile), "-f",
+            str(COMPOSE), "-p", p["project"]]
+    try:
+        return execute([*base, *args], capture=capture,
+                       input_text=stdin, timeout=timeout)
+    except Blocked as cause:
+        # Docker stderr may contain connection URLs or fixture credentials;
+        # never release it into Actions. Compose ps is a structured status
+        # interface: allowlist only service, state and health, never commands,
+        # mount paths, environment or raw log messages. Keep this available
+        # even when initial startup or the issuer bootstrap fails.
+        snapshot = []
+        try:
+            raw = subprocess.run([*base, "ps", "--all", "--format", "json"],
+                                 capture_output=True, text=True, timeout=15)
+            if raw.returncode == 0:
+                rows = [json.loads(line) for line in raw.stdout.splitlines() if line.strip()]
+                for entry in rows:
+                    service = entry.get("Service", "")
+                    if service in {"iam-db", "cp-db", "keycloak", "cp-migrate", "cp", "probe"}:
+                        snapshot.append(f"{service}={entry.get('State','unknown')}/{entry.get('Health','none')}")
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            pass
+        stage = args[0] if args and args[0] in {"up", "build", "wait", "exec", "config", "down"} else "unknown"
+        target = (args[2] if len(args)>2 and args[0]=="exec" and args[1]=="-T"
+                  and args[2] in {"keycloak","probe","cp-db"} else "service")
+        raise Blocked(f"Compose {stage}/{target} failed; service states: "
+                      + (", ".join(sorted(snapshot)) if snapshot else "unavailable")) from cause
 
 def check_prerequisites(lock, static=False):
     must((BASE / "cp.Dockerfile").is_file() and (BASE / "probe.py").is_file(),
@@ -197,8 +222,10 @@ def up(lock):
     print("INT-02 build stage: Control Plane + migrator from pinned source",flush=True)
     compose(p, envfile, "build", "cp-migrate", timeout=1800)
     print("INT-02 startup stage: disposable PostgreSQL databases and Keycloak",flush=True)
+    print("INT-02 startup: Docker Compose private DB/IAM/probe services",flush=True)
     compose(p, envfile, "up", "-d", "--wait", "--wait-timeout", "300",
             "iam-db", "cp-db", "keycloak", "probe", timeout=450)
+    print("INT-02 startup: verified real Keycloak management readiness",flush=True)
     # Probe the real Keycloak 26 management listener from inside the private
     # Compose network. No health commands or HTTP clients are needed in the
     # minimal Keycloak runtime image.
