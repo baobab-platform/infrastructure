@@ -39,10 +39,13 @@ services:
       BAOBAB_ENVIRONMENT: ci
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://iam-db:5432/baobab_iam
-      # Keycloak is advertised as keycloak:8080 inside the isolated network.
-      # IAM's product bootstrap defaults to localhost:8080; use its actual
-      # configured hostname for the admin-cli token issuance and discovery.
-      KC_URL: http://keycloak:8080
+      # The product bootstrap runs INSIDE this Keycloak container. Its
+      # kcadm admin CLI should use loopback rather than Docker's service DNS
+      # and frontend/public issuer hostname. Other containers must still
+      # verify the real issuer at http://keycloak:8080/realms/baobab.
+      # Keep these separate: this is an administration transport, never
+      # an issuer override or a substitute for OIDC/CP acceptance.
+      KC_URL: http://localhost:8080
       KC_DB_USERNAME: baobab_iam
       KC_DB_PASSWORD: ${L4_IAM_DB_PASSWORD:?required}
       KEYCLOAK_ADMIN: l4admin
