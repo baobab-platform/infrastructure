@@ -167,12 +167,20 @@ def wait():
     diagnostic(step="cp_readiness", readyz=last)
     raise RuntimeError("real CP did not become ready")
 
+def claim_profile(label,claims,actor):
+    """Fixed-vocabulary facts about one real token: never its values."""
+    found=claims.get("actor_type")
+    diagnostic(step="claims_"+label, iss_match=str(claims.get("iss")==ISSUER).lower(),
+               has_sub=str(bool(claims.get("sub"))).lower(),
+               actor=found if found in ("human","workload") else ("none" if found is None else "other"))
+    return claims.get("iss")==ISSUER and bool(claims.get("sub")) and found==actor
+
 def identities():
     h,w=decode(human()),decode(workload())
-    if h.get("iss")!=ISSUER or w.get("iss")!=ISSUER:
-        raise RuntimeError("IAM issuer mismatch")
-    if h.get("actor_type")!="human" or w.get("actor_type")!="workload":
-        raise RuntimeError("real IAM actor profile mismatch")
+    # Evaluate both, so each token's profile is reported before refusing.
+    human_ok,workload_ok=claim_profile("human",h,"human"),claim_profile("workload",w,"workload")
+    if not (human_ok and workload_ok):
+        raise RuntimeError("real IAM token profile mismatch")
     print(json.dumps({"source":"keycloak-issued","issuer":ISSUER,
                       "human_sub":h["sub"],"workload_sub":w["sub"]}))
 
@@ -356,4 +364,9 @@ if __name__=="__main__":
     except Exception as exc:
         # Never print responses or token payloads in exception traces.
         print("INT-02 probe BLOCKED:",type(exc).__name__,file=sys.stderr)
+        # The exception CLASS only (a Python identifier), never its message.
+        name=type(exc).__name__
+        diagnostic(step="probe_"+(sys.argv[1].replace("-","_") if len(sys.argv)>1 and
+                                  sys.argv[1].replace("-","").isalpha() else "unknown"),
+                   exception=name if name.isidentifier() and len(name)<=40 else "other")
         raise SystemExit(2)

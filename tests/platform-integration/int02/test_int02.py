@@ -329,6 +329,19 @@ class TransportTest(unittest.TestCase):
         self.assertNotIn("/health/live",probe)
         self.assertIn('diagnostic(step="cp_readiness", readyz=last)',probe)
 
+    def test_token_profile_failures_report_only_fixed_facts(self):
+        import re
+        probe=(BASE/"probe.py").read_text()
+        self.assertIn("def claim_profile(label,claims,actor):",probe)
+        self.assertIn('has_sub=str(bool(claims.get("sub"))).lower()',probe)
+        self.assertIn('exception=name if name.isidentifier() and len(name)<=40 else "other"',probe)
+        # Every such line still fits the orchestrator's forwarding allowlist.
+        allow=re.compile(r"INT02_DIAG( [a-z_]{1,24}=[A-Za-z0-9_.-]{1,40}){1,6}")
+        for line in ("INT02_DIAG step=claims_workload iss_match=true has_sub=false actor=workload",
+                     "INT02_DIAG step=probe_identities exception=RuntimeError",
+                     "INT02_DIAG step=probe_wait_iam exception=KeyError"):
+            self.assertIsNotNone(allow.fullmatch(line),line)
+
     def test_every_tls_check_is_collected_from_the_probe(self):
         runner=(BASE/"orchestrate.py").read_text()
         self.assertIn('transport = json.loads(run_probe(p, envfile, "tls"))',runner)
