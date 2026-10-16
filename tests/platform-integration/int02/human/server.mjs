@@ -38,7 +38,18 @@ async function proof() {
       // code. It does not reuse the RP state, code or verifier under test.
       if (new URL(page.url()).origin !== origin) {
         stage = 'login_' + which + '_form';
+        // Never export page text or field values. Stable presence flags and
+        // a few fixed error markers distinguish real product pages safely.
+        const fields = {};
+        for (const [name,selector] of Object.entries({U:'#username',P:'#password',T:'#totp',O:'#otp'})) fields[name] = Math.min(9,await page.locator(selector).count());
+        failureCode = `FORM_U${fields.U}P${fields.P}T${fields.T}O${fields.O}`;
+        const text = await page.locator('body').innerText();
+        for (const [marker,code] of [['Cookie not found','COOKIE_MISSING'],['Update Account Information','PROFILE_REQUIRED'],['Invalid parameter','INVALID_PARAMETER'],['We are sorry','ISSUER_ERROR_PAGE'],['Select your organization','ORGANISATION_SELECTION']]) {
+          if (text.includes(marker)) failureCode = code;
+        }
+        stage = 'login_' + which + '_username';
         await page.locator('#username').fill('l4-int02-' + user);
+        stage = 'login_' + which + '_password';
         await page.locator('#password').fill(password);
         stage = 'login_' + which + '_submit';
         await page.locator('#kc-login').click();
@@ -147,9 +158,9 @@ const server = http.createServer(async(req,res)=>{
         latest = await exchange(settings.config, settings.keys, url, transaction);
         lastExchange = {url,transaction,handle};
         return reply(res,200,{accepted:true});
-      } catch (error) { failureClass = /^[A-Za-z]{1,40}$/.test(error.constructor?.name) ? error.constructor.name : 'Other'; failureCode = /^[A-Z_]{1,48}$/.test(error.code) ? error.code : 'OTHER'; return reply(res,401,{accepted:false}); }
+      } catch (error) { failureClass = /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : 'Other'; failureCode = /^[A-Z_]{1,48}$/.test(error.code) ? error.code : 'OTHER'; return reply(res,401,{accepted:false}); }
     }
     reply(res,404,{});
-  } catch (error) { if (failureClass === 'none') failureClass = /^[A-Za-z]{1,40}$/.test(error.constructor?.name) ? error.constructor.name : 'Other'; reply(res,500,{error:'HUMAN_PROOF_FAILED',stage,failureClass,failureCode}); }
+  } catch (error) { if (failureClass === 'none') failureClass = /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : 'Other'; reply(res,500,{error:'HUMAN_PROOF_FAILED',stage,failureClass,failureCode}); }
 });
 server.listen(8080,'0.0.0.0');

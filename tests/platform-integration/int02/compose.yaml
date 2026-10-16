@@ -47,6 +47,10 @@ services:
       # Keep these separate: this is an administration transport, never
       # an issuer override or a substitute for OIDC/CP acceptance.
       KC_URL: http://localhost:8080
+      # The private edge overwrites forwarded scheme/host headers. Keycloak
+      # must interpret its browser cookies/origin as the verified HTTPS hop;
+      # the documented upstream edge transport remains internal HTTP.
+      KC_PROXY_HEADERS: xforwarded
       # Keycloak's JDBC username does not follow POSTGRES_USER automatically.
       # Without it the optimized server attempts the wrong database role and
       # never serves its real readiness/OIDC discovery endpoints.
