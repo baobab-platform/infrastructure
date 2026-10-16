@@ -451,24 +451,39 @@ def run_probe(p, envfile, mode):
                    mode, capture=True, timeout=180)
 
 def seed_identities(p, envfile, ids):
-    # CP migrations are authoritative. This is the explicit synthetic-only
-    # fixture boundary: identity registration admin APIs are not available;
-    # never replicate this method in production or staging.
+    """Link each real Keycloak subject to a CP Principal; returns what CP held.
+
+    CP auto-provisions WORKLOAD principals on first authenticated context
+    resolution (ADR-0004 s13, ADR-0007 s46: WorkloadOnlyProvisioningPolicy),
+    so the earlier unmapped-principal probe may already have materialised the
+    workload. Respect that: reuse an ACTIVE (issuer, subject) link, never
+    duplicate it. Humans are never auto-provisioned on these routes, so the
+    human link must be created here. This is the explicit synthetic-only
+    fixture boundary; never replicate it in production or staging.
+    """
+    import uuid
+    held = {}
     for name in ("workload", "human"):
         subject = ids[name + "_sub"]
         must(re.fullmatch("[0-9a-f-]{36}", subject) is not None,
              "Keycloak principal subject invalid")
-        canonical = secrets.token_hex(16)
-        import uuid
-        identity = str(uuid.UUID(canonical))
-        stmt = ("INSERT INTO identity.principal(principal_id,actor_type,status) "
-                "VALUES ('" + identity + "','" + name + "','ACTIVE'); "
-                "INSERT INTO identity.external_identity(principal_id,issuer,subject,status) "
-                "VALUES ('" + identity + "','" + ISSUER + "','"
-                + subject + "','ACTIVE');")
-        compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate", "-v",
-                "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
-                "-c", stmt, capture=True, timeout=25)
+        identity = str(uuid.uuid4())
+        link = "issuer='" + ISSUER + "' AND subject='" + subject + "' AND status='ACTIVE'"
+        stmt = ("WITH found AS (SELECT principal_id FROM identity.external_identity WHERE " + link + "), "
+                "np AS (INSERT INTO identity.principal(principal_id,actor_type,status) "
+                "SELECT '" + identity + "','" + name + "','ACTIVE' "
+                "WHERE NOT EXISTS (SELECT 1 FROM found) RETURNING principal_id), "
+                "ne AS (INSERT INTO identity.external_identity(principal_id,issuer,subject,status) "
+                "SELECT principal_id,'" + ISSUER + "','" + subject + "','ACTIVE' FROM np RETURNING 1) "
+                "SELECT COALESCE((SELECT 'existing:' || p.actor_type FROM found f "
+                "JOIN identity.principal p USING (principal_id)), 'created');")
+        state = compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate",
+                        "-At", "-v", "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
+                        "-c", stmt, capture=True, timeout=25).strip()
+        must(state in ("created", "existing:" + name), "CP principal for " + name + " has the wrong actor type")
+        must(name == "workload" or state == "created", "CP provisioned a human principal unexpectedly")
+        held[name] = state
+    return held
 
 def seed_tenants(p, directory, envfile):
     # All objects remain explicitly SYNTHETIC and private to the disposable
@@ -580,7 +595,7 @@ def test(lock):
     # linked to a CP Principal.
     seed_tenants(p, directory, envfile)
     unmapped = json.loads(run_probe(p, envfile, "unmapped"))
-    seed_identities(p, envfile, ids)
+    held = seed_identities(p, envfile, ids)
     report = json.loads(run_probe(p, envfile, "test"))
     # An already-issued IAM token must lose CP authority when its canonical
     # (issuer,subject) link is revoked. Keycloak continues to verify that
@@ -605,6 +620,9 @@ def test(lock):
     checks = report.setdefault("checks", {})
     checks["cp01_unmapped_principal_denied"] = unmapped.get("unmapped_denied") is True
     checks["cp01_revoked_identity_denied"] = after.get("revocation_denied") is True
+    # Observed CP behaviour, recorded rather than assumed: whether CP had
+    # already provisioned the workload principal when the harness linked it.
+    checks["cp_workload_principal_auto_provisioned"] = held["workload"] == "existing:workload"
     # Verified local TLS (EA v2.2 INT-02) is observed in this run, never assumed.
     transport = json.loads(run_probe(p, envfile, "tls"))
     for name in TLS_CHECKS:

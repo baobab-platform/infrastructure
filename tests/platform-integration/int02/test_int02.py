@@ -368,6 +368,24 @@ class TransportTest(unittest.TestCase):
         self.assertIn("'row_level_security','af-south-1','active',true,'BOOTSTRAP',",runner)
         self.assertNotIn("'ONBOARDING'",runner)
 
+    def test_identity_seed_respects_cp_workload_auto_provisioning(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertIn("WHERE NOT EXISTS (SELECT 1 FROM found) RETURNING principal_id",runner)
+        self.assertIn('must(name == "workload" or state == "created"',runner)
+        self.assertIn('checks["cp_workload_principal_auto_provisioned"]',runner)
+        calls=[]
+        def fake(p,envfile,*args,**kw):
+            calls.append(args[args.index("-c")+1])
+            return "existing:workload\n" if len(calls)==1 else "created\n"
+        ids={"workload_sub":"0"*8+"-0000-0000-0000-"+"0"*12,"human_sub":"1"*8+"-1111-1111-1111-"+"1"*12}
+        with mock.patch.object(m,"compose",side_effect=fake):
+            self.assertEqual(m.seed_identities({},None,ids),
+                             {"workload":"existing:workload","human":"created"})
+        # A human principal CP provisioned on its own is a refusal, not reuse.
+        with mock.patch.object(m,"compose",return_value="existing:human\n"):
+            with self.assertRaises(m.Blocked):
+                m.seed_identities({},None,ids)
+
     def test_every_tls_check_is_collected_from_the_probe(self):
         runner=(BASE/"orchestrate.py").read_text()
         self.assertIn('transport = json.loads(run_probe(p, envfile, "tls"))',runner)

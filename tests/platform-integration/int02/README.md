@@ -53,7 +53,9 @@ Receipts record the candidate harness Git SHA as distinct from dependency pins.
 - **L4-CP-01** is PASS only with its positive and every matrix negative from the same run. The negatives are:
   - a swapped Organisation;
   - a fabricated tenant;
-  - an unmapped principal, probed before its Keycloak subject is linked;
+  - an unmapped principal: a valid workload token, before the harness links its Keycloak subject, with no tenant
+    authority. CP auto-provisions workload principals on first context resolution (ADR-0004 §13, ADR-0007 §46), so
+    the harness reuses that link rather than duplicating it, and records `cp_workload_principal_auto_provisioned`;
   - a revoked identity, using a token issued before the revocation.
 
   A denial means HTTP 401/403 only; a 404, a 5xx or a transport error is never counted.
