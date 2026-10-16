@@ -517,6 +517,23 @@ def run_probe(p, envfile, mode):
     return compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
                    mode, capture=True, timeout=180)
 
+CP_FIXTURE_STEPS = {"tenant_a", "tenant_b", "capability_binding", "identity_workload",
+                    "identity_human", "revoke_workload"}
+
+def cp_sql(p, envfile, step, statement, timeout=30):
+    """Run one synthetic-fixture statement in the disposable CP database.
+
+    On failure only the fixed step name and psql's SQLSTATE leave this
+    process, never the statement, its values or a server message.
+    """
+    must(step in CP_FIXTURE_STEPS, "Unknown CP fixture step")
+    try:
+        return compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate",
+                       "-At", "-v", "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
+                       "-c", statement, capture=True, timeout=timeout)
+    except Blocked as cause:
+        raise Blocked(f"{cause}; CP fixture step: {step}") from cause
+
 def seed_identities(p, envfile, ids):
     """Link each real Keycloak subject to a CP Principal; returns what CP held.
 
@@ -544,9 +561,7 @@ def seed_identities(p, envfile, ids):
                 "SELECT principal_id,'" + ISSUER + "','" + subject + "','ACTIVE' FROM np RETURNING 1) "
                 "SELECT COALESCE((SELECT 'existing:' || p.actor_type FROM found f "
                 "JOIN identity.principal p USING (principal_id)), 'created');")
-        state = compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate",
-                        "-At", "-v", "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
-                        "-c", stmt, capture=True, timeout=25).strip()
+        state = cp_sql(p, envfile, "identity_" + name, stmt, timeout=25).strip()
         must(state in ("created", "existing:" + name), "CP principal for " + name + " has the wrong actor type")
         must(name == "workload" or state == "created", "CP provisioned a human principal unexpectedly")
         held[name] = state
@@ -560,8 +575,8 @@ def seed_tenants(p, directory, envfile):
     import uuid
     tenant_a, tenant_b = ("tn_l4" + secrets.token_hex(8) for _ in range(2))
     org_a, org_b = (str(uuid.uuid4()) for _ in range(2))
-    for tenant, org, legal in ((tenant_a,org_a,"LE-L4-A"),
-                                (tenant_b,org_b,"LE-L4-B")):
+    for step, tenant, org, legal in (("tenant_a",tenant_a,org_a,"LE-L4-A"),
+                                      ("tenant_b",tenant_b,org_b,"LE-L4-B")):
         statement = f"""
         BEGIN;
         INSERT INTO legal_entities(legal_entity_id) VALUES ('{legal}');
@@ -598,9 +613,7 @@ def seed_tenants(p, directory, envfile):
                     now() - interval '1 hour','int02-synthetic-fixture');
         COMMIT;
         """
-        compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate", "-v",
-            "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
-            "-c", statement, capture=True, timeout=35)
+        cp_sql(p, envfile, step, statement, timeout=35)
     # A capability binding is NOT its own grant. One ACTIVE scoped grant is
     # intentionally given to A only, so sibling B receives a real CP denial.
     # This synthetic provider is a resolution fixture, not a published or
@@ -648,9 +661,7 @@ def seed_tenants(p, directory, envfile):
     )
     SELECT (SELECT count(*) FROM b) || ':' || (SELECT count(*) FROM g);
     """
-    written = compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate",
-                      "-At", "-v", "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
-                      "-c", statement, capture=True, timeout=30).strip()
+    written = cp_sql(p, envfile, "capability_binding", statement, timeout=30).strip()
     # Exactly one binding and one grant, or the canonical capability is absent.
     must(written == "1:1", "CP's synced catalogue has no ACTIVE intelligence.evidence.search")
     private(directory / "fixtures.json",json.dumps({
@@ -685,9 +696,7 @@ def test(lock):
       AND subject='""" + subject + """' AND status='ACTIVE'
       RETURNING external_identity_id;
     """)
-    result = compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate",
-                     "-At", "-v", "ON_ERROR_STOP=1", "-U", "controlplane",
-                     "-d", "controlplane", "-c", revoked, capture=True, timeout=35)
+    result = cp_sql(p, envfile, "revoke_workload", revoked, timeout=35)
     must(result.strip() != "", "Expected canonical external identity not revoked")
     after = json.loads(run_probe(p, envfile, "revoked"))
     cases = report.get("scenarios", {})

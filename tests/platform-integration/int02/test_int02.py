@@ -349,7 +349,9 @@ class TransportTest(unittest.TestCase):
 
     def test_cp_sql_failures_report_only_the_sqlstate(self):
         runner=(BASE/"orchestrate.py").read_text()
-        self.assertEqual(runner.count('"psql", "-X", "-v", "VERBOSITY=sqlstate",'),4)
+        # Every fixture statement goes through one labelled helper.
+        self.assertEqual(runner.count('"psql", "-X", "-v", "VERBOSITY=sqlstate",'),1)
+        self.assertEqual(runner.count('"cp-db", "psql"'),1)
         self.assertNotIn('"psql", "-X", "-v", "ON_ERROR_STOP',runner)
         failed=mock.Mock(returncode=1,stdout="",stderr="ERROR:  23502\n")
         with mock.patch.object(m.subprocess,"run",return_value=failed):
@@ -362,6 +364,16 @@ class TransportTest(unittest.TestCase):
                 m.execute(["docker","compose","exec","-T","cp-db","psql","-c","SELECT 1"])
         self.assertNotIn("null value",str(caught.exception))
         self.assertNotIn("CP SQL state",str(caught.exception))
+
+    def test_cp_fixture_failures_name_only_a_fixed_step(self):
+        failed=m.Blocked("Compose exec/cp-db failed; CP SQL state: 23505")
+        with mock.patch.object(m,"compose",side_effect=failed):
+            with self.assertRaises(m.Blocked) as caught:
+                m.cp_sql({},None,"tenant_b","INSERT INTO secret_values VALUES ('x')")
+        self.assertIn("CP fixture step: tenant_b",str(caught.exception))
+        self.assertNotIn("secret_values",str(caught.exception))
+        with self.assertRaises(m.Blocked):
+            m.cp_sql({},None,"anything else","SELECT 1")
 
     def test_tenant_fixtures_are_bootstrap_registered_never_onboarding(self):
         runner=(BASE/"orchestrate.py").read_text()
