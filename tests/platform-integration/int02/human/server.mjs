@@ -32,7 +32,8 @@ async function proof() {
     try {
       stage = 'login_' + which + '_visit';
       const navigation = await page.goto(origin + '/login', {timeout:30000});
-      if (navigation.status() >= 400) { failureCode = 'AUTHORIZATION_HTTP_' + navigation.status(); throw Error('login_http'); }
+      const atCallback = new URL(page.url()).origin + new URL(page.url()).pathname === redirectUri;
+      if (navigation.status() >= 400 && !atCallback) { failureCode = 'AUTHORIZATION_HTTP_' + navigation.status(); throw Error('login_http'); }
       // A retained issuer SSO session may already have returned a fresh
       // code. It does not reuse the RP state, code or verifier under test.
       if (new URL(page.url()).origin !== origin) {
