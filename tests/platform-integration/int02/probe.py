@@ -26,11 +26,11 @@ RUNTIME=Path("/run/l4")
 TLS=ssl.create_default_context(cafile=os.environ["L4_CA_FILE"])
 TLS.minimum_version=ssl.TLSVersion.TLSv1_3
 
-def request(method,url,body=None,token=None,context=None):
+def request(method,url,body=None,token=None,context=None,headers=None):
     data = (urllib.parse.urlencode(body).encode() if body is not None and
             url.endswith(("/token", "/token/introspect")) else
             json.dumps(body).encode() if body is not None else None)
-    hdr={"Accept":"application/json"}
+    hdr={"Accept":"application/json",**(headers or {})}
     if data is not None:
         hdr["Content-Type"]=("application/x-www-form-urlencoded"
                              if url.endswith(("/token", "/token/introspect")) else "application/json")
@@ -76,10 +76,10 @@ def workload():
     # baobab-cms-workload receives the literal BOOTSTRAP seed.
     return token("baobab-cms-workload",prefix,"client_credentials")
 
-def human():
+def human(user="human"):
     # Access token obtained ONLY by the real browser/code/S256 callback. No
     # human password grant or locally signed token can substitute for it.
-    status, reply = request("GET", "https://human.int02.test/token",
+    status, reply = request("GET", "https://human.int02.test/token?user="+user,
                             token=os.environ["L4_TEST_ADMIN_CLIENT_SECRET"])
     if status != 200 or not reply.get("access_token"):
         raise RuntimeError("real human callback token unavailable")
@@ -108,7 +108,7 @@ def human_proof():
         body = json.loads(exc.read(16384))
         stage = body.get("stage", "unknown")
         diagnostic(step="human_proof", stage=stage if __import__("re").fullmatch(
-            r"(?:startup|browser_launch|discovery|callback_exchange|login_(?:normal|state|nonce|pkce)(?:_(?:visit|form|submit|result))?)",stage)
+            r"(?:startup|browser_launch|discovery|callback_exchange|login_(?:normal|state|nonce|pkce)(?:_(?:visit|form|submit|result|mfa))?)",stage)
             else "unknown", status=exc.code)
         diagnostic(step="human_protocol", failure_class=body.get("failureClass") if
             __import__("re").fullmatch(r"[A-Za-z]{1,40}", str(body.get("failureClass"))) else "Other",
@@ -217,12 +217,13 @@ def claim_profile(label,claims,actor):
 
 def identities():
     h,w=decode(human()),decode(workload())
+    isolation = {label+"_sub":decode(human(label))["sub"] for label in ("parent","subsidiary","sibling","external")}
     # Evaluate both, so each token's profile is reported before refusing.
     human_ok,workload_ok=claim_profile("human",h,"human"),claim_profile("workload",w,"workload")
     if not (human_ok and workload_ok):
         raise RuntimeError("real IAM token profile mismatch")
     print(json.dumps({"source":"keycloak-issued","issuer":ISSUER,
-                      "human_sub":h["sub"],"workload_sub":w["sub"]}))
+                      "human_sub":h["sub"],"workload_sub":w["sub"],**isolation}))
 
 DENIED=(401,403)
 
@@ -565,6 +566,36 @@ def exercise():
     state["L4-CP-03"]="BLOCKED" if sibling_deny else "FAIL"
     print(json.dumps({"scenarios":state,"checks":checks,"observations":observations},sort_keys=True))
 
+def isolation_proof():
+    """Read actual CP directory/overview records with four different humans.
+
+    A 404 counts only at the exact overview route after that same principal's
+    own read succeeded and CP returned its registered non-disclosing reason.
+    Transport, routing, identity and 5xx failures are never policy evidence.
+    """
+    fixtures=json.loads((RUNTIME/"fixtures.json").read_text())["isolation"]
+    checks={}
+    for label,target in fixtures.items():
+        bearer=human(label)
+        status,own=request("GET",CP+"/v1/organisations/"+target["organisation"]+"/overview",token=bearer)
+        # The authoritative response nests the profile in organisation.
+        own_id=own.get("organisation_id")
+        checks["cp03_"+label+"_own_record"]=status==200 and own_id==target["organisation"]
+        ds,directory=request("GET",CP+"/v1/organisations/directory",token=bearer)
+        checks["cp03_"+label+"_directory_exact"]=ds==200 and [row.get("organisation_id") for row in directory.get("items",[])]==[target["organisation"]]
+        denials=[];spoofs=[]
+        for neighbour,foreign in fixtures.items():
+            if neighbour==label: continue
+            url=CP+"/v1/organisations/"+foreign["organisation"]+"/overview"
+            for outcomes,extra in ((denials,{}),(spoofs,{"X-Tenant-ID":foreign["tenant"]})):
+                code,body=request("GET",url,token=bearer,headers=extra)
+                outcomes.append(code==404 and body.get("code")=="ORGANISATION_NOT_FOUND" and
+                    foreign["organisation"] not in json.dumps(body) and not body.get("organisation"))
+        checks["cp03_"+label+"_neighbours_denied"]=all(denials)
+        checks["cp03_"+label+"_tenant_spoof_denied"]=all(spoofs)
+    print(json.dumps({"checks":checks},sort_keys=True))
+
+
 def tls():
     """Observe verified TLS on both edge names, and refusal without the CA."""
     result={"tls_iam_verified":False,"tls_cp_verified":False,"tls_untrusted_refused":False}
@@ -597,7 +628,9 @@ def tls():
 
 def main():
     name=sys.argv[1] if len(sys.argv)>1 else ""
-    if name=="human-proof":
+    if name=="isolation-proof":
+        isolation_proof()
+    elif name=="human-proof":
         human_proof()
     elif name=="wait":
         wait()

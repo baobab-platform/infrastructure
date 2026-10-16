@@ -214,3 +214,47 @@ Status: SOURCE CANDIDATE, awaiting the real final-head run. The other blocked
 scenarios retain their own mandatory exits. Dependencies are npm-integrity
 locked; browser revision comes from pinned Playwright. The Node base digest
 was resolved from Docker Hub's OCI manifest, not inferred from a mutable tag.
+
+## Governed PRIMARY and four-principal isolation candidate
+
+The missing-PRIMARY fixture is now a governed (`primary_organisation_enforced`)
+tenant with a real mapping that expires naturally after a successful commit.
+It does not disable a constraint or use a legacy BOOTSTRAP migration exception
+as proof of an ordinary operational tenant failure. The expected CP repair is
+tracked in baobab-cp #407; only a merged, exact source pin can establish it.
+
+Four independently authenticated humans receive separate exact, time-bounded
+`organisation.view` grants for parent, subsidiary, sibling and external
+Organisations. Real synthetic OWNS relationships and a shared PlatformAccount
+are present. Each identity must read its own actual overview, enumerate only
+its authorised directory row, and be refused every neighbour overview both
+normally and with a self-asserted tenant header. The external fixture has no
+DigitalEstate. No role, group or account becomes permission.
+
+Overview's documented non-disclosing `404 ORGANISATION_NOT_FOUND` counts only
+after that same principal's own overview succeeds. An unrelated 404, 401,
+transport failure or 5xx does not satisfy these record-level negatives. Every
+one of the 16 independent checks is mandatory before promoting L4-CP-03.
+
+These changes are SOURCE CANDIDATES until exercised against real pinned
+processes. Synthetic relationship verification and grants are fixture facts,
+not human legal verification, production certification or real access grants.
+
+### Preserve the real browser policy
+
+The fixture's `cp:platform-admin` role composites `iam:mfa-required`. The browser
+therefore completes the actual realm's TOTP enrolment/challenge. Its disposable
+authenticator secret is read from Keycloak's enrolment form, held only in
+memory, and destroyed with the service. RFC 6238 SHA1 vectors independently
+verify the test authenticator. MFA is never disabled or removed from the role.
+The code-reuse negative uses a separate synthetic human because an issuer may
+revoke that user's session on replay; positive CP/isolation tokens are not
+silently tainted by that security response. The issuer's SSO cookies are reused
+only for fresh authorization attempts; RP state, nonce, verifier and code are
+new each time. The known missing Baobab theme source defect is repaired in
+IAM #117 using upstream theme inheritance, not a test-only theme override.
+
+The real CP now loads `WORKLOAD_REGISTRY_FILE` from the exact materialised
+Shared commit. Its nonproduction missing-registry fallback is not acceptable
+L4 workload lifecycle evidence. Registry ceilings/status and JWT verification
+are separate checks; neither is bypassed by disposable fixture configuration.

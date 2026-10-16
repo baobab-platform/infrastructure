@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHmac } from 'node:crypto';
 import * as oidc from 'openid-client';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
@@ -51,4 +51,15 @@ export async function exchange(config, keys, url, transaction) {
   await verifyIdToken(tokens.id_token, keys);
   if (!tokens.access_token || tokens.token_type?.toLowerCase() !== 'bearer') throw Error('token');
   return tokens;
+}
+
+// RFC 6238 for the disposable authenticator only. The realm's committed
+// policy is HmacSHA1 / six digits / 30 seconds. The secret is obtained from
+// the REAL Keycloak enrolment form and never persisted or published.
+export function totp(secret, seconds = Math.floor(Date.now()/1000), digits = 6) {
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(seconds/30)));
+  const digest = createHmac('sha1', secret).update(counter).digest();
+  const offset = digest[digest.length-1] & 15;
+  return ((digest.readUInt32BE(offset) & 0x7fffffff) % (10 ** digits)).toString().padStart(digits,'0');
 }

@@ -98,6 +98,9 @@ services:
       SSL_CERT_FILE: /run/l4-tls/ca.pem
       ADMIN_OIDC_AUDIENCE: baobab-control-plane
       WORKLOAD_OIDC_AUDIENCE: baobab-control-plane
+      # No nonproduction registry bypass: lifecycle/registered ceilings are
+      # evaluated against the exact materialised Shared source pin.
+      WORKLOAD_REGISTRY_FILE: /run/l4-workload-registry.yaml
       ADMIN_OIDC_CLIENT_ID: baobab-control-plane-admin
       TENANT_BOOTSTRAP_REGISTRATION: enabled
     networks: [lab]
@@ -107,6 +110,7 @@ services:
       edge: {condition: service_started}
     volumes:
       - "${L4_TLS:?per-run TLS material}:/run/l4-tls:ro"
+      - "${L4_WORKLOAD_REGISTRY:?pinned Shared registry required}:/run/l4-workload-registry.yaml:ro"
   edge:
     image: ${L4_EDGE_IMAGE:?digest-pinned TLS edge required}
     restart: "no"

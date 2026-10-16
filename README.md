@@ -111,3 +111,12 @@ not the `full` profile this repo carried before. The SHA-pinned
 `foundation` workflow validates the development contract and reproducibility,
 then scans dependencies, configuration, secrets, and applicable containers.
 Protect `main` with pull requests, CODEOWNER review, and required CI checks.
+
+### INT-02 closure candidate — 16 October 2026
+
+[The closure register](docs/testing/int02-closure-2026-10-16.md) tracks the
+real browser/code/S256/MFA ceremony, governed PRIMARY runtime guard,
+four-principal isolation and exact workload-registry enforcement. The IAM
+source pin may name the exact #117 candidate during qualification; no merge
+or protected acceptance follows from that pin. Provider qualification remains
+independently mandatory and the complete profile stays blocked until proven.

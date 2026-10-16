@@ -412,9 +412,10 @@ class TransportTest(unittest.TestCase):
             calls.append(args[args.index("-c")+1])
             return "existing:workload\n" if len(calls)==1 else "created\n"
         ids={"workload_sub":"0"*8+"-0000-0000-0000-"+"0"*12,"human_sub":"1"*8+"-1111-1111-1111-"+"1"*12}
+        ids.update({label+"_sub":"2"*8+"-2222-2222-2222-"+"2"*12 for label in ("parent","subsidiary","sibling","external")})
         with mock.patch.object(m,"compose",side_effect=fake):
             self.assertEqual(m.seed_identities({},None,ids),
-                             {"workload":"existing:workload","human":"created"})
+                             {"workload":"existing:workload",**{label:"created" for label in ("human","parent","subsidiary","sibling","external")}})
         # A human principal CP provisioned on its own is a refusal, not reuse.
         with mock.patch.object(m,"compose",return_value="existing:human\n"):
             with self.assertRaises(m.Blocked):
@@ -866,6 +867,27 @@ class HumanProofTest(unittest.TestCase):
         report = {"scenarios":{"L4-IAM-01":"BLOCKED"}}
         m.apply_human_proof(report,{"checks":{name:"true" for name in m.IAM01_REQUIRED}})
         self.assertEqual(report["scenarios"]["L4-IAM-01"],"FAIL")
+
+
+class WorkloadRegistryRuntimeTest(unittest.TestCase):
+    def test_real_cp_cannot_use_nonproduction_registry_fallback(self):
+        compose=(BASE/"compose.yaml").read_text()
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertIn("WORKLOAD_REGISTRY_FILE: /run/l4-workload-registry.yaml",compose)
+        self.assertIn('${L4_WORKLOAD_REGISTRY:?pinned Shared registry required}',compose)
+        self.assertIn('for name in ("baobab-iam", "baobab-cp", "shared"):',runner)
+        self.assertIn('host_path(directory / "shared/contracts/identity/v1/workload-registry.yaml")',runner)
+
+
+class IsolationProofTest(unittest.TestCase):
+    def test_every_principal_positive_and_negative_is_required(self):
+        for missing in m.ISOLATION_REQUIRED:
+            report={"scenarios":{"L4-CP-03":"BLOCKED"}}
+            m.apply_isolation_proof(report,{"checks":{n:True for n in m.ISOLATION_REQUIRED if n!=missing}})
+            self.assertEqual(report["scenarios"]["L4-CP-03"],"FAIL",missing)
+        report={"scenarios":{"L4-CP-03":"BLOCKED"}}
+        m.apply_isolation_proof(report,{"checks":{n:True for n in m.ISOLATION_REQUIRED}})
+        self.assertEqual(report["scenarios"]["L4-CP-03"],"PASS")
 
 
 if __name__ == "__main__":

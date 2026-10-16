@@ -8,9 +8,9 @@
   "evidence_class": "REAL_COMPONENT_SYNTHETIC_DATA",
   "sources": {
     "infrastructure": "09d3774fbcbcf08b190330429915a6f9393839e6",
-    "baobab-iam": "49aa42c93164050fc9421e7978d3866df9bef99c",
-    "baobab-cp": "b0385fabb0f3becce13e0408f732e49e690651a6",
-    "shared": "1d0e5c2a1374ec8a000d5bb8822a14749caf09ff"
+    "baobab-iam": "c7cedabe9c4eca369e21512e4673caf568731084",
+    "baobab-cp": "a795a8eb59a6083a3195060530af19d13ea03834",
+    "shared": "2f5a330fd09f1e62608ae7728897e35c053bf738"
   },
   "services": [
     "keycloak",

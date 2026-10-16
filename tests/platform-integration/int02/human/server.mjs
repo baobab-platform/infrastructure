@@ -5,10 +5,12 @@
  */
 import http from 'node:http';
 import { chromium } from 'playwright';
-import { configuration, begin, exchange, validateCallback, verifyIdToken, opaque, equal, issuer, origin, redirectUri } from './protocol.mjs';
+import { configuration, begin, exchange, validateCallback, verifyIdToken, opaque, equal, issuer, origin, redirectUri, totp } from './protocol.mjs';
 const secret = process.env.L4_TEST_ADMIN_CLIENT_SECRET;
 const password = process.env.L4_TEST_USER_PASSWORD;
 const attempts = new Map();
+const humanTokens = new Map();
+const authenticators = new Map();
 let settings, latest, proofRunning = false, mode = 'normal', lastExchange, stage = 'startup', failureClass = 'none', failureCode = 'none';
 function reply(res, status, value) { res.writeHead(status, {'content-type':'application/json','cache-control':'no-store'}); res.end(JSON.stringify(value)); }
 function cookie(req) { return req.headers.cookie?.split('; ').find(v=>v.startsWith('attempt='))?.slice(8); }
@@ -21,32 +23,59 @@ async function proof() {
   // runner, so process isolation is supplied by Docker for this test only.
   stage = 'browser_launch';
   const browser = await chromium.launch({headless:true, args:['--no-sandbox','--disable-dev-shm-usage']});
-  async function login(which) {
+  const contexts = new Map();
+  async function login(which, user = "human") {
     mode = which; stage = 'login_' + which;
-    const context = await browser.newContext({ignoreHTTPSErrors:false});
+    let context = contexts.get(user);
+    if (!context) { context = await browser.newContext({ignoreHTTPSErrors:false}); contexts.set(user,context); }
     const page = await context.newPage();
     try {
       stage = 'login_' + which + '_visit';
-      await page.goto(origin + '/login', {timeout:30000});
-      stage = 'login_' + which + '_form';
-      await page.locator('#username').fill('l4-int02-human');
-      await page.locator('#password').fill(password);
-      stage = 'login_' + which + '_submit';
-      await Promise.all([page.waitForURL(origin + '/callback?**', {timeout:30000}), page.locator('#kc-login').click()]);
+      const navigation = await page.goto(origin + '/login', {timeout:30000});
+      if (navigation.status() >= 400) { failureCode = 'AUTHORIZATION_HTTP_' + navigation.status(); throw Error('login_http'); }
+      // A retained issuer SSO session may already have returned a fresh
+      // code. It does not reuse the RP state, code or verifier under test.
+      if (new URL(page.url()).origin !== origin) {
+        stage = 'login_' + which + '_form';
+        await page.locator('#username').fill('l4-int02-' + user);
+        await page.locator('#password').fill(password);
+        stage = 'login_' + which + '_submit';
+        await page.locator('#kc-login').click();
+        await page.waitForFunction(() => location.hostname === 'human.int02.test' || document.querySelector('#totp, #otp'), undefined, {timeout:30000});
+        if (new URL(page.url()).origin !== origin) {
+          stage = 'login_' + which + '_mfa';
+          if (await page.locator('#totp').count()) {
+            const secret = await page.locator('#totpSecret').inputValue();
+            authenticators.set(user,Buffer.from(secret,'utf8'));
+            await page.locator('#totp').fill(totp(authenticators.get(user)));
+            await page.locator('#userLabel').fill('INT-02 disposable authenticator');
+            await page.locator('#saveTOTPBtn').click();
+          } else {
+            const secret = authenticators.get(user);
+            if (!secret) throw Error('authenticator_unavailable');
+            await page.locator('#otp').fill(totp(secret));
+            await page.locator('#kc-login').click();
+          }
+        }
+      }
+      await page.waitForURL(origin + '/callback?**', {timeout:30000});
       stage = 'login_' + which + '_result';
       const response = await page.locator('body').innerText();
       return JSON.parse(response).accepted === true;
-    } finally { await context.close(); }
+    } finally { await page.close(); }
   }
   try {
     checks.iam01_code_pkce_positive = await login('normal');
     if (!checks.iam01_code_pkce_positive) { stage = 'callback_exchange'; throw Error('callback'); }
+    checks.iam01_privileged_mfa_completed = authenticators.has("human");
     const positive = latest;
     const exchangeInput = lastExchange;
     checks.iam01_signed_id_token = !!(await verifyIdToken(positive.id_token, settings.keys));
     // Replay the SAME real Keycloak authorization code, with its original
     // verifier. A fresh login would not prove single-use code enforcement.
-    checks.iam01_code_replay_denied = await rejected(()=>exchange(settings.config, settings.keys, exchangeInput.url, exchangeInput.transaction));
+    // Code replay runs later under a separate synthetic human. Keycloak may
+    // invalidate that user's issuer session on reuse; it must not taint the
+    // positive human or record-isolation tokens consumed by CP afterwards.
     const repeated = await fetch(exchangeInput.url, {redirect:'error', headers:{cookie:'attempt='+exchangeInput.handle}});
     checks.iam01_state_replay_denied = repeated.status === 401;
     for (const [which, name] of [['state','iam01_wrong_state_denied'],['nonce','iam01_wrong_nonce_denied'],['pkce','iam01_wrong_pkce_denied']]) {
@@ -71,6 +100,14 @@ async function proof() {
     // Keep only the positive access token for CP's independent identity and
     // effective-authority checks. No ID/refresh token or browser cookie leaves.
     latest = {access_token:positive.access_token};
+    humanTokens.set('human',positive.access_token);
+    for (const label of ['parent','subsidiary','sibling','external']) {
+      if (!(await login('normal',label))) throw Error('isolation_login');
+      humanTokens.set(label,latest.access_token);
+    }
+    if (!(await login('normal','replay'))) throw Error('replay_login');
+    const replay = lastExchange;
+    checks.iam01_code_replay_denied = await rejected(()=>exchange(settings.config, settings.keys, replay.url, replay.transaction));
     return {checks};
   } finally { await browser.close(); }
 }
@@ -80,7 +117,7 @@ const server = http.createServer(async(req,res)=>{
     if (url.pathname === '/readyz') return reply(res,200,{ready:true});
     if (url.pathname === '/proof' || url.pathname === '/token') {
       if (!equal(req.headers.authorization,'Bearer '+secret)) return reply(res,401,{});
-      if (url.pathname === '/token') return reply(res,latest?.access_token?200:503,{access_token:latest?.access_token});
+      if (url.pathname === '/token') { const token = humanTokens.get(url.searchParams.get('user') || 'human'); return reply(res,token?200:503,{access_token:token}); }
       if (proofRunning) return reply(res,409,{});
       proofRunning = true;
       stage = 'discovery';

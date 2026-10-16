@@ -54,6 +54,20 @@ create_client() {
   return 1
 }
 
+# Shared already registers canonical:read for CP. Product IAM has no
+# browser client using it yet; allocate it ONLY inside this disposable realm
+# for the record-isolation read. authority:self independently supplies CP aud.
+STAGE=human-read-scope-create
+if exists client-scopes name=canonical:read name canonical:read; then
+  :
+else
+  code=$?
+  [ "$code" -eq 1 ] || exit "$code"
+  "$KCADM" create client-scopes -r baobab --config "$CONFIG" \
+    -s name=canonical:read -s protocol=openid-connect \
+    -s 'attributes={"include.in.token.scope":"true","display.on.consent.screen":"false"}' >/dev/null
+fi
+
 STAGE=admin-client-lookup
 if exists clients clientId=l4-int02-admin clientId l4-int02-admin; then
   :
@@ -90,3 +104,18 @@ STAGE=human-role-add
 "$KCADM" add-roles -r baobab --uusername l4-int02-human \
   --rolename cp:platform-admin --config "$CONFIG" >/dev/null
 echo 'Synthetic IAM test-only client and user provisioned (no credentials emitted).'
+
+# Four distinct humans: group/account membership never supplies CP grants.
+# The actual browser completes code/S256 for each; no password grant is used.
+for label in parent subsidiary sibling external replay; do
+  STAGE=human-user-create
+  "$KCADM" create users -r baobab --config "$CONFIG" \
+    -s "username=l4-int02-$label" -s enabled=true -s emailVerified=true \
+    -s firstName=Synthetic -s "lastName=$label" -s "email=l4-int02-$label@example.invalid" >/dev/null
+  STAGE=human-password-set
+  "$KCADM" set-password -r baobab --username "l4-int02-$label" \
+    --new-password "$L4_TEST_USER_PASSWORD" --config "$CONFIG" >/dev/null
+  STAGE=human-role-add
+  "$KCADM" add-roles -r baobab --uusername "l4-int02-$label" \
+    --rolename cp:platform-admin --config "$CONFIG" >/dev/null
+done

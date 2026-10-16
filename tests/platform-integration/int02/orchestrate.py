@@ -110,7 +110,7 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
         if args[-2:] == ["/bin/bash", "-se"]:
             approved = {"admin-login", "admin-client-lookup", "admin-client-create",
                         "audience-client-lookup", "audience-client-create",
-                        "human-user-lookup", "human-user-create",
+                        "human-user-lookup", "human-user-create", "human-read-scope-create",
                         "human-password-set", "human-role-add"}
             for line in p.stdout.splitlines():
                 marker = re.fullmatch(r"INT02_FIXTURE_FAILURE_STAGE=([a-z-]+)", line)
@@ -284,7 +284,7 @@ def materialise(lock):
     directory.mkdir(mode=0o700, parents=True)
     # Always allowlist exact GitHub org paths; no redirects or arbitrary URL.
     try:
-        for name in ("baobab-iam", "baobab-cp"):
+        for name in ("baobab-iam", "baobab-cp", "shared"):
             dest = directory / name
             execute(["git", "clone", "--quiet", "--no-checkout", "--",
                      "https://github.com/baobab-platform/" + name + ".git",
@@ -306,6 +306,7 @@ def materialise(lock):
             "L4_CP_DOCKERFILE": str(BASE / "cp.Dockerfile"),
             "L4_HUMAN_SOURCE": str(BASE / "human"),
             "L4_HUMAN_IMAGE": "l4-human-" + project,
+            "L4_WORKLOAD_REGISTRY": host_path(directory / "shared/contracts/identity/v1/workload-registry.yaml"),
             "L4_PROBE_SOURCE": host_path(BASE),
             "L4_POSTGRES_IMAGE": lock["runtime_images"]["postgres"],
             "L4_PYTHON_IMAGE": lock["runtime_images"]["python_probe"],
@@ -340,7 +341,7 @@ def materialise(lock):
           # scope; an explicit scope list without it yields tokens CP cannot
           # map to a principal (observed live: has_sub=false).
           "protocol":"openid-connect", "defaultClientScopes":[
-            "basic","openid","actor-type-human","authority:self"
+            "basic","openid","actor-type-human","authority:self","canonical:read"
           ],"optionalClientScopes":[]
         }
         other_client = {
@@ -554,22 +555,23 @@ def seed_identities(p, envfile, ids):
     """
     import uuid
     held = {}
-    for name in ("workload", "human"):
+    for name in ("workload", "human", "parent", "subsidiary", "sibling", "external"):
         subject = ids[name + "_sub"]
         must(re.fullmatch("[0-9a-f-]{36}", subject) is not None,
              "Keycloak principal subject invalid")
+        actor_type = "workload" if name == "workload" else "human"
         identity = str(uuid.uuid4())
         link = "issuer='" + ISSUER + "' AND subject='" + subject + "' AND status='ACTIVE'"
         stmt = ("WITH found AS (SELECT principal_id FROM identity.external_identity WHERE " + link + "), "
                 "np AS (INSERT INTO identity.principal(principal_id,actor_type,status) "
-                "SELECT '" + identity + "','" + name + "','ACTIVE' "
+                "SELECT '" + identity + "','" + actor_type + "','ACTIVE' "
                 "WHERE NOT EXISTS (SELECT 1 FROM found) RETURNING principal_id), "
                 "ne AS (INSERT INTO identity.external_identity(principal_id,issuer,subject,status) "
                 "SELECT principal_id,'" + ISSUER + "','" + subject + "','ACTIVE' FROM np RETURNING 1) "
                 "SELECT COALESCE((SELECT 'existing:' || p.actor_type FROM found f "
                 "JOIN identity.principal p USING (principal_id)), 'created');")
-        state = cp_sql(p, envfile, "identity_" + name, stmt, timeout=25).strip()
-        must(state in ("created", "existing:" + name), "CP principal for " + name + " has the wrong actor type")
+        state = cp_sql(p, envfile, "identity_" + ("workload" if name == "workload" else "human"), stmt, timeout=25).strip()
+        must(state in ("created", "existing:" + actor_type), "CP principal for " + name + " has the wrong actor type")
         must(name == "workload" or state == "created", "CP provisioned a human principal unexpectedly")
         held[name] = state
     return held
@@ -580,10 +582,14 @@ def seed_tenants(p, directory, envfile):
     # assertion is made by their presence. PRIMARY Organisation mappings
     # are real CP schema objects, not fabricated JSON claims.
     import uuid
-    tenant_a, tenant_b = ("tn_l4" + secrets.token_hex(8) for _ in range(2))
-    org_a, org_b = (str(uuid.uuid4()) for _ in range(2))
+    tenant_a, tenant_b, tenant_parent, tenant_external = ("tn_l4" + secrets.token_hex(8) for _ in range(4))
+    org_a, org_b, org_parent, org_external = (str(uuid.uuid4()) for _ in range(4))
+    tenant_c, org_c = "tn_l4" + secrets.token_hex(8), str(uuid.uuid4())
     for step, tenant, org, legal in (("tenant_a",tenant_a,org_a,"LE-L4-A"),
-                                      ("tenant_b",tenant_b,org_b,"LE-L4-B")):
+                                      ("tenant_b",tenant_b,org_b,"LE-L4-B"),
+                                      ("tenant_b",tenant_parent,org_parent,"LE-L4-P"),
+                                      ("tenant_b",tenant_external,org_external,"LE-L4-E"),
+                                      ("tenant_b",tenant_c,org_c,"LE-L4-C")):
         statement = f"""
         BEGIN;
         INSERT INTO legal_entities(legal_entity_id) VALUES ('{legal}');
@@ -644,22 +650,14 @@ def seed_tenants(p, directory, envfile):
             FROM market.market WHERE code = 'ZA';
         COMMIT;
         """, timeout=35)
-    # L4-CP-01 "missing Organisation": a real tenant with NO PRIMARY
-    # Organisation mapping. Context resolution for it must be refused.
-    tenant_c = "tn_l4" + secrets.token_hex(8)
+    # A governed tenant's initially valid PRIMARY naturally expires. The
+    # old fixture used a grandfathered non-enforcing BOOTSTRAP row, which
+    # legitimately exercises v1 migration compatibility instead of LA-T02.
+    # Do not disable DB constraints to manufacture an impossible tenant.
     cp_sql(p, envfile, "tenant_no_primary", f"""
-        BEGIN;
-        INSERT INTO legal_entities(legal_entity_id) VALUES ('LE-L4-C');
-        INSERT INTO tenants (tenant_id,legal_entity_id,display_name,
-            isolation_strategy,residency_region,observed_state,
-            primary_organisation_enforced,registration_basis,
-            bootstrap_reason,bootstrap_evidence_reference)
-            VALUES ('{tenant_c}','LE-L4-C','INT-02 disposable test',
-            'row_level_security','af-south-1','active',false,'BOOTSTRAP',
-            'INT-02 synthetic fixture registered outside admission',
-            'int02-synthetic-fixture');
-        COMMIT;
-        """, timeout=35)
+      UPDATE registry.tenant_organisation_mapping SET effective_to=now()+interval '2 seconds'
+      WHERE tenant_id='{tenant_c}' AND mapping_role='PRIMARY_ORGANISATION';
+    """, timeout=35)
     # A capability binding is NOT its own grant. One ACTIVE scoped grant is
     # intentionally given to A only, so sibling B receives a real CP denial.
     # This synthetic provider is a resolution fixture, not a published or
@@ -719,15 +717,90 @@ def seed_tenants(p, directory, envfile):
     written = cp_sql(p, envfile, "capability_binding", statement, timeout=30).strip()
     # Exactly one binding and one grant, or the canonical capability is absent.
     must(written == "1:1", "CP's synced catalogue has no ACTIVE intelligence.evidence.search")
+    # Bounded fixture clock advance, never a prerequisite or CI polling sleep.
+    __import__("time").sleep(3)
     private(directory / "fixtures.json",json.dumps({
         "tenant":tenant_a,"other_tenant":tenant_b,"organisation":org_a,
         "no_primary_tenant":tenant_c,"market":market,"market_country":"ZA",
-        "other_organisation":org_b})+"\n")
+        "other_organisation":org_b,
+        "isolation":{"parent":{"tenant":tenant_parent,"organisation":org_parent},
+                     "subsidiary":{"tenant":tenant_a,"organisation":org_a},
+                     "sibling":{"tenant":tenant_b,"organisation":org_b},
+                     "external":{"tenant":tenant_external,"organisation":org_external}}})+"\n")
+
+def seed_isolation_authority(p, directory, envfile, ids):
+    """Real CP records on synthetic data, not production grants or legal proof.
+
+    Each human receives EXACT organisation.view only for its own Organisation.
+    Shared corporate ownership and PlatformAccount membership are deliberately
+    present, so their failure to confer neighbour access is actually tested.
+    """
+    import uuid
+    fixture = json.loads((directory / "fixtures.json").read_text())["isolation"]
+    for label, target in fixture.items():
+        subject = ids[label + "_sub"]
+        must(re.fullmatch(r"[0-9a-f-]{36}", subject) is not None, "Invalid isolation subject")
+        org = target["organisation"]
+        scope = json.dumps({"level":"ORGANISATION","organisation_id":org,"mode":"EXACT","environment":"integration"})
+        cp_sql(p, envfile, "identity_human", f"""
+          INSERT INTO policy.administrative_grant
+          (grant_id,principal_id,permission,scope_level,scope,grant_type,source,
+           risk_class,valid_from,valid_until,status,granted_by,reason)
+          SELECT '{uuid.uuid4()}',principal_id,'organisation.view','ORGANISATION',
+                 '{scope}'::jsonb,'TIME_BOUND','DIRECT','LOW',now()-interval '1 minute',
+                 now()+interval '30 minutes','ACTIVE','int02-independent-fixture-authoriser',
+                 'INT-02 synthetic exact Organisation read; no group-derived access'
+          FROM identity.external_identity WHERE issuer='{ISSUER}' AND subject='{subject}' AND status='ACTIVE';
+        """)
+    parent = fixture["parent"]["organisation"]
+    for child in (fixture["subsidiary"]["organisation"],fixture["sibling"]["organisation"]):
+        cp_sql(p, envfile, "identity_human", f"""
+          INSERT INTO registry.corporate_relationship
+          (source_organisation_id,target_organisation_id,relationship_type,ownership_percentage,
+           verification_state,status,effective_from,source_authority,evidence_references,verified_by,verified_at)
+          VALUES ('{parent}','{child}','OWNS',100,'VERIFIED','ACTIVE',now()-interval '1 hour',
+            'INT-02 synthetic relationship only','["int02-synthetic-not-legal-evidence"]'::jsonb,
+            'int02-fixture-checker',now()-interval '1 hour');
+        """)
+    account = str(uuid.uuid4())
+    cp_sql(p, envfile, "identity_human", f"""
+      INSERT INTO registry.platform_account(platform_account_id,display_name,primary_organisation_id,status,effective_from)
+      VALUES ('{account}','INT-02 synthetic shared account','{parent}','ACTIVE',now()-interval '1 hour');
+    """)
+    for target in fixture.values():
+        org = target["organisation"]
+        cp_sql(p, envfile, "identity_human", f"""
+          INSERT INTO registry.platform_account_membership
+          (platform_account_id,organisation_id,account_role,status,effective_from,evidence_reference)
+          VALUES ('{account}','{org}','ACCOUNT_MEMBER','ACTIVE',now()-interval '1 hour','int02-synthetic');
+        """)
+
+
+ISOLATION_REQUIRED = tuple("cp03_" + label + "_" + check
+    for label in ("parent","subsidiary","sibling","external")
+    for check in ("own_record","directory_exact","neighbours_denied","tenant_spoof_denied"))
+
+
+def apply_isolation_proof(report, proof):
+    checks = report.setdefault("checks", {})
+    for name in ISOLATION_REQUIRED:
+        checks[name] = proof.get("checks", {}).get(name) is True
+    report["scenarios"]["L4-CP-03"] = "PASS" if all(checks[n] for n in ISOLATION_REQUIRED) else "FAIL"
+
 
 def test(lock):
     check_prerequisites(lock)
     p, directory, envfile = current()
-    human_report = json.loads(run_probe(p, envfile, "human-proof"))
+    try:
+        human_report = json.loads(run_probe(p, envfile, "human-proof"))
+    except Blocked:
+        # A failed browser ceremony must still leave a scrubbed receipt.
+        # No downstream scenario ran, so they remain BLOCKED, never PASS.
+        failed = {"scenarios":{name:"FAIL" if name == "L4-IAM-01" else "BLOCKED"
+                               for name in lock["mandatory"]},
+                  "checks":{"iam01_browser_ceremony_completed":False}}
+        write_evidence(p, lock, failed, accepted=False)
+        raise
     ids = json.loads(run_probe(p, envfile, "identities"))
     must(ids.get("source") == "keycloak-issued" and
          ids.get("issuer") == ISSUER,
@@ -738,6 +811,7 @@ def test(lock):
     seed_tenants(p, directory, envfile)
     unmapped = json.loads(run_probe(p, envfile, "unmapped"))
     held = seed_identities(p, envfile, ids)
+    seed_isolation_authority(p, directory, envfile, ids)
     # Independently isolate workload audience and client lifecycle while the
     # real issuer and CP are alive. The probe restores both fixture changes
     # before returning; a failed restore aborts rather than tainting evidence.
@@ -745,6 +819,7 @@ def test(lock):
     report = json.loads(run_probe(p, envfile, "test"))
     apply_workload_proof(report, workload_report)
     apply_human_proof(report, human_report)
+    apply_isolation_proof(report, json.loads(run_probe(p, envfile, "isolation-proof")))
     # L4-CP-01 "revoked grant": revoke tenant A's grant (synthetic-fixture
     # operation in the throwaway DB) and require CP to refuse the same
     # entitled context for GRANT_REVOKED, while the identity is still valid.
@@ -816,7 +891,7 @@ def test(lock):
 # negatives cannot promote acceptance. CP authenticates the resulting HUMAN
 # token separately after its canonical identity is explicitly linked.
 IAM01_REQUIRED = (
-    "iam01_code_pkce_positive", "iam01_signed_id_token", "iam01_code_replay_denied",
+    "iam01_code_pkce_positive", "iam01_privileged_mfa_completed", "iam01_signed_id_token", "iam01_code_replay_denied",
     "iam01_state_replay_denied", "iam01_wrong_state_denied", "iam01_wrong_nonce_denied",
     "iam01_wrong_pkce_denied", "iam01_forged_signature_denied", "iam01_wrong_issuer_denied",
     "iam01_wrong_audience_denied", "iam01_expired_token_denied",
