@@ -301,8 +301,12 @@ def exercise():
     state["L4-IAM-02"]="BLOCKED" if wrong_audience() else "FAIL"
     status,context=request("POST",CP+"/v1/platform-context/resolve",
                            {"tenant_id":tenant,"organisation_id":organisation},good)
+    # Matrix L4-CP-01 positive: Principal / PRIMARY Organisation / Tenant /
+    # MARKET context read: the tenant's ACTIVE market participation.
     positive=bool(status==200 and context.get("tenant_id")==tenant and
-        context.get("organisation_id")==organisation and context.get("context_id"))
+        context.get("organisation_id")==organisation and context.get("context_id") and
+        context.get("country_code")==fixture["market_country"] and
+        context.get("market_id")==fixture["market"])
     # L4-CP-01 negatives (matrix): a swapped Organisation (tenant B's PRIMARY
     # Organisation under tenant A) and a fabricated tenant must be refused.
     # The unmapped-principal and revoked-identity negatives run in the
@@ -315,9 +319,20 @@ def exercise():
             # Matrix: "missing or fabricated Organisation".
             "cp01_fabricated_organisation_denied":denied(good,
                 {"tenant_id":tenant,"organisation_id":str(uuid.uuid4())}),
-            "cp01_missing_organisation_denied":denied(good,
-                {"tenant_id":fixture["no_primary_tenant"]})}
+            }
     observations={}
+    # Matrix: "missing Organisation ... denied". Shared control-plane/v1
+    # makes the Organisation OPTIONAL on this endpoint ("optionally attests
+    # an organisation the caller names"; an empty body is valid). Record what
+    # CP does; it must never invent an Organisation. Whether issuing an
+    # Organisation-less context satisfies the matrix is unresolved (see the
+    # README), so the orchestrator never promotes CP-01 on it.
+    ms,mc=request("POST",CP+"/v1/platform-context/resolve",{"tenant_id":fixture["no_primary_tenant"]},good)
+    missing=("DENIED" if ms in DENIED else
+             "ISSUED_WITHOUT_ORGANISATION" if ms==200 and not mc.get("organisation_id") else
+             "FABRICATED" if ms==200 else "OTHER")
+    observations["cp01_missing_organisation_outcome"]=missing
+    checks["cp01_missing_organisation_not_fabricated"]=missing in ("DENIED","ISSUED_WITHOUT_ORGANISATION")
     # Probe-side negatives only; the orchestrator adds the unmapped-principal,
     # revoked-grant and revoked-identity negatives and alone may promote.
     state["L4-CP-01"]="BLOCKED" if all(checks.values()) else "FAIL"

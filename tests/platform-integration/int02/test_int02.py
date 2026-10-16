@@ -218,10 +218,10 @@ class ScenarioTruthTest(unittest.TestCase):
         for check in ("cp01_unmapped_principal_denied","cp01_revoked_identity_denied",
                       "cp01_revoked_grant_denied"):
             self.assertIn(f'checks["{check}"]',runner)
-        for check in ("cp01_missing_organisation_denied","cp01_fabricated_organisation_denied"):
+        for check in ("cp01_missing_organisation_not_fabricated","cp01_fabricated_organisation_denied"):
             self.assertIn(f'"{check}"',probe)
         # Every matrix negative is required for PASS (EA v2.2 L4-CP-01).
-        self.assertEqual(set(m.CP01_REQUIRED),{"cp01_positive","cp01_missing_organisation_denied",
+        self.assertEqual(set(m.CP01_REQUIRED),{"cp01_positive","cp01_missing_organisation_not_fabricated",
             "cp01_fabricated_organisation_denied","cp01_swapped_organisation_denied",
             "cp01_fabricated_tenant_denied","cp01_unmapped_principal_denied",
             "cp01_revoked_grant_denied","cp01_revoked_identity_denied"})
@@ -592,12 +592,13 @@ class ScenarioClassificationTest(unittest.TestCase):
         probe.RUNTIME=runtime
         return probe
 
-    def run_exercise(self, decision_a, decision_b):
+    def run_exercise(self, decision_a, decision_b, missing_org=(200,{"context_id":"ctx-c"})):
         import base64, io, contextlib
         with tempfile.TemporaryDirectory() as d:
             runtime=Path(d)
             (runtime/"fixtures.json").write_text(json.dumps({"tenant":"tn_a","other_tenant":"tn_b",
-                "organisation":"org-a","other_organisation":"org-b","no_primary_tenant":"tn_c"}))
+                "organisation":"org-a","other_organisation":"org-b","no_primary_tenant":"tn_c",
+                "market":"mkt_l4test","market_country":"ZA"}))
             probe=self.load_probe(runtime)
             def jwt(claims):
                 return "h."+base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")+".s"
@@ -610,8 +611,10 @@ class ScenarioClassificationTest(unittest.TestCase):
                 if url.endswith("/platform-context/resolve"):
                     if token==tokens["o"]: return 401,{}
                     if body=={"tenant_id":"tn_a","organisation_id":"org-a"}:
-                        return 200,{"tenant_id":"tn_a","organisation_id":"org-a","context_id":"ctx-a"}
+                        return 200,{"tenant_id":"tn_a","organisation_id":"org-a","context_id":"ctx-a",
+                                    "country_code":"ZA","market_id":"mkt_l4test"}
                     if body=={"tenant_id":"tn_b"}: return 200,{"context_id":"ctx-b"}
+                    if body=={"tenant_id":"tn_c"}: return missing_org
                     return 403,{}
                 if url.endswith("/capabilities/resolve"):
                     return 200,dict(decision_a if body["context_id"]=="ctx-a" else decision_b)
@@ -650,10 +653,35 @@ class ScenarioClassificationTest(unittest.TestCase):
     def test_cp01_probe_negatives_include_missing_and_fabricated_organisation(self):
         r=self.run_exercise({"decision":"UNAVAILABLE","reason_code":"PROVIDER_HEALTH_UNKNOWN"},
                             {"decision":"DENIED","reason_code":"GRANT_NOT_FOUND"})
-        for name in ("cp01_missing_organisation_denied","cp01_fabricated_organisation_denied",
+        for name in ("cp01_missing_organisation_not_fabricated","cp01_fabricated_organisation_denied",
                      "cp01_swapped_organisation_denied","cp01_fabricated_tenant_denied"):
             self.assertTrue(r["checks"][name],name)
         self.assertEqual(r["scenarios"]["L4-CP-01"],"BLOCKED")
+
+    def test_missing_organisation_outcomes(self):
+        ok=({"decision":"UNAVAILABLE","reason_code":"PROVIDER_HEALTH_UNKNOWN"},
+            {"decision":"DENIED","reason_code":"GRANT_NOT_FOUND"})
+        issued=self.run_exercise(*ok)
+        self.assertEqual(issued["observations"]["cp01_missing_organisation_outcome"],"ISSUED_WITHOUT_ORGANISATION")
+        self.assertTrue(issued["checks"]["cp01_missing_organisation_not_fabricated"])
+        denied=self.run_exercise(*ok,missing_org=(403,{}))
+        self.assertEqual(denied["observations"]["cp01_missing_organisation_outcome"],"DENIED")
+        invented=self.run_exercise(*ok,missing_org=(200,{"context_id":"c","organisation_id":"x"}))
+        self.assertEqual(invented["observations"]["cp01_missing_organisation_outcome"],"FABRICATED")
+        self.assertFalse(invented["checks"]["cp01_missing_organisation_not_fabricated"])
+        self.assertEqual(invented["scenarios"]["L4-CP-01"],"FAIL")
+
+    def test_cp01_positive_requires_the_market_context(self):
+        r=self.run_exercise({"decision":"UNAVAILABLE","reason_code":"PROVIDER_HEALTH_UNKNOWN"},
+                            {"decision":"DENIED","reason_code":"GRANT_NOT_FOUND"})
+        self.assertTrue(r["checks"]["cp01_positive"])
+        probe=(BASE/"probe.py").read_text()
+        self.assertIn('context.get("market_id")==fixture["market"]',probe)
+
+    def test_cp01_pass_needs_a_denied_missing_organisation(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertIn('get("cp01_missing_organisation_outcome") == "DENIED":',runner)
+        self.assertIn('cases["L4-CP-01"] = "PASS"',runner)
 
     def test_untrusted_reason_codes_never_reach_the_log(self):
         r=self.run_exercise({"decision":"UNAVAILABLE","reason_code":"eyJ leak <script>"},

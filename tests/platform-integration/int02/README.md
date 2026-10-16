@@ -51,8 +51,16 @@ Receipts record the candidate harness Git SHA as distinct from dependency pins.
   database credentials and exited (live job: `keycloak=exited`). The static test now parses the keycloak environment
   structurally and rejects literal `\n`.
 - **L4-CP-01** is PASS only with its positive and every matrix negative from the same run (`CP01_REQUIRED`). The
-  negatives are:
-  - a missing Organisation: a real tenant with no PRIMARY Organisation mapping;
+  positive is a Principal / PRIMARY Organisation / Tenant / **market** context read: tenant A participates in one
+  synthetic ACTIVE market (registry entry activated by a checker other than its maker, projected market row, ACTIVE
+  assignment), and the context must carry its country and market. Without a market CP denies capability resolution
+  with `RESIDENCY_POLICY_MISMATCH`, as it should. The negatives are:
+  - a missing Organisation: a real tenant with no PRIMARY Organisation mapping. **Unresolved conflict:** the matrix
+    says "denied", but Shared `control-plane/v1` makes the Organisation optional on `POST /platform-context/resolve`
+    ("optionally attests an organisation the caller names"; an empty body is valid), and CP at the pin issues an
+    Organisation-less RUNTIME context. The harness records the outcome (`DENIED`, `ISSUED_WITHOUT_ORGANISATION` or
+    `FABRICATED`): an invented Organisation is FAIL, and CP-01 is PASS only when this is `DENIED`. Until the matrix and
+    the contract agree, CP-01 stays BLOCKED;
   - a fabricated Organisation under the real tenant;
   - a swapped Organisation (tenant B's PRIMARY Organisation under tenant A) and a fabricated tenant;
   - an unmapped principal: a validly signed **human** token before its subject is linked, on the admin route. CP

@@ -517,7 +517,8 @@ def run_probe(p, envfile, mode):
     return compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
                    mode, capture=True, timeout=180)
 
-CP_FIXTURE_STEPS = {"tenant_a", "tenant_b", "tenant_no_primary", "capability_binding",
+CP_FIXTURE_STEPS = {"tenant_a", "tenant_b", "tenant_no_primary", "market_participation",
+                    "capability_binding",
                     "identity_workload", "identity_human", "revoke_grant", "revoke_workload"}
 
 def cp_sql(p, envfile, step, statement, timeout=30):
@@ -614,6 +615,29 @@ def seed_tenants(p, directory, envfile):
         COMMIT;
         """
         cp_sql(p, envfile, step, statement, timeout=35)
+    # L4-CP-01's positive is a "Principal / PRIMARY Organisation / Tenant /
+    # market context read", and capability resolution denies a context that
+    # names no market (RESIDENCY_POLICY_MISMATCH). CP fills the market from
+    # the tenant's ACTIVE market participation (resolveMarket), so tenant A
+    # participates in one synthetic ACTIVE market: a registry entry activated
+    # by a checker other than its maker (CP's own constraint), its projected
+    # market row, and an ACTIVE assignment. Tenant B stays market-less; its
+    # refusal happens earlier, at the grant boundary.
+    market = "mkt_l4" + secrets.token_hex(6)
+    cp_sql(p, envfile, "market_participation", f"""
+        BEGIN;
+        INSERT INTO market.registry (market_id, canonical_key, owner_tenant_id, configuration,
+            status, created_at, created_by, activated_at, activated_by)
+            VALUES ('{market}','{market}','{tenant_a}','{{"default_country":"ZA"}}'::jsonb,
+            'ACTIVE', now() - interval '72 hours', 'int02-synthetic-maker',
+            now() - interval '48 hours', 'int02-synthetic-checker');
+        INSERT INTO market.market (code, name, currency, region, is_active, registry_market_id)
+            VALUES ('ZA', 'INT-02 synthetic market', 'ZAR', 'af-south-1', true, '{market}');
+        INSERT INTO market.market_assignment (tenant_id, market_id, status, source, effective_from)
+            SELECT '{tenant_a}', market_id, 'ACTIVE', 'MIGRATION', now() - interval '1 hour'
+            FROM market.market WHERE code = 'ZA';
+        COMMIT;
+        """, timeout=35)
     # L4-CP-01 "missing Organisation": a real tenant with NO PRIMARY
     # Organisation mapping. Context resolution for it must be refused.
     tenant_c = "tn_l4" + secrets.token_hex(8)
@@ -691,7 +715,7 @@ def seed_tenants(p, directory, envfile):
     must(written == "1:1", "CP's synced catalogue has no ACTIVE intelligence.evidence.search")
     private(directory / "fixtures.json",json.dumps({
         "tenant":tenant_a,"other_tenant":tenant_b,"organisation":org_a,
-        "no_primary_tenant":tenant_c,
+        "no_primary_tenant":tenant_c,"market":market,"market_country":"ZA",
         "other_organisation":org_b})+"\n")
 
 def test(lock):
@@ -754,9 +778,15 @@ def test(lock):
     # all observed in this run: missing and fabricated Organisation, swapped
     # Organisation/Tenant, unmapped principal and revoked grant (plus the
     # fabricated tenant and revoked identity). Never promotes L4-CP-03.
+    # "Missing Organisation" must be DENIED for PASS. CP issuing an
+    # Organisation-less context follows the Shared control-plane/v1 contract
+    # (Organisation optional) but not the matrix wording: that conflict is
+    # for the owners to resolve, so CP-01 then stays BLOCKED, never PASS.
     if cases.get("L4-CP-01") == "BLOCKED":
-        cases["L4-CP-01"] = ("PASS" if all(checks.get(name) is True for name in CP01_REQUIRED)
-                             else "FAIL")
+        if not all(checks.get(name) is True for name in CP01_REQUIRED):
+            cases["L4-CP-01"] = "FAIL"
+        elif report.get("observations", {}).get("cp01_missing_organisation_outcome") == "DENIED":
+            cases["L4-CP-01"] = "PASS"
     required = set(lock["mandatory"])
     must(set(cases) == required, "Mandatory IAM/CP scenarios missing")
     if any(cases[x] != "PASS" for x in required) or not tls_verified(checks):
@@ -775,7 +805,7 @@ def test(lock):
 # hostname, and the same endpoint is refused without that CA.
 TLS_CHECKS = ("tls_iam_verified", "tls_cp_verified", "tls_untrusted_refused")
 # EA v2.2 matrix L4-CP-01, every check observed in the same run.
-CP01_REQUIRED = ("cp01_positive", "cp01_missing_organisation_denied",
+CP01_REQUIRED = ("cp01_positive", "cp01_missing_organisation_not_fabricated",
                  "cp01_fabricated_organisation_denied", "cp01_swapped_organisation_denied",
                  "cp01_fabricated_tenant_denied", "cp01_unmapped_principal_denied",
                  "cp01_revoked_grant_denied", "cp01_revoked_identity_denied")
