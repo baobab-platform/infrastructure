@@ -520,6 +520,7 @@ class ParityTest(unittest.TestCase):
         docker=(m.ROOT/".devcontainer/platform-integration/Dockerfile").read_text()
         self.assertRegex(docker,r"(?m)^FROM mcr\.microsoft\.com/devcontainers/python:1-3\.12-bookworm@sha256:[0-9a-f]{64}$")
         self.assertIn("RUN rm -f /etc/apt/sources.list.d/yarn.list",docker)
+        self.assertRegex(docker,r"(?m)^USER vscode$")
 
     def test_only_organisation_trusted_action_owners(self):
         import re

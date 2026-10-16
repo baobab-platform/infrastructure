@@ -8,3 +8,7 @@ FROM mcr.microsoft.com/devcontainers/python:1-3.12-bookworm@sha256:7876580dc67fd
 # with NO_PUBKEY 62D54FD4003F6525. Nothing in this laboratory uses Yarn; the
 # installed binary is untouched, only the broken package source is removed.
 RUN rm -f /etc/apt/sources.list.d/yarn.list
+
+# Run as the image's non-root user (remoteUser in devcontainer.json). The
+# Dev Containers CLI installs features in its own build stage as root.
+USER vscode
