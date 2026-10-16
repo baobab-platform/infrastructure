@@ -712,8 +712,6 @@ def keycloak_environment(compose):
     return env
 
 
-if __name__=="__main__":
-    unittest.main()
 
 class WorkloadAudienceProofTest(unittest.TestCase):
     """Exercise the proof's sequencing and failure semantics without Docker.
@@ -849,3 +847,7 @@ class WorkloadAudienceProofTest(unittest.TestCase):
             with self.subTest(status=status):
                 report, _ = self.run_proof(disabled=(status, body))
                 self.assertFalse(report["checks"]["iam02_disabled_client_issuance_denied"])
+
+
+if __name__ == "__main__":
+    unittest.main()
