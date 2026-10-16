@@ -28,12 +28,12 @@ TLS.minimum_version=ssl.TLSVersion.TLSv1_3
 
 def request(method,url,body=None,token=None,context=None):
     data = (urllib.parse.urlencode(body).encode() if body is not None and
-            url.endswith("/token") else
+            url.endswith(("/token", "/token/introspect")) else
             json.dumps(body).encode() if body is not None else None)
     hdr={"Accept":"application/json"}
     if data is not None:
         hdr["Content-Type"]=("application/x-www-form-urlencoded"
-                             if url.endswith("/token") else "application/json")
+                             if url.endswith(("/token", "/token/introspect")) else "application/json")
     if token:
         hdr["Authorization"]="Bearer "+token
     req=urllib.request.Request(url,data=data,method=method,headers=hdr)
@@ -262,6 +262,149 @@ def confirm_revoked():
                           "organisation_id":fixtures["organisation"]},raw)
     print(json.dumps({"revocation_denied": code in DENIED}))
 
+# L4-IAM-02 is an independent same-client differential, not the older
+# different-client smoke negative in exercise(). These checks are emitted as
+# booleans only. CP remains the JWT verifier; decoding here is diagnostic.
+IAM02_CHECKS = ("iam02_registered_workload_positive", "iam02_same_client_audience_only",
+                "iam02_wrong_audience_denied", "iam02_disabled_client_issuance_denied",
+                "iam02_fixture_restored")
+
+
+def audience_set(claims):
+    value = claims.get("aud")
+    return {value} if isinstance(value, str) else set(value) if isinstance(value, list) else set()
+
+
+def same_workload_except_audience(positive, negative):
+    """Reject a confounded audience negative before counting CP's denial.
+
+    Both tokens must be live, for the same actual issuer, subject, client,
+    actor and exact scope set. Independent issuance changes iat/jti/exp, so
+    compare current validity rather than requiring identical timestamps.
+    This never authenticates a JWT: positive CP acceptance and real issuer
+    introspection are required separately by workload_proof().
+    """
+    now = time.time()
+    for claims in (positive, negative):
+        if not (claims.get("iss") == ISSUER and claims.get("sub") and
+                claims.get("azp") == "baobab-cms-workload" and
+                claims.get("actor_type") == "workload" and
+                type(claims.get("exp")) is int and claims["exp"] > now and
+                type(claims.get("iat")) is int and claims["iat"] <= now and
+                ("nbf" not in claims or type(claims["nbf"]) is int and claims["nbf"] <= now) and
+                isinstance(claims.get("scope"), str) and
+                "context:resolve" in claims["scope"].split()):
+            return False
+    return (all(positive.get(k) == negative.get(k) for k in
+                ("iss", "sub", "azp", "actor_type", "tenant_id")) and
+            set(positive["scope"].split()) == set(negative["scope"].split()) and
+            "baobab-control-plane" in audience_set(positive) and
+            "baobab-control-plane" not in audience_set(negative) and
+            "baobab-pulse" in audience_set(negative))
+
+
+def workload_proof():
+    """Actual issuer/CP workload proof in the disposable realm only.
+
+    Preserve the registered CMS client and its subject/scopes. Temporarily
+    alter ONLY context:resolve's audience mapper, then restore it even if a
+    request fails. Separately disable the same client and observe a fresh
+    grant denial, then restore its original state. No product IAM source or
+    protected realm is changed. Previously issued JWT revocation remains a
+    distinct CP canonical-link ceremony in confirm_revoked().
+    """
+    fixture = json.loads((RUNTIME / "fixtures.json").read_text())
+    body = {"tenant_id": fixture["tenant"], "organisation_id": fixture["organisation"]}
+    checks = dict.fromkeys(IAM02_CHECKS, False)
+    observations = {}
+    positive_token = workload()
+    positive = decode(positive_token)
+    status, resolved = request("POST", CP + "/v1/platform-context/resolve", body, positive_token)
+    checks["iam02_registered_workload_positive"] = bool(status == 200 and
+        resolved.get("context_id") and resolved.get("tenant_id") == body["tenant_id"] and
+        resolved.get("organisation_id") == body["organisation_id"])
+
+    # The existing test master administrator is confined to this disposable
+    # Keycloak. Keep its token in memory and use the verified TLS edge; never
+    # send an admin credential to CP or upload raw Admin REST responses.
+    master = ISSUER.rsplit("/realms/", 1)[0] + "/realms/master"
+    code, auth = request("POST", master + "/protocol/openid-connect/token", {
+        "grant_type": "password", "client_id": "admin-cli", "username": "l4admin",
+        "password": os.environ["L4_KC_ADMIN_PASSWORD"]})
+    if code != 200 or not auth.get("access_token"):
+        raise RuntimeError("disposable IAM administrator unavailable")
+    admin_token = auth["access_token"]
+    admin = ISSUER.rsplit("/realms/", 1)[0] + "/admin/realms/baobab"
+
+    def admin_call(method, path, document=None, expected=200):
+        status, response = request(method, admin + path, document, admin_token)
+        if status != expected:
+            raise RuntimeError("disposable IAM fixture operation failed")
+        return response
+
+    def unique(records, key, value):
+        matches = [r for r in records if r.get(key) == value]
+        if len(matches) != 1:
+            raise ValueError("disposable IAM fixture is ambiguous")
+        record = matches[0]
+        # Keycloak-generated IDs are UUIDs. Validate before constructing an
+        # Admin REST path so provider data cannot select another endpoint.
+        uuid.UUID(record["id"])
+        return record
+
+    client = unique(admin_call("GET", "/clients?clientId=baobab-cms-workload"),
+                    "clientId", "baobab-cms-workload")
+    scope = unique(admin_call("GET", "/client-scopes"), "name", "context:resolve")
+    mapper = unique(scope.get("protocolMappers", []), "name", "audience-baobab-control-plane")
+    if client.get("enabled") is not True or mapper.get("protocolMapper") != "oidc-audience-mapper":
+        raise ValueError("unexpected disposable IAM baseline")
+    if mapper.get("config", {}).get("included.custom.audience") != "baobab-control-plane":
+        raise ValueError("unexpected disposable IAM audience")
+    mapper_path = "/client-scopes/" + scope["id"] + "/protocol-mappers/models/" + mapper["id"]
+    changed = {**mapper, "config": {**mapper["config"], "included.custom.audience": "baobab-pulse"}}
+    try:
+        admin_call("PUT", mapper_path, changed, expected=204)
+        wrong_token = workload()
+        wrong = decode(wrong_token)
+        # A real issuer must still consider the wrong-audience token active.
+        # Otherwise CP's 401 could be expiry/revocation rather than audience.
+        introspect_status, introspection = request("POST", ISSUER + "/protocol/openid-connect/token/introspect", {
+            "client_id": "l4-int02-admin", "client_secret": os.environ["L4_TEST_ADMIN_CLIENT_SECRET"],
+            "token": wrong_token})
+        isolated = (same_workload_except_audience(positive, wrong) and
+                    introspect_status == 200 and introspection.get("active") is True and
+                    introspection.get("sub") == positive.get("sub"))
+        checks["iam02_same_client_audience_only"] = isolated
+        denied_status, _ = request("POST", CP + "/v1/platform-context/resolve", body, wrong_token)
+        observations["iam02_wrong_audience_status"] = denied_status
+        checks["iam02_wrong_audience_denied"] = isolated and denied_status == 401
+    finally:
+        admin_call("PUT", mapper_path, mapper, expected=204)
+
+    client_path = "/clients/" + client["id"]
+    try:
+        admin_call("PUT", client_path, {"enabled": False}, expected=204)
+        disabled_status, error = request("POST", ISSUER + "/protocol/openid-connect/token", {
+            "grant_type": "client_credentials", "client_id": "baobab-cms-workload",
+            "client_secret": os.environ["L4_WORKLOAD_SEED"]})
+        observations["iam02_disabled_client_status"] = disabled_status
+        checks["iam02_disabled_client_issuance_denied"] = (disabled_status in (400, 401) and
+            error.get("error") in ("invalid_client", "unauthorized_client") and not error.get("access_token"))
+    finally:
+        admin_call("PUT", client_path, {"enabled": True}, expected=204)
+
+    # A restore is observed through issuance and CP acceptance, not inferred
+    # from a successful administrative PUT. The remaining scenarios run only
+    # after this check, so fixture mutation cannot silently contaminate them.
+    restored = workload()
+    restored_status, restored_context = request("POST", CP + "/v1/platform-context/resolve", body, restored)
+    checks["iam02_fixture_restored"] = bool(restored_status == 200 and
+        restored_context.get("tenant_id") == body["tenant_id"] and
+        restored_context.get("organisation_id") == body["organisation_id"] and
+        same_workload_except_audience(decode(restored), wrong))
+    print(json.dumps({"checks": checks, "observations": observations}, sort_keys=True))
+
+
 def exercise():
     fixture=json.loads((RUNTIME/"fixtures.json").read_text())
     tenant,other_tenant=fixture["tenant"],fixture["other_tenant"]
@@ -417,6 +560,8 @@ def main():
         identities()
     elif name=="test":
         exercise()
+    elif name=="workload-proof":
+        workload_proof()
     elif name=="revoked":
         confirm_revoked()
     elif name=="unmapped":

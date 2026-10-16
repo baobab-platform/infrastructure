@@ -12,6 +12,12 @@ defines an isolated Compose foundation, immutable image/source lock, no-public-p
 service topology and identical Python lifecycle commands for Codespaces and CI.
 No source-only run qualifies IAM/CP integration, protected staging or production.
 
+The [Nabhold v2.0 critical-path audit and implementation queue](docs/testing/nabhold-go-live-audit-2026-10-16.md)
+tracks the current INT-02 blocker, cross-repository PR dependencies and exact
+merge conditions. [INT-02's workload proof](tests/platform-integration/int02/README.md)
+now isolates same-client audience denial and client issuance revocation;
+remaining mandatory live scenarios still gate PR #35.
+
 ## Foundation status
 
 Foundation 0 established the architecture and trust boundaries. Foundation 1

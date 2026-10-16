@@ -137,3 +137,45 @@ require a CP or IAM pull request to run the affected L4 profile against its own 
 
 This is real-component evidence on synthetic data. It never substitutes for protected staging, and a BLOCKED
 scenario is never a pass.
+
+### 16 October 2026 — workload proof takeover
+
+`workload-proof` isolates **L4-IAM-02** using the existing registered
+`baobab-cms-workload` client. It observes a successful actual CP context read,
+then temporarily changes only the disposable realm's `context:resolve`
+audience mapper. The second real token must have the same issuer, subject,
+client, actor and scope set, remain live according to IAM introspection, and
+receive HTTP 401 from CP. An unavailable endpoint, expired token or changed
+subject/scope is not accepted as audience evidence.
+
+The probe restores the mapper in `finally`, independently disables that same
+client and requires an OAuth denial of fresh token issuance, then restores the
+client and observes successful issuance/CP resolution again. This proves
+**client admission revocation**, not immediate invalidation of previously
+issued self-contained JWTs. The existing canonical CP external-identity
+revocation test separately exercises an already-issued token. All five named
+workload checks must be actual booleans `true` from the same run; missing or
+string-valued checks fail. No other scenario is promoted by this slice.
+
+The mutations affect the throwaway integration realm only. The product IAM
+repository, accepted registry, protected identities and source pins are
+unchanged. A failed restoration aborts the run; teardown still destroys the
+realm and credentials. HTTP responses, JWTs, secrets and Admin REST bodies are
+never included in receipts. Regression tests use scripted responses and are
+source evidence only; the real Actions job is required for acceptance.
+
+References checked for this implementation:
+
+- [Keycloak Admin REST API](https://www.keycloak.org/docs-api/latest/rest-api/index.html):
+  client updates and client-scope protocol mapper updates (204 responses).
+- [Keycloak OIDC endpoints](https://www.keycloak.org/securing-apps/oidc-layers):
+  confidential-client token introspection.
+- Pinned IAM `config/scopes/context-resolve.json` and
+  `config/clients/baobab-cms-workload.json`; IAM's existing human audience
+  differential validator; CP's current platform-context workload boundary.
+
+**Merge remains blocked** until all mandatory real scenarios pass. Human
+code/PKCE, the missing-Organisation matrix/contract discrepancy, live provider
+health and the complete parent/subsidiary/sibling/external isolation matrix
+remain independently required. See the [programme audit and ordered closure
+plan](../../../docs/testing/nabhold-go-live-audit-2026-10-16.md).

@@ -731,7 +731,12 @@ def test(lock):
     seed_tenants(p, directory, envfile)
     unmapped = json.loads(run_probe(p, envfile, "unmapped"))
     held = seed_identities(p, envfile, ids)
+    # Independently isolate workload audience and client lifecycle while the
+    # real issuer and CP are alive. The probe restores both fixture changes
+    # before returning; a failed restore aborts rather than tainting evidence.
+    workload_report = json.loads(run_probe(p, envfile, "workload-proof"))
     report = json.loads(run_probe(p, envfile, "test"))
+    apply_workload_proof(report, workload_report)
     # L4-CP-01 "revoked grant": revoke tenant A's grant (synthetic-fixture
     # operation in the throwaway DB) and require CP to refuse the same
     # entitled context for GRANT_REVOKED, while the identity is still valid.
@@ -798,6 +803,25 @@ def test(lock):
     write_evidence(p, lock, report, accepted=True)
     print(outcome_summary(cases, checks, observations), flush=True)
     print("INT-02 actual IAM↔CP profile PASS; not protected staging")
+
+# Exact requirements for this workload-only slice. A missing check or a
+# truthy string is a failure, never a pass. Other matrix scenarios retain
+# their own classification and keep the complete profile blocked as needed.
+IAM02_REQUIRED = ("iam02_registered_workload_positive", "iam02_same_client_audience_only",
+                  "iam02_wrong_audience_denied", "iam02_disabled_client_issuance_denied",
+                  "iam02_fixture_restored")
+
+
+def apply_workload_proof(report, proof):
+    checks = report.setdefault("checks", {})
+    for name in IAM02_REQUIRED:
+        checks[name] = proof.get("checks", {}).get(name) is True
+    for name in ("iam02_wrong_audience_status", "iam02_disabled_client_status"):
+        value = proof.get("observations", {}).get(name)
+        if type(value) is int and 100 <= value <= 599:
+            report.setdefault("observations", {})[name] = value
+    report["scenarios"]["L4-IAM-02"] = ("PASS" if all(checks[name] for name in IAM02_REQUIRED) else "FAIL")
+
 
 # EA v2.2 matrix (INT-02 backlog): the real IAM/CP process test runs "over
 # verified local TLS". All three must be observed by the probe in this run:

@@ -714,3 +714,138 @@ def keycloak_environment(compose):
 
 if __name__=="__main__":
     unittest.main()
+
+class WorkloadAudienceProofTest(unittest.TestCase):
+    """Exercise the proof's sequencing and failure semantics without Docker.
+
+    These are harness regression tests. Only the real-component job can
+    establish L4-IAM-02 acceptance; a scripted HTTP responder cannot.
+    """
+
+    def load_probe(self, runtime):
+        return ScenarioClassificationTest().load_probe(runtime)
+
+    def claims(self, **changes):
+        import time
+        return {"iss": "https://iam.int02.test/realms/baobab", "sub": "same-subject",
+                "azp": "baobab-cms-workload", "actor_type": "workload",
+                "scope": "openid context:resolve", "aud": ["baobab-control-plane"],
+                "iat": int(time.time()) - 1, "exp": int(time.time()) + 120, **changes}
+
+    def test_audience_negative_rejects_confounders(self):
+        import time
+        with tempfile.TemporaryDirectory() as d:
+            probe = self.load_probe(Path(d))
+            positive = self.claims()
+            wrong = self.claims(aud=["baobab-pulse"])
+            self.assertTrue(probe.same_workload_except_audience(positive, wrong))
+            mutations = {"iss": "https://another.invalid", "sub": "another-subject",
+                         "azp": "another-client", "actor_type": "human", "scope": "openid",
+                         "tenant_id": "another-tenant", "exp": int(time.time()) - 1,
+                         "iat": int(time.time()) + 300, "nbf": int(time.time()) + 300,
+                         "aud": ["baobab-control-plane", "baobab-pulse"]}
+            for key, value in mutations.items():
+                with self.subTest(key=key):
+                    self.assertFalse(probe.same_workload_except_audience(positive, {**wrong, key: value}))
+
+    def test_workload_classification_requires_every_observed_boolean(self):
+        proof = {"checks": dict.fromkeys(m.IAM02_REQUIRED, True)}
+        report = {"scenarios": {"L4-IAM-02": "BLOCKED", "L4-CP-02": "BLOCKED"}}
+        m.apply_workload_proof(report, proof)
+        self.assertEqual(report["scenarios"]["L4-IAM-02"], "PASS")
+        self.assertEqual(report["scenarios"]["L4-CP-02"], "BLOCKED")
+        for name in m.IAM02_REQUIRED:
+            for value in (False, None, "true", 1):
+                with self.subTest(name=name, value=value):
+                    changed = {"checks": {**proof["checks"], name: value}}
+                    m.apply_workload_proof(report, changed)
+                    self.assertEqual(report["scenarios"]["L4-IAM-02"], "FAIL")
+        m.apply_workload_proof(report, {"checks": {}})
+        self.assertEqual(report["scenarios"]["L4-IAM-02"], "FAIL")
+
+    def run_proof(self, wrong_status=401, disabled=(401, {"error": "invalid_client"}),
+                  wrong_failure=False, disable_failure=False):
+        import base64, contextlib, io
+        with tempfile.TemporaryDirectory() as d:
+            runtime = Path(d)
+            (runtime / "fixtures.json").write_text(json.dumps({"tenant": "tn_a", "organisation": "org-a"}))
+            probe = self.load_probe(runtime)
+            def jwt(claims):
+                return "h." + base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=") + ".s"
+            good, wrong = jwt(self.claims()), jwt(self.claims(aud=["baobab-pulse"]))
+            mapper = {"id": "00000000-0000-4000-8000-000000000003",
+                      "name": "audience-baobab-control-plane", "protocolMapper": "oidc-audience-mapper",
+                      "config": {"included.custom.audience": "baobab-control-plane"}}
+            calls = []
+            def request(method, url, body=None, token=None, context=None):
+                calls.append((method, url, body))
+                if url.endswith("/realms/master/protocol/openid-connect/token"):
+                    return 200, {"access_token": "private-admin-token"}
+                if "/clients?" in url:
+                    return 200, [{"id": "00000000-0000-4000-8000-000000000001",
+                                  "clientId": "baobab-cms-workload", "enabled": True}]
+                if url.endswith("/client-scopes"):
+                    return 200, [{"id": "00000000-0000-4000-8000-000000000002",
+                                  "name": "context:resolve", "protocolMappers": [mapper]}]
+                if method == "PUT":
+                    if disable_failure and body == {"enabled": False}:
+                        return 503, {}
+                    return 204, {}
+                if url.endswith("/token/introspect"):
+                    if wrong_failure:
+                        raise OSError("private fixture error")
+                    return 200, {"active": True, "sub": "same-subject"}
+                if url.endswith("/token"):
+                    return disabled
+                if url.endswith("/platform-context/resolve"):
+                    if token == wrong:
+                        return wrong_status, {}
+                    return 200, {"context_id": "ctx", "tenant_id": "tn_a", "organisation_id": "org-a"}
+                raise AssertionError(url)
+            out = io.StringIO()
+            with mock.patch.object(probe, "request", side_effect=request), \
+                 mock.patch.object(probe, "workload", side_effect=[good, wrong, good]), \
+                 mock.patch.dict(__import__('os').environ, {"L4_KC_ADMIN_PASSWORD": "private-password",
+                    "L4_TEST_ADMIN_CLIENT_SECRET": "private-client-secret", "L4_WORKLOAD_SEED": "private-seed"}), \
+                 contextlib.redirect_stdout(out):
+                try:
+                    probe.workload_proof()
+                except (OSError, RuntimeError):
+                    return None, calls
+            result = json.loads(out.getvalue())
+            self.assertNotIn("private", out.getvalue())
+            self.assertNotIn(good, out.getvalue())
+            self.assertNotIn(wrong, out.getvalue())
+            return result, calls
+
+    def test_positive_sequence_and_restoration(self):
+        report, calls = self.run_proof()
+        self.assertTrue(all(report["checks"].values()))
+        puts = [body for method, _, body in calls if method == "PUT"]
+        self.assertEqual(puts[0]["config"]["included.custom.audience"], "baobab-pulse")
+        self.assertEqual(puts[1]["config"]["included.custom.audience"], "baobab-control-plane")
+        self.assertEqual(puts[2:], [{"enabled": False}, {"enabled": True}])
+
+    def test_restore_mapper_after_transport_failure(self):
+        report, calls = self.run_proof(wrong_failure=True)
+        self.assertIsNone(report)
+        puts = [body for method, _, body in calls if method == "PUT"]
+        self.assertEqual(puts[-1]["config"]["included.custom.audience"], "baobab-control-plane")
+        self.assertFalse(any(body == {"enabled": False} for body in puts))
+
+    def test_restore_client_after_disable_failure(self):
+        report, calls = self.run_proof(disable_failure=True)
+        self.assertIsNone(report)
+        self.assertEqual([body for method, _, body in calls if method == "PUT"][-1], {"enabled": True})
+
+    def test_unavailable_or_missing_endpoint_is_not_audience_denial(self):
+        for status in (200, 403, 404, 500, 503):
+            with self.subTest(status=status):
+                report, _ = self.run_proof(wrong_status=status)
+                self.assertFalse(report["checks"]["iam02_wrong_audience_denied"])
+
+    def test_disabled_client_transport_failure_is_not_revocation(self):
+        for status, body in ((404, {}), (503, {}), (401, {}), (200, {"access_token": "unexpected"})):
+            with self.subTest(status=status):
+                report, _ = self.run_proof(disabled=(status, body))
+                self.assertFalse(report["checks"]["iam02_disabled_client_issuance_denied"])
