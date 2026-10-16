@@ -300,7 +300,7 @@ def same_workload_except_audience(positive, negative):
             set(positive["scope"].split()) == set(negative["scope"].split()) and
             "baobab-control-plane" in audience_set(positive) and
             "baobab-control-plane" not in audience_set(negative) and
-            "baobab-pulse" in audience_set(negative))
+            "l4-int02-admin" in audience_set(negative))
 
 
 def workload_proof():
@@ -361,7 +361,7 @@ def workload_proof():
     if mapper.get("config", {}).get("included.custom.audience") != "baobab-control-plane":
         raise ValueError("unexpected disposable IAM audience")
     mapper_path = "/client-scopes/" + scope["id"] + "/protocol-mappers/models/" + mapper["id"]
-    changed = {**mapper, "config": {**mapper["config"], "included.custom.audience": "baobab-pulse"}}
+    changed = {**mapper, "config": {**mapper["config"], "included.custom.audience": "l4-int02-admin"}}
     try:
         admin_call("PUT", mapper_path, changed, expected=204)
         wrong_token = workload()
@@ -369,11 +369,18 @@ def workload_proof():
         # A real issuer must still consider the wrong-audience token active.
         # Otherwise CP's 401 could be expiry/revocation rather than audience.
         introspect_status, introspection = request("POST", ISSUER + "/protocol/openid-connect/token/introspect", {
+            # Keycloak 26.7 requires the introspecting client to be in aud.
+            # The disposable mapper targets this already-confidential test
+            # client, so introspection is permitted without disabling that
+            # safeguard or adding any audience to the product IAM contract.
             "client_id": "l4-int02-admin", "client_secret": os.environ["L4_TEST_ADMIN_CLIENT_SECRET"],
             "token": wrong_token})
-        isolated = (same_workload_except_audience(positive, wrong) and
-                    introspect_status == 200 and introspection.get("active") is True and
-                    introspection.get("sub") == positive.get("sub"))
+        checks["iam02_claims_isolated"] = same_workload_except_audience(positive, wrong)
+        checks["iam02_introspection_active"] = introspect_status == 200 and introspection.get("active") is True
+        checks["iam02_introspection_subject_matches"] = introspection.get("sub") == positive.get("sub")
+        observations["iam02_introspection_status"] = introspect_status
+        isolated = (checks["iam02_claims_isolated"] and checks["iam02_introspection_active"] and
+                    checks["iam02_introspection_subject_matches"])
         checks["iam02_same_client_audience_only"] = isolated
         denied_status, _ = request("POST", CP + "/v1/platform-context/resolve", body, wrong_token)
         observations["iam02_wrong_audience_status"] = denied_status

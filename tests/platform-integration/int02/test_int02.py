@@ -735,13 +735,13 @@ class WorkloadAudienceProofTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             probe = self.load_probe(Path(d))
             positive = self.claims()
-            wrong = self.claims(aud=["baobab-pulse"])
+            wrong = self.claims(aud=["l4-int02-admin"])
             self.assertTrue(probe.same_workload_except_audience(positive, wrong))
             mutations = {"iss": "https://another.invalid", "sub": "another-subject",
                          "azp": "another-client", "actor_type": "human", "scope": "openid",
                          "tenant_id": "another-tenant", "exp": int(time.time()) - 1,
                          "iat": int(time.time()) + 300, "nbf": int(time.time()) + 300,
-                         "aud": ["baobab-control-plane", "baobab-pulse"]}
+                         "aud": ["baobab-control-plane", "l4-int02-admin"]}
             for key, value in mutations.items():
                 with self.subTest(key=key):
                     self.assertFalse(probe.same_workload_except_audience(positive, {**wrong, key: value}))
@@ -770,7 +770,7 @@ class WorkloadAudienceProofTest(unittest.TestCase):
             probe = self.load_probe(runtime)
             def jwt(claims):
                 return "h." + base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=") + ".s"
-            good, wrong = jwt(self.claims()), jwt(self.claims(aud=["baobab-pulse"]))
+            good, wrong = jwt(self.claims()), jwt(self.claims(aud=["l4-int02-admin"]))
             mapper = {"id": "00000000-0000-4000-8000-000000000003",
                       "name": "audience-baobab-control-plane", "protocolMapper": "oidc-audience-mapper",
                       "config": {"included.custom.audience": "baobab-control-plane"}}
@@ -790,6 +790,8 @@ class WorkloadAudienceProofTest(unittest.TestCase):
                         return 503, {}
                     return 204, {}
                 if url.endswith("/token/introspect"):
+                    self.assertEqual(body["client_id"], "l4-int02-admin")
+                    self.assertEqual(body["client_secret"], "private-client-secret")
                     if wrong_failure:
                         raise OSError("private fixture error")
                     return 200, {"active": True, "sub": "same-subject"}
@@ -820,7 +822,7 @@ class WorkloadAudienceProofTest(unittest.TestCase):
         report, calls = self.run_proof()
         self.assertTrue(all(report["checks"].values()))
         puts = [body for method, _, body in calls if method == "PUT"]
-        self.assertEqual(puts[0]["config"]["included.custom.audience"], "baobab-pulse")
+        self.assertEqual(puts[0]["config"]["included.custom.audience"], "l4-int02-admin")
         self.assertEqual(puts[1]["config"]["included.custom.audience"], "baobab-control-plane")
         self.assertEqual(puts[2:], [{"enabled": False}, {"enabled": True}])
 

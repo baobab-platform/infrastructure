@@ -814,9 +814,10 @@ IAM02_REQUIRED = ("iam02_registered_workload_positive", "iam02_same_client_audie
 
 def apply_workload_proof(report, proof):
     checks = report.setdefault("checks", {})
-    for name in IAM02_REQUIRED:
+    for name in (*IAM02_REQUIRED, "iam02_claims_isolated", "iam02_introspection_active",
+                 "iam02_introspection_subject_matches"):
         checks[name] = proof.get("checks", {}).get(name) is True
-    for name in ("iam02_wrong_audience_status", "iam02_disabled_client_status"):
+    for name in ("iam02_wrong_audience_status", "iam02_disabled_client_status", "iam02_introspection_status"):
         value = proof.get("observations", {}).get(name)
         if type(value) is int and 100 <= value <= 599:
             report.setdefault("observations", {})[name] = value

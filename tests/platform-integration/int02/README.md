@@ -179,3 +179,13 @@ code/PKCE, the missing-Organisation matrix/contract discrepancy, live provider
 health and the complete parent/subsidiary/sibling/external isolation matrix
 remain independently required. See the [programme audit and ordered closure
 plan](../../../docs/testing/nabhold-go-live-audit-2026-10-16.md).
+
+The first real takeover run exposed Keycloak 26.7 introspection audience
+validation: a confidential client cannot inspect a token that does not include
+it in `aud`. The negative mapper therefore targets the existing disposable
+`l4-int02-admin` audience and uses that client's credential for introspection.
+The issuing workload/client, subject and scopes remain unchanged. No audience
+check is disabled, no compatibility bypass is configured, and no new product
+IAM audience is registered. Named safe boolean diagnostics distinguish claim
+isolation, active introspection and subject matching if this proof fails again.
+See [Keycloak's documented introspection audience validation](https://www.keycloak.org/docs/26.7.0/server_admin/index.html#_audience).
