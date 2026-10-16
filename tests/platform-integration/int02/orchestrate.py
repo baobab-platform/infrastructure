@@ -626,10 +626,19 @@ def seed_tenants(p, directory, envfile):
       -- fabricate a competing capability row.
       SELECT capability_id FROM capability.capability
       WHERE code='intelligence.evidence.search' AND status='ACTIVE'
+    ), e0 AS (
+      -- CP registers its engine providers at startup (main.go: "engine
+      -- providers registered"), which creates the canonical baobab-pulse
+      -- engine with a DRAFT baobab-pulse.core provider. Share that engine row
+      -- (CP's own ON CONFLICT pattern); never activate CP's DRAFT provider.
+      -- The provider below stays the explicitly synthetic fixture.
+      INSERT INTO topology.engine(code,name) VALUES ('baobab-pulse','baobab-pulse')
+      ON CONFLICT (code) DO NOTHING RETURNING engine_id
     ), e AS (
-      INSERT INTO topology.engine(code,name)
-      VALUES ('baobab-pulse','INT-02 synthetic pulse provider')
-      RETURNING engine_id
+      SELECT engine_id FROM e0
+      UNION ALL
+      SELECT engine_id FROM topology.engine
+      WHERE code='baobab-pulse' AND NOT EXISTS (SELECT 1 FROM e0)
     ), i AS (
       INSERT INTO topology.engine_instance(engine_id,region,environment,status)
       SELECT engine_id,'af-south-1','integration','ACTIVE' FROM e

@@ -405,6 +405,11 @@ class TransportTest(unittest.TestCase):
         self.assertNotIn("INSERT INTO capability.capability(",runner)
         self.assertIn("WHERE code='intelligence.evidence.search' AND status='ACTIVE'",runner)
         self.assertIn('must(written == "1:1"',runner)
+        # CP registers the baobab-pulse engine at startup: share it, never
+        # duplicate it, and never activate CP's DRAFT baobab-pulse.core.
+        self.assertIn("ON CONFLICT (code) DO NOTHING RETURNING engine_id",runner)
+        self.assertNotIn("'baobab-pulse.core'",runner)
+        self.assertIn("'int02.synthetic-pulse'",runner)
 
     def test_every_tls_check_is_collected_from_the_probe(self):
         runner=(BASE/"orchestrate.py").read_text()
