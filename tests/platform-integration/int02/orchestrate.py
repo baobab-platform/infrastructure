@@ -37,6 +37,10 @@ IAM_HOST = "iam.int02.test"
 CP_HOST = "cp.int02.test"
 ISSUER = "https://" + IAM_HOST + "/realms/baobab"
 SERVICES = {"keycloak", "iam-db", "cp", "cp-db", "edge", "probe"}
+# ADR-SHARED-036 s6.8/s6.10: a CP or IAM pull request runs this profile
+# against its own head through the reusable workflow; only these two pins
+# may be replaced, and only by a full commit SHA.
+CANDIDATE_REPOSITORIES = {"baobab-iam", "baobab-cp"}
 
 class Blocked(Exception):
     pass
@@ -201,6 +205,57 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
                       + (", ".join(sorted(snapshot)) if snapshot else "unavailable")
                       + (f"; {safe_cause}" if safe_cause else "")) from cause
 
+def host_path(path):
+    """A bind-mount source as the Docker daemon sees it (ADR-SHARED-036 s6.3).
+
+    The integration Codespace and the devcontainer CI job use
+    docker-outside-of-docker: the daemon runs on the host and resolves mount
+    sources against the HOST filesystem, where the workspace lives at a
+    different path. The devcontainer passes both folders through remoteEnv.
+    On a plain runner neither is set and paths are unchanged. Build contexts
+    are read by the Compose client and are never translated.
+    """
+    local = os.environ.get("LOCAL_WORKSPACE_FOLDER", "")
+    inside = os.environ.get("CONTAINER_WORKSPACE_FOLDER", "")
+    if not local and not inside:
+        return str(path)
+    must(bool(local) and bool(inside) and local.startswith("/") and inside.startswith("/")
+         and not re.search(r"[\x00-\x1f]", local + inside),
+         "LOCAL_WORKSPACE_FOLDER and CONTAINER_WORKSPACE_FOLDER must both be absolute paths")
+    source = Path(path).resolve()
+    root = Path(inside).resolve()
+    must(source.is_relative_to(root), "Bind-mount source is outside the devcontainer workspace")
+    return str(Path(local) / source.relative_to(root))
+
+def candidate_pins(lock):
+    """The source pins to materialise: the lock, or one validated candidate."""
+    pins = dict(lock["sources"])
+    name = os.environ.get("INT02_CANDIDATE_REPOSITORY", "").strip()
+    sha = os.environ.get("INT02_CANDIDATE_SHA", "").strip()
+    if not name and not sha:
+        return pins, None
+    must(name in CANDIDATE_REPOSITORIES and SHA40.fullmatch(sha) is not None,
+         "A candidate must name baobab-iam or baobab-cp and a full 40-character commit SHA")
+    candidate = {"repository": name, "sha": sha, "lock_pin": pins[name]}
+    pins[name] = sha
+    return pins, candidate
+
+def verify_bind_mounts(p, directory, envfile, lock):
+    """Fail fast, and say why, if the daemon cannot see the harness files."""
+    expected = (directory / ".mount-sentinel").read_text().strip()
+    source = next((line.partition("=")[2] for line in envfile.read_text().splitlines()
+                   if line.startswith("L4_RUNTIME=")), "")
+    try:
+        seen = execute(["docker", "run", "--rm", "--network", "none", "-v", source + ":/m:ro",
+                        lock["runtime_images"]["python_probe"], "cat", "/m/.mount-sentinel"],
+                       capture=True, timeout=180).strip()
+    except Blocked:
+        # A missing source is created EMPTY by the daemon, so cat fails.
+        seen = ""
+    must(seen == expected, "The Docker daemon cannot see the harness bind mounts. Under "
+         "docker-outside-of-docker set LOCAL_WORKSPACE_FOLDER and CONTAINER_WORKSPACE_FOLDER "
+         "(the integration devcontainer does this through remoteEnv)")
+
 def check_prerequisites(lock, static=False):
     must((BASE / "cp.Dockerfile").is_file() and (BASE / "probe.py").is_file()
          and (BASE / "edge.conf").is_file(), "INT-02 source incomplete")
@@ -225,6 +280,7 @@ def materialise(lock):
     must(not SESSION.exists(), "Existing INT-02 session; run down")
     project = "l4-" + secrets.token_hex(8)
     directory = STATE / ("int02-" + project)
+    pins, candidate = candidate_pins(lock)
     directory.mkdir(mode=0o700, parents=True)
     # Always allowlist exact GitHub org paths; no redirects or arbitrary URL.
     try:
@@ -233,22 +289,27 @@ def materialise(lock):
             execute(["git", "clone", "--quiet", "--no-checkout", "--",
                      "https://github.com/baobab-platform/" + name + ".git",
                      str(dest)], timeout=300)
+            if candidate and candidate["repository"] == name:
+                # A pull-request head need not be on any branch; fetch it by SHA.
+                execute(["git", "-C", str(dest), "fetch", "--quiet", "origin", pins[name]],
+                        timeout=300)
             execute(["git", "-C", str(dest), "checkout", "--quiet", "--detach",
-                     lock["sources"][name]], timeout=60)
+                     pins[name]], timeout=60)
             sha = execute(["git", "-C", str(dest), "rev-parse", "HEAD"],
                           capture=True, timeout=15).strip()
-            must(sha == lock["sources"][name], "Git source pin mismatch")
+            must(sha == pins[name], "Git source pin mismatch")
         runtime = {
-            "L4_PROJECT": project, "L4_RUNTIME": str(directory),
+            # Bind-mount sources are daemon (host) paths; see host_path().
+            "L4_PROJECT": project, "L4_RUNTIME": host_path(directory),
             "L4_IAM_SOURCE": str(directory / "baobab-iam"),
             "L4_CP_SOURCE": str(directory / "baobab-cp"),
             "L4_CP_DOCKERFILE": str(BASE / "cp.Dockerfile"),
-            "L4_PROBE_SOURCE": str(BASE),
+            "L4_PROBE_SOURCE": host_path(BASE),
             "L4_POSTGRES_IMAGE": lock["runtime_images"]["postgres"],
             "L4_PYTHON_IMAGE": lock["runtime_images"]["python_probe"],
             "L4_EDGE_IMAGE": lock["runtime_images"]["tls_edge"],
-            "L4_EDGE_CONFIG": str(BASE / "edge.conf"),
-            "L4_TLS": str(directory / "tls"),
+            "L4_EDGE_CONFIG": host_path(BASE / "edge.conf"),
+            "L4_TLS": host_path(directory / "tls"),
             "L4_IAM_IMAGE": "l4-iam-" + project,
             "L4_CP_IMAGE": "l4-cp-" + project,
             "L4_IAM_DB_PASSWORD": secrets.token_hex(28),
@@ -259,6 +320,9 @@ def materialise(lock):
             "L4_TEST_ADMIN_CLIENT_SECRET": secrets.token_hex(28),
         }
         throwaway_tls(directory / "tls")
+        # Not a secret: up() reads it back through a real bind mount.
+        (directory / ".mount-sentinel").write_text(secrets.token_hex(16) + "\n")
+        os.chmod(directory / ".mount-sentinel", 0o644)
         private(directory / "runtime.env",
                 "".join(k + "=" + v + "\n" for k, v in runtime.items()))
         # Fixture clients are disposable IAM test records only. Their bounded
@@ -291,6 +355,7 @@ def materialise(lock):
           "lastName":"L4","email":"l4-int02@example.invalid"})+"\n")
         private(directory / "other-secret",other_client["secret"]+"\n")
         private(SESSION, json.dumps({"project": project, "directory": str(directory),
+                "sources": pins, "candidate": candidate,
                 "started": datetime.now(timezone.utc).isoformat()}) + "\n")
     except BaseException:
         if SESSION.exists():
@@ -299,7 +364,8 @@ def materialise(lock):
         else:
             shutil.rmtree(directory, ignore_errors=True)
         raise
-    print("INT-02 source materialised at audited IAM and CP commit IDs")
+    print("INT-02 source materialised at audited IAM and CP commit IDs" +
+          (f" (candidate {candidate['repository']} {candidate['sha']})" if candidate else ""))
 
 def throwaway_tls(tls):
     """A CA and edge certificate that exist only for this run (one day).
@@ -333,6 +399,7 @@ def up(lock):
     check_prerequisites(lock)
     p, directory, envfile = current()
     compose(p, envfile, "config", "--quiet", timeout=60)
+    verify_bind_mounts(p, directory, envfile, lock)
     # Keycloak and CP may require significant build resources; never hide
     # build failure as a skip or replace the source binary with a mock.
     print("INT-02 build stage: Keycloak from pinned IAM source",flush=True)
@@ -671,6 +738,14 @@ def image_id(envfile, variable):
                 return "unavailable"
     return "unavailable"
 
+def harness_sha():
+    """The checked-out harness commit; a receipt is never lost for want of it."""
+    try:
+        sha = execute(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture=True, timeout=15).strip()
+    except Blocked:
+        sha = ""
+    return sha if SHA40.fullmatch(sha) else "unavailable"
+
 def write_evidence(p, lock, report, accepted):
     EVIDENCE.mkdir(exist_ok=True)
     envfile = Path(p.get("directory", "")) / "runtime.env"
@@ -694,11 +769,13 @@ def write_evidence(p, lock, report, accepted):
                     "mode":"tls1.3-edge-verified-per-run-ca",
                     "edge_to_upstream":"http-on-internal-compose-network",
                     "issuer":ISSUER},
-       "source_pins":lock["sources"],"run_id":p["project"],
+       "source_pins":p.get("sources") or lock["sources"],"lock_pins":lock["sources"],
+       "candidate":p.get("candidate"),"run_id":p["project"],
        # Source pins are dependency baselines; this is the ACTUAL checked
        # out integration harness revision, including GitHub's PR merge ref.
-       "harness_candidate_sha":os.environ.get("GITHUB_SHA") or
-           execute(["git","rev-parse","HEAD"],capture=True,timeout=15).strip(),
+       # The checked-out harness itself, never the caller's SHA when this is
+       # a reusable-workflow call from a CP or IAM pull request.
+       "harness_candidate_sha":harness_sha(),
        "manifest_sha256":hashlib.sha256(LOCK.read_bytes()).hexdigest(),
        "component_integrity":{"iam":"REAL_KEYCLOAK_PINNED_SOURCE","cp":"REAL_CP_PINNED_SOURCE"},
        "tested_at":datetime.now(timezone.utc).isoformat(),

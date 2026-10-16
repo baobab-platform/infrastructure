@@ -6,6 +6,15 @@
   },
   "remoteUser": "vscode",
   "init": true,
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "16gb",
+    "storage": "32gb"
+  },
+  "remoteEnv": {
+    "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}",
+    "CONTAINER_WORKSPACE_FOLDER": "${containerWorkspaceFolder}"
+  },
   "postCreateCommand": "python3 tests/platform-integration/l4.py preflight --static",
   "forwardPorts": [],
   "portsAttributes": {

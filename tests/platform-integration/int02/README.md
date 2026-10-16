@@ -80,3 +80,37 @@ Receipts record the candidate harness Git SHA as distinct from dependency pins.
     the same endpoint refused without the run CA.
   - Keycloak's in-container kcadm administration stays on loopback HTTP, and the edge-to-upstream hop is HTTP on the
     internal network. The receipt records both.
+
+### Codespaces and CI parity, and testing a CP or IAM change without staging
+
+ADR-SHARED-036 §6.3 requires one harness and identical entrypoints on Codespaces and Actions; §6.8 and §6.10
+require a CP or IAM pull request to run the affected L4 profile against its own head. This profile does both.
+
+- **One executor.** The Actions live job runs `run-in-devcontainer.sh` inside
+  `.devcontainer/platform-integration` through `devcontainers/ci` (pinned by commit). A developer runs the same script,
+  or the same six commands, in the integration Codespace. Both use one image, one toolchain and one teardown.
+- **docker-outside-of-docker.** In that devcontainer the Docker daemon runs on the host and resolves bind-mount
+  sources against the host filesystem, where the workspace lives at another path. The devcontainer passes
+  `LOCAL_WORKSPACE_FOLDER` and `CONTAINER_WORKSPACE_FOLDER` through `remoteEnv`, and `host_path()` translates only the
+  four mount sources (runtime, TLS, probe source, edge config); build contexts stay container paths. `up` proves the
+  daemon can read a per-run sentinel through a real bind mount before starting anything, and otherwise fails closed
+  with the reason. On a plain runner neither variable is set and nothing is translated.
+- **Machine size.** `hostRequirements` asks Codespaces for 4 CPUs and 16 GB, at least the lock's minimum, so preflight
+  is not starved on the default machine.
+- **A CP or IAM pull request.** Call the reusable workflow, pinned to an Infrastructure commit, and pass the
+  candidate head. Exactly one of `baobab-cp` or `baobab-iam` may be replaced, only by a full commit SHA. Inputs are
+  validated and reach scripts only through the environment. The receipt records the materialised pins, the lock
+  pins and the candidate. No secret is passed; every credential is generated per run and destroyed.
+
+  ```yaml
+  jobs:
+    int02:
+      uses: baobab-platform/infrastructure/.github/workflows/platform-int02.yml@<infrastructure-sha>
+      with:
+        harness_sha: <the same infrastructure-sha>
+        candidate_repository: baobab-cp
+        candidate_sha: ${{ github.event.pull_request.head.sha }}
+  ```
+
+This is real-component evidence on synthetic data. It never substitutes for protected staging, and a BLOCKED
+scenario is never a pass.

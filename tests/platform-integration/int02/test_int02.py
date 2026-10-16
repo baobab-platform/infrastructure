@@ -402,6 +402,115 @@ class TransportTest(unittest.TestCase):
             self.assertIn('"'+name+'"',probe)
 
 
+
+class ParityTest(unittest.TestCase):
+    """ADR-SHARED-036 s6.3/s6.8/s6.10: one harness for Codespaces and CI."""
+
+    def env(self, **values):
+        keys=("LOCAL_WORKSPACE_FOLDER","CONTAINER_WORKSPACE_FOLDER",
+              "INT02_CANDIDATE_REPOSITORY","INT02_CANDIDATE_SHA")
+        clean={k:v for k,v in m.os.environ.items() if k not in keys}
+        return mock.patch.dict(m.os.environ,{**clean,**values},clear=True)
+
+    def test_mount_sources_are_untouched_on_a_plain_runner(self):
+        with self.env():
+            self.assertEqual(m.host_path(BASE/"edge.conf"),str(BASE/"edge.conf"))
+
+    def test_mount_sources_are_translated_to_the_host_workspace(self):
+        root=str(m.ROOT)
+        with self.env(LOCAL_WORKSPACE_FOLDER="/home/runner/work/infrastructure/infrastructure",
+                      CONTAINER_WORKSPACE_FOLDER=root):
+            self.assertEqual(m.host_path(BASE/"edge.conf"),
+                "/home/runner/work/infrastructure/infrastructure/tests/platform-integration/int02/edge.conf")
+
+    def test_translation_refuses_half_configuration_and_escapes(self):
+        with self.env(LOCAL_WORKSPACE_FOLDER="/host"):
+            with self.assertRaises(m.Blocked):
+                m.host_path(BASE)
+        with self.env(LOCAL_WORKSPACE_FOLDER="relative",CONTAINER_WORKSPACE_FOLDER=str(m.ROOT)):
+            with self.assertRaises(m.Blocked):
+                m.host_path(BASE)
+        with self.env(LOCAL_WORKSPACE_FOLDER="/host",CONTAINER_WORKSPACE_FOLDER=str(BASE)):
+            with self.assertRaises(m.Blocked):
+                m.host_path(m.ROOT/"README.md")
+
+    def test_only_build_contexts_stay_container_paths(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        for name in ("L4_RUNTIME","L4_PROBE_SOURCE","L4_TLS","L4_EDGE_CONFIG"):
+            self.assertRegex(runner,'"'+name+r'": host_path\(')
+        for name in ("L4_IAM_SOURCE","L4_CP_SOURCE","L4_CP_DOCKERFILE"):
+            self.assertNotRegex(runner,'"'+name+r'": host_path\(')
+        self.assertIn("verify_bind_mounts(p, directory, envfile, lock)",runner)
+
+    def test_candidate_replaces_exactly_one_validated_pin(self):
+        data=m.load()
+        with self.env():
+            self.assertEqual(m.candidate_pins(data),(data["sources"],None))
+        sha="a"*40
+        with self.env(INT02_CANDIDATE_REPOSITORY="baobab-cp",INT02_CANDIDATE_SHA=sha):
+            pins,candidate=m.candidate_pins(data)
+        self.assertEqual(pins["baobab-cp"],sha)
+        self.assertEqual(pins["baobab-iam"],data["sources"]["baobab-iam"])
+        self.assertEqual(candidate,{"repository":"baobab-cp","sha":sha,
+                                    "lock_pin":data["sources"]["baobab-cp"]})
+        for repo,value in (("baobab-erp",sha),("baobab-cp","main"),("baobab-cp","a"*39),
+                           ("",sha),("baobab-cp",""),("shared",sha)):
+            with self.env(INT02_CANDIDATE_REPOSITORY=repo,INT02_CANDIDATE_SHA=value):
+                with self.assertRaises(m.Blocked):
+                    m.candidate_pins(data)
+
+    def test_receipt_records_materialised_pins_and_candidate(self):
+        data=m.load()
+        candidate={"repository":"baobab-iam","sha":"b"*40,"lock_pin":data["sources"]["baobab-iam"]}
+        session={"project":"l4-3333333333333333","sources":{**data["sources"],"baobab-iam":"b"*40},
+                 "candidate":candidate}
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(m,"EVIDENCE",Path(d)):
+                m.write_evidence(session,data,{"scenarios":{},"checks":{}},accepted=False)
+            evidence=json.loads(next(Path(d).glob("*.json")).read_text())
+        self.assertEqual(evidence["source_pins"]["baobab-iam"],"b"*40)
+        self.assertEqual(evidence["lock_pins"],data["sources"])
+        self.assertEqual(evidence["candidate"],candidate)
+        self.assertRegex(evidence["harness_candidate_sha"],r"^([0-9a-f]{40}|unavailable)$")
+
+    def test_integration_codespace_matches_the_ci_executor(self):
+        dc=json.loads((m.ROOT/".devcontainer/platform-integration/devcontainer.json").read_text())
+        self.assertEqual(dc["remoteEnv"],{"LOCAL_WORKSPACE_FOLDER":"${localWorkspaceFolder}",
+                                          "CONTAINER_WORKSPACE_FOLDER":"${containerWorkspaceFolder}"})
+        data=m.load()
+        self.assertGreaterEqual(dc["hostRequirements"]["cpus"],data["requirements"]["min_cpus"])
+        self.assertGreaterEqual(int(dc["hostRequirements"]["memory"].rstrip("gb")),
+                                data["requirements"]["min_ram_gib"])
+        self.assertEqual(dc["forwardPorts"],[])
+
+    def test_live_job_runs_the_codespace_entrypoints_in_the_devcontainer(self):
+        wf=(m.ROOT/".github/workflows/platform-int02.yml").read_text()
+        self.assertIn("uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca",wf)
+        self.assertIn("configFile: .devcontainer/platform-integration/devcontainer.json",wf)
+        self.assertIn("runCmd: bash tests/platform-integration/int02/run-in-devcontainer.sh",wf)
+        self.assertIn("push: never",wf)
+        script=(BASE/"run-in-devcontainer.sh").read_text()
+        for stage in ("materialise","up","test","evidence"):
+            self.assertIn('python3 "$L4" '+stage+" iam-cp",script)
+        self.assertIn("trap cleanup EXIT",script)
+        self.assertIn('[ "$rc" -ne 0 ] || rc=3',script)
+
+    def test_reusable_workflow_inputs_are_validated_and_never_interpolated(self):
+        import re
+        wf=(m.ROOT/".github/workflows/platform-int02.yml").read_text()
+        self.assertIn("workflow_call:",wf)
+        for name in ("harness_sha","candidate_repository","candidate_sha"):
+            self.assertIn("      "+name+":",wf)
+        # Caller inputs reach run: blocks only through env, never ${{ }} in shell.
+        for block in re.findall(r"\n        run: \|\n((?:          .*\n?)+)",wf):
+            self.assertNotIn("${{",block)
+        self.assertIn("repository: ${{ inputs.harness_sha && 'baobab-platform/infrastructure' || github.repository }}",wf)
+        self.assertIn('[ "$(git rev-parse HEAD)" != "$HARNESS_SHA" ]',wf)
+        self.assertIn("persist-credentials: false",wf)
+        self.assertNotIn("secrets:",wf)
+        self.assertNotIn("pull_request_target",wf)
+
+
 def keycloak_environment(compose):
     """The keycloak service's environment mapping, read structurally (standard
     library only): uncommented `KEY: value` lines at environment indentation.
