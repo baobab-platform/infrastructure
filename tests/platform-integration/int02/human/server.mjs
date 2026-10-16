@@ -9,7 +9,7 @@ import { configuration, begin, exchange, validateCallback, verifyIdToken, opaque
 const secret = process.env.L4_TEST_ADMIN_CLIENT_SECRET;
 const password = process.env.L4_TEST_USER_PASSWORD;
 const attempts = new Map();
-let settings, latest, proofRunning = false, mode = 'normal', lastExchange, stage = 'startup';
+let settings, latest, proofRunning = false, mode = 'normal', lastExchange, stage = 'startup', failureClass = 'none', failureCode = 'none';
 function reply(res, status, value) { res.writeHead(status, {'content-type':'application/json','cache-control':'no-store'}); res.end(JSON.stringify(value)); }
 function cookie(req) { return req.headers.cookie?.split('; ').find(v=>v.startsWith('attempt='))?.slice(8); }
 async function rejected(fn) { try { await fn(); return false; } catch { return true; } }
@@ -26,16 +26,21 @@ async function proof() {
     const context = await browser.newContext({ignoreHTTPSErrors:false});
     const page = await context.newPage();
     try {
+      stage = 'login_' + which + '_visit';
       await page.goto(origin + '/login', {timeout:30000});
+      stage = 'login_' + which + '_form';
       await page.locator('#username').fill('l4-int02-human');
       await page.locator('#password').fill(password);
+      stage = 'login_' + which + '_submit';
       await Promise.all([page.waitForURL(origin + '/callback?**', {timeout:30000}), page.locator('#kc-login').click()]);
+      stage = 'login_' + which + '_result';
       const response = await page.locator('body').innerText();
       return JSON.parse(response).accepted === true;
     } finally { await context.close(); }
   }
   try {
     checks.iam01_code_pkce_positive = await login('normal');
+    if (!checks.iam01_code_pkce_positive) { stage = 'callback_exchange'; throw Error('callback'); }
     const positive = latest;
     const exchangeInput = lastExchange;
     checks.iam01_signed_id_token = !!(await verifyIdToken(positive.id_token, settings.keys));
@@ -104,9 +109,9 @@ const server = http.createServer(async(req,res)=>{
         latest = await exchange(settings.config, settings.keys, url, transaction);
         lastExchange = {url,transaction,handle};
         return reply(res,200,{accepted:true});
-      } catch { return reply(res,401,{accepted:false}); }
+      } catch (error) { failureClass = /^[A-Za-z]{1,40}$/.test(error.constructor?.name) ? error.constructor.name : 'Other'; failureCode = /^[A-Z_]{1,48}$/.test(error.code) ? error.code : 'OTHER'; return reply(res,401,{accepted:false}); }
     }
     reply(res,404,{});
-  } catch { reply(res,500,{error:'HUMAN_PROOF_FAILED',stage}); }
+  } catch (error) { if (failureClass === 'none') failureClass = /^[A-Za-z]{1,40}$/.test(error.constructor?.name) ? error.constructor.name : 'Other'; reply(res,500,{error:'HUMAN_PROOF_FAILED',stage,failureClass,failureCode}); }
 });
 server.listen(8080,'0.0.0.0');

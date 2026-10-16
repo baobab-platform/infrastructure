@@ -107,9 +107,13 @@ def human_proof():
     except urllib.error.HTTPError as exc:
         body = json.loads(exc.read(16384))
         stage = body.get("stage", "unknown")
-        diagnostic(step="human_proof", stage=stage if stage in
-            {"startup","browser_launch","discovery","login_normal","login_state","login_nonce","login_pkce"}
+        diagnostic(step="human_proof", stage=stage if __import__("re").fullmatch(
+            r"(?:startup|browser_launch|discovery|callback_exchange|login_(?:normal|state|nonce|pkce)(?:_(?:visit|form|submit|result))?)",stage)
             else "unknown", status=exc.code)
+        diagnostic(step="human_protocol", failure_class=body.get("failureClass") if
+            __import__("re").fullmatch(r"[A-Za-z]{1,40}", str(body.get("failureClass"))) else "Other",
+            failure_code=body.get("failureCode") if
+            __import__("re").fullmatch(r"[A-Z_]{1,40}", str(body.get("failureCode"))) else "OTHER")
         raise RuntimeError("human proof failed") from None
     if not isinstance(report.get("checks"), dict):
         raise RuntimeError("human proof unavailable")
