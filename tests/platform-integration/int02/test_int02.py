@@ -315,7 +315,7 @@ class TransportTest(unittest.TestCase):
         compose=(BASE/"compose.yaml").read_text()
         self.assertIn("SSL_CERT_FILE: /run/l4-tls/ca.pem",compose)
         self.assertIn("WORKLOAD_OIDC_ISSUER: https://iam.int02.test/realms/baobab",compose)
-        self.assertIn("aliases: [iam.int02.test, cp.int02.test]",compose)
+        self.assertIn("aliases: [iam.int02.test, cp.int02.test, human.int02.test]",compose)
 
     def test_edge_is_digest_pinned_and_a_declared_service(self):
         data=m.load()
@@ -849,6 +849,23 @@ class WorkloadAudienceProofTest(unittest.TestCase):
             with self.subTest(status=status):
                 report, _ = self.run_proof(disabled=(status, body))
                 self.assertFalse(report["checks"]["iam02_disabled_client_issuance_denied"])
+
+
+class HumanProofTest(unittest.TestCase):
+    def test_all_required_checks_and_cp_acceptance_are_mandatory(self):
+        for missing in (*m.IAM01_REQUIRED, "cp_positive"):
+            report = {"scenarios":{"L4-IAM-01":"FAIL" if missing == "cp_positive" else "BLOCKED"}}
+            checks = {name:True for name in m.IAM01_REQUIRED if name != missing}
+            m.apply_human_proof(report,{"checks":checks})
+            self.assertEqual(report["scenarios"]["L4-IAM-01"],"FAIL",missing)
+        report = {"scenarios":{"L4-IAM-01":"BLOCKED"}}
+        m.apply_human_proof(report,{"checks":{name:True for name in m.IAM01_REQUIRED}})
+        self.assertEqual(report["scenarios"]["L4-IAM-01"],"PASS")
+
+    def test_truthy_strings_cannot_promote_human_proof(self):
+        report = {"scenarios":{"L4-IAM-01":"BLOCKED"}}
+        m.apply_human_proof(report,{"checks":{name:"true" for name in m.IAM01_REQUIRED}})
+        self.assertEqual(report["scenarios"]["L4-IAM-01"],"FAIL")
 
 
 if __name__ == "__main__":

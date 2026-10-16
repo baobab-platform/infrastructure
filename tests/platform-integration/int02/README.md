@@ -189,3 +189,28 @@ check is disabled, no compatibility bypass is configured, and no new product
 IAM audience is registered. Named safe boolean diagnostics distinguish claim
 isolation, active introspection and subject matching if this proof fails again.
 See [Keycloak's documented introspection audience validation](https://www.keycloak.org/docs/26.7.0/server_admin/index.html#_audience).
+
+## Human code/S256 closure candidate (16 October 2026)
+
+The `human/` component is an actual confidential relying party plus Chromium,
+not an issuer or simulated callback. It runs on `human.int02.test` through the
+same verified run CA. The disposable client disables direct/password grants,
+requires S256 and registers exactly `/callback`. Chromium trusts the run CA
+through its private NSS database; Node trusts it through `NODE_EXTRA_CA_CERTS`.
+No `ignoreHTTPSErrors`, token-signing fixture or TLS bypass is used.
+
+The browser completes real Keycloak login. The maintained `openid-client` and
+`jose` libraries verify signatures and the retained nonce/state/verifier tuple.
+The callback atomically consumes browser-bound state before exchange. Tests
+repeat the same code, repeat the consumed browser state, and independently
+exercise wrong verifier/nonce/state, unregistered callback, wrong signature,
+issuer/audience expectations and expiry against real signed tokens. A positive
+access token then reaches CP's independent canonical-identity/authority checks.
+Only named booleans leave the private component; tokens remain in process
+memory and disposable containers. No browser traces or storage snapshots are
+published. Missing or failed sub-checks cannot promote L4-IAM-01.
+
+Status: SOURCE CANDIDATE, awaiting the real final-head run. The other blocked
+scenarios retain their own mandatory exits. Dependencies are npm-integrity
+locked; browser revision comes from pinned Playwright. The Node base digest
+was resolved from Docker Hub's OCI manifest, not inferred from a mutable tag.

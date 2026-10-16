@@ -73,6 +73,10 @@ jobs:
       - run: python3 tests/platform-integration/l4.py preflight iam-cp --static
       - run: python3 -m unittest discover -s tests/platform-integration/int02 -p test_int02.py -v
       - run: python3 -m py_compile tests/platform-integration/int02/*.py
+      - name: Confidential callback validator checks
+        run: |
+          npm ci --prefix tests/platform-integration/int02/human --ignore-scripts --no-audit --no-fund
+          npm test --prefix tests/platform-integration/int02/human
   image-discovery:
     name: Probe image digest review
     runs-on: ubuntu-24.04

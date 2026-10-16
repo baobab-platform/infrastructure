@@ -18,7 +18,8 @@
     "cp",
     "cp-db",
     "edge",
-    "probe"
+    "probe",
+    "human"
   ],
   "synthetic_fixture": true,
   "mandatory": [

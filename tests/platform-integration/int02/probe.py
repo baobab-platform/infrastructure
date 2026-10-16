@@ -77,9 +77,45 @@ def workload():
     return token("baobab-cms-workload",prefix,"client_credentials")
 
 def human():
-    return token("l4-int02-admin",os.environ["L4_TEST_ADMIN_CLIENT_SECRET"],
-                 "password",username="l4-int02-human",
-                 password=os.environ["L4_TEST_USER_PASSWORD"])
+    # Access token obtained ONLY by the real browser/code/S256 callback. No
+    # human password grant or locally signed token can substitute for it.
+    status, reply = request("GET", "https://human.int02.test/token",
+                            token=os.environ["L4_TEST_ADMIN_CLIENT_SECRET"])
+    if status != 200 or not reply.get("access_token"):
+        raise RuntimeError("real human callback token unavailable")
+    return reply["access_token"]
+
+
+def human_proof():
+    # Browser installation/startup and every security check happen inside the
+    # same private, digest-built service in Codespaces and Actions. Only its
+    # fixed check names/booleans are returned; never token/callback material.
+    for _ in range(60):
+        try:
+            if request("GET", "https://human.int02.test/readyz")[0] == 200:
+                break
+        except (OSError, ValueError):
+            pass
+        time.sleep(1)
+    # Browser logins take longer than ordinary CP operations. A separate
+    # bounded request still verifies the run CA and refuses redirects.
+    req = urllib.request.Request("https://human.int02.test/proof", method="POST",
+        headers={"Authorization":"Bearer " + os.environ["L4_TEST_ADMIN_CLIENT_SECRET"]})
+    try:
+        with urllib.request.urlopen(req, timeout=180, context=TLS) as response:
+            report = json.loads(response.read(16384))
+    except urllib.error.HTTPError as exc:
+        body = json.loads(exc.read(16384))
+        stage = body.get("stage", "unknown")
+        diagnostic(step="human_proof", stage=stage if stage in
+            {"startup","browser_launch","discovery","login_normal","login_state","login_nonce","login_pkce"}
+            else "unknown", status=exc.code)
+        raise RuntimeError("human proof failed") from None
+    if not isinstance(report.get("checks"), dict):
+        raise RuntimeError("human proof unavailable")
+    print(json.dumps({"checks":{k:v is True for k,v in report["checks"].items()
+                               if __import__("re").fullmatch(r"iam01_[a-z_]{1,48}",k)}}))
+
 
 def other():
     return token("l4-int02-other-audience",
@@ -557,7 +593,9 @@ def tls():
 
 def main():
     name=sys.argv[1] if len(sys.argv)>1 else ""
-    if name=="wait":
+    if name=="human-proof":
+        human_proof()
+    elif name=="wait":
         wait()
     elif name=="wait-iam":
         wait_iam()

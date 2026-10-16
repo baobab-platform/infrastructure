@@ -36,7 +36,7 @@ IMAGE = re.compile(r"^[a-z0-9][a-z0-9./_-]*@sha256:[0-9a-f]{64}$")
 IAM_HOST = "iam.int02.test"
 CP_HOST = "cp.int02.test"
 ISSUER = "https://" + IAM_HOST + "/realms/baobab"
-SERVICES = {"keycloak", "iam-db", "cp", "cp-db", "edge", "probe"}
+SERVICES = {"keycloak", "iam-db", "cp", "cp-db", "edge", "probe", "human"}
 # ADR-SHARED-036 s6.8/s6.10: a CP or IAM pull request runs this profile
 # against its own head through the reusable workflow; only these two pins
 # may be replaced, and only by a full commit SHA.
@@ -304,6 +304,8 @@ def materialise(lock):
             "L4_IAM_SOURCE": str(directory / "baobab-iam"),
             "L4_CP_SOURCE": str(directory / "baobab-cp"),
             "L4_CP_DOCKERFILE": str(BASE / "cp.Dockerfile"),
+            "L4_HUMAN_SOURCE": str(BASE / "human"),
+            "L4_HUMAN_IMAGE": "l4-human-" + project,
             "L4_PROBE_SOURCE": host_path(BASE),
             "L4_POSTGRES_IMAGE": lock["runtime_images"]["postgres"],
             "L4_PYTHON_IMAGE": lock["runtime_images"]["python_probe"],
@@ -325,13 +327,15 @@ def materialise(lock):
         os.chmod(directory / ".mount-sentinel", 0o644)
         private(directory / "runtime.env",
                 "".join(k + "=" + v + "\n" for k, v in runtime.items()))
-        # Fixture clients are disposable IAM test records only. Their bounded
-        # password grant is never added to the product IAM client inventory.
+        # Fixture clients are disposable IAM test records only. Human login
+        # requires code/S256 and an exact callback; password grant is disabled.
         admin_client = {
           "clientId":"l4-int02-admin", "enabled":True, "publicClient":False,
           "secret":runtime["L4_TEST_ADMIN_CLIENT_SECRET"],
-          "serviceAccountsEnabled":False, "standardFlowEnabled":False,
-          "directAccessGrantsEnabled":True, "implicitFlowEnabled":False,
+          "serviceAccountsEnabled":False, "standardFlowEnabled":True,
+          "redirectUris":["https://human.int02.test/callback"],
+          "attributes":{"pkce.code.challenge.method":"S256"},
+          "directAccessGrantsEnabled":False, "implicitFlowEnabled":False,
           # Keycloak 26 issues `sub` only through its built-in "basic" client
           # scope; an explicit scope list without it yields tokens CP cannot
           # map to a principal (observed live: has_sub=false).
@@ -384,7 +388,7 @@ def throwaway_tls(tls):
              "-keyout", str(ca_key), "-out", str(ca)], timeout=60)
     execute(["openssl", "req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=int02.test",
              "-keyout", str(key), "-out", str(csr)], timeout=60)
-    ext.write_text(f"subjectAltName=DNS:{IAM_HOST},DNS:{CP_HOST}\n"
+    ext.write_text(f"subjectAltName=DNS:{IAM_HOST},DNS:{CP_HOST},DNS:human.int02.test\n"
                    "extendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n")
     execute(["openssl", "x509", "-req", "-in", str(csr), "-CA", str(ca), "-CAkey", str(ca_key),
              "-CAserial", str(tls.parent / "ca.srl"), "-CAcreateserial", "-days", "1",
@@ -406,6 +410,8 @@ def up(lock):
     compose(p, envfile, "build", "keycloak", timeout=1800)
     print("INT-02 build stage: Control Plane + migrator from pinned source",flush=True)
     compose(p, envfile, "build", "cp-migrate", timeout=1800)
+    print("INT-02 build stage: real browser and confidential OIDC RP",flush=True)
+    compose(p, envfile, "build", "human", timeout=900)
     print("INT-02 startup stage: disposable PostgreSQL databases and Keycloak",flush=True)
     print("INT-02 startup: Docker Compose private DB/IAM/probe services",flush=True)
     # The image-level Keycloak healthcheck was incorrectly implemented in
@@ -430,7 +436,7 @@ def up(lock):
         raise Blocked(f"{cause}; Keycloak log classes: {keycloak_log_classes(p, envfile)}") from cause
     compose(p, envfile, "up", "-d", "cp-migrate", timeout=240)
     compose(p, envfile, "wait", "cp-migrate", timeout=360)
-    compose(p, envfile, "up", "-d", "cp", "probe", timeout=180)
+    compose(p, envfile, "up", "-d", "cp", "probe", "human", timeout=180)
     compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
             "wait", timeout=120)
     print("INT-02 genuine Keycloak issuer + CP binary started")
@@ -515,7 +521,7 @@ def seed_keycloak(p, envfile):
 
 def run_probe(p, envfile, mode):
     return compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
-                   mode, capture=True, timeout=180)
+                   mode, capture=True, timeout=260 if mode == "human-proof" else 180)
 
 CP_FIXTURE_STEPS = {"tenant_a", "tenant_b", "tenant_no_primary", "market_participation",
                     "capability_binding",
@@ -721,6 +727,7 @@ def seed_tenants(p, directory, envfile):
 def test(lock):
     check_prerequisites(lock)
     p, directory, envfile = current()
+    human_report = json.loads(run_probe(p, envfile, "human-proof"))
     ids = json.loads(run_probe(p, envfile, "identities"))
     must(ids.get("source") == "keycloak-issued" and
          ids.get("issuer") == ISSUER,
@@ -737,6 +744,7 @@ def test(lock):
     workload_report = json.loads(run_probe(p, envfile, "workload-proof"))
     report = json.loads(run_probe(p, envfile, "test"))
     apply_workload_proof(report, workload_report)
+    apply_human_proof(report, human_report)
     # L4-CP-01 "revoked grant": revoke tenant A's grant (synthetic-fixture
     # operation in the throwaway DB) and require CP to refuse the same
     # entitled context for GRANT_REVOKED, while the identity is still valid.
@@ -804,6 +812,27 @@ def test(lock):
     print(outcome_summary(cases, checks, observations), flush=True)
     print("INT-02 actual IAM↔CP profile PASS; not protected staging")
 
+# Every human check is independently observed; truthy values or missing
+# negatives cannot promote acceptance. CP authenticates the resulting HUMAN
+# token separately after its canonical identity is explicitly linked.
+IAM01_REQUIRED = (
+    "iam01_code_pkce_positive", "iam01_signed_id_token", "iam01_code_replay_denied",
+    "iam01_state_replay_denied", "iam01_wrong_state_denied", "iam01_wrong_nonce_denied",
+    "iam01_wrong_pkce_denied", "iam01_forged_signature_denied", "iam01_wrong_issuer_denied",
+    "iam01_wrong_audience_denied", "iam01_expired_token_denied",
+    "iam01_unregistered_callback_denied", "iam01_callback_path_denied")
+
+
+def apply_human_proof(report, proof):
+    checks = report.setdefault("checks", {})
+    for name in IAM01_REQUIRED:
+        checks[name] = proof.get("checks", {}).get(name) is True
+    # The existing real CP effective-authority positive is also mandatory.
+    checks["iam01_cp_human_accepted"] = report["scenarios"].get("L4-IAM-01") == "BLOCKED"
+    report["scenarios"]["L4-IAM-01"] = ("PASS" if checks["iam01_cp_human_accepted"] and
+        all(checks[name] for name in IAM01_REQUIRED) else "FAIL")
+
+
 # Exact requirements for this workload-only slice. A missing check or a
 # truthy string is a failure, never a pass. Other matrix scenarios retain
 # their own classification and keep the complete profile blocked as needed.
@@ -858,7 +887,7 @@ def image_id(envfile, variable):
     """The locally built image's content ID (build provenance, EA v2.2 §4.4)."""
     for line in envfile.read_text().splitlines():
         name, _, value = line.partition("=")
-        if name == variable and re.fullmatch(r"l4-(iam|cp)-l4-[0-9a-f]{16}", value):
+        if name == variable and re.fullmatch(r"l4-(iam|cp|human)-l4-[0-9a-f]{16}", value):
             try:
                 return execute(["docker", "image", "inspect", "--format", "{{.Id}}", value],
                                capture=True, timeout=20).strip()
@@ -877,7 +906,8 @@ def harness_sha():
 def write_evidence(p, lock, report, accepted):
     EVIDENCE.mkdir(exist_ok=True)
     envfile = Path(p.get("directory", "")) / "runtime.env"
-    built = {"iam": image_id(envfile, "L4_IAM_IMAGE"), "cp": image_id(envfile, "L4_CP_IMAGE")} \
+    built = {"iam": image_id(envfile, "L4_IAM_IMAGE"), "cp": image_id(envfile, "L4_CP_IMAGE"),
+             "human": image_id(envfile, "L4_HUMAN_IMAGE")} \
         if envfile.is_file() else {"iam": "unavailable", "cp": "unavailable"}
     receipt = {"profile":"iam-cp","classification":lock["evidence_class"],
        "scenario_ids":lock["mandatory"],"scenarios":report["scenarios"],
@@ -892,7 +922,7 @@ def write_evidence(p, lock, report, accepted):
        "executing_profile":{"name":"iam-cp","requirements":lock["requirements"],
                             "runner":"github-actions" if os.environ.get("GITHUB_ACTIONS") else "local"},
        "components":{"real":["keycloak (pinned baobab-iam source)","control plane (pinned baobab-cp source)",
-                             "postgresql"],
+                             "postgresql", "Chromium + confidential OIDC RP (synthetic login)"],
                      "simulated":["synthetic tenants, organisations, grants and provider binding"],
                      "provider":"synthetic resolution fixture only; no live certified provider"},
        "transport":{"tls_verified":tls_verified(report.get("checks", {})),
