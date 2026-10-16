@@ -730,9 +730,11 @@ def test(lock):
     if any(cases[x] != "PASS" for x in required) or not tls_verified(checks):
         # Preserve the sanitized report for triage, NEVER promote to PASS.
         write_evidence(p, lock, report, accepted=False)
+        print(outcome_summary(cases, checks), flush=True)
         raise Blocked("Real IAM/CP scenario denied or unavailable, or local TLS "
                       "not verified (EA v2.2 INT-02); see scrubbed evidence")
     write_evidence(p, lock, report, accepted=True)
+    print(outcome_summary(cases, checks), flush=True)
     print("INT-02 actual IAM↔CP profile PASS; not protected staging")
 
 # EA v2.2 matrix (INT-02 backlog): the real IAM/CP process test runs "over
@@ -740,6 +742,18 @@ def test(lock):
 # IAM and CP each answer over TLS verified against this run's CA and edge
 # hostname, and the same endpoint is refused without that CA.
 TLS_CHECKS = ("tls_iam_verified", "tls_cp_verified", "tls_untrusted_refused")
+
+def outcome_summary(cases, checks):
+    """The run's outcome for the job log: fixed vocabulary only.
+
+    Scenario states are PASS/FAIL/BLOCKED and checks are booleans, so this
+    carries no credential, token, identifier or response.
+    """
+    states = " ".join(f"{k}={cases.get(k) if cases.get(k) in ('PASS', 'FAIL', 'BLOCKED') else 'UNKNOWN'}"
+                      for k in sorted(REQUIRED))
+    named = " ".join(f"{k}={'true' if v is True else 'false'}"
+                     for k, v in sorted(checks.items()) if re.fullmatch(r"[a-z0-9_]{1,48}", k))
+    return f"INT-02 scenarios: {states}\nINT-02 checks: {named}"
 
 def tls_verified(checks):
     return all(checks.get(name) is True for name in TLS_CHECKS)

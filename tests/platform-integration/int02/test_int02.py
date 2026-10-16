@@ -255,6 +255,18 @@ class ScenarioTruthTest(unittest.TestCase):
         runner=(BASE/"orchestrate.py").read_text()
         self.assertIn("or not tls_verified(checks):",runner)
 
+    def test_outcome_summary_is_fixed_vocabulary(self):
+        cases={k:"BLOCKED" for k in m.REQUIRED}; cases["L4-CP-01"]="PASS"
+        checks={"cp01_positive":True,"tls_iam_verified":False,"Bad Key; rm":True,"leak":"eyJsecret"}
+        out=m.outcome_summary({**cases,"L4-IAM-01":"eyJ.token"},checks)
+        self.assertIn("L4-CP-01=PASS",out)
+        self.assertIn("L4-IAM-01=UNKNOWN",out)
+        self.assertIn("cp01_positive=true",out)
+        self.assertIn("tls_iam_verified=false",out)
+        self.assertIn("leak=false",out)
+        self.assertNotIn("eyJ",out)
+        self.assertNotIn("Bad Key",out)
+
     def test_tls_verified_only_when_every_observation_holds(self):
         full={name:True for name in m.TLS_CHECKS}
         self.assertTrue(m.tls_verified(full))
