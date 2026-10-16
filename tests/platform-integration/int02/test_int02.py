@@ -49,7 +49,9 @@ class ContractTest(unittest.TestCase):
 
     def test_provider_resolution_fixture_cannot_claim_certified_health(self):
         source=(BASE/"probe.py").read_text()
-        self.assertIn('state["L4-CP-02"]="BLOCKED" if provider_record else "FAIL"',source)
+        # Never PASS: the synthetic provider is never a current certified one.
+        self.assertIn('state["L4-CP-02"]="BLOCKED" if (entitled and (provider_record or fail_closed)) else "FAIL"',source)
+        self.assertNotIn('state["L4-CP-02"]="PASS"',source)
         self.assertIn("wait-iam",source)
 
     def test_iam_bootstrap_workload_secret_contract(self):
@@ -213,8 +215,16 @@ class ScenarioTruthTest(unittest.TestCase):
         runner=(BASE/"orchestrate.py").read_text()
         for check in ("cp01_swapped_organisation_denied","cp01_fabricated_tenant_denied"):
             self.assertIn(f'"{check}"',probe)
-        for check in ("cp01_unmapped_principal_denied","cp01_revoked_identity_denied"):
+        for check in ("cp01_unmapped_principal_denied","cp01_revoked_identity_denied",
+                      "cp01_revoked_grant_denied"):
             self.assertIn(f'checks["{check}"]',runner)
+        for check in ("cp01_missing_organisation_denied","cp01_fabricated_organisation_denied"):
+            self.assertIn(f'"{check}"',probe)
+        # Every matrix negative is required for PASS (EA v2.2 L4-CP-01).
+        self.assertEqual(set(m.CP01_REQUIRED),{"cp01_positive","cp01_missing_organisation_denied",
+            "cp01_fabricated_organisation_denied","cp01_swapped_organisation_denied",
+            "cp01_fabricated_tenant_denied","cp01_unmapped_principal_denied",
+            "cp01_revoked_grant_denied","cp01_revoked_identity_denied"})
         # Only the orchestrator, after unmapped and revoked negatives, may
         # promote CP-01; the probe alone reports at most BLOCKED.
         self.assertIn('state["L4-CP-01"]="BLOCKED" if all(checks.values()) else "FAIL"',probe)
@@ -565,6 +575,93 @@ class ParityTest(unittest.TestCase):
         self.assertIn("persist-credentials: false",wf)
         self.assertNotIn("secrets:",wf)
         self.assertNotIn("pull_request_target",wf)
+
+
+
+class ScenarioClassificationTest(unittest.TestCase):
+    """The probe's real exercise() against a scripted CP (no network)."""
+
+    def load_probe(self, runtime):
+        import importlib, os, sys, types
+        env={"L4_ISSUER":"https://iam.int02.test/realms/baobab","L4_CP":"https://cp.int02.test",
+             "L4_CA_FILE":"/dev/null","L4_WORKLOAD_SEED":"x","L4_TEST_ADMIN_CLIENT_SECRET":"x",
+             "L4_TEST_USER_PASSWORD":"x"}
+        with mock.patch.dict(os.environ,env), mock.patch("ssl.create_default_context"):
+            spec=importlib.util.spec_from_file_location("int02_probe",BASE/"probe.py")
+            probe=importlib.util.module_from_spec(spec); spec.loader.exec_module(probe)
+        probe.RUNTIME=runtime
+        return probe
+
+    def run_exercise(self, decision_a, decision_b):
+        import base64, io, contextlib
+        with tempfile.TemporaryDirectory() as d:
+            runtime=Path(d)
+            (runtime/"fixtures.json").write_text(json.dumps({"tenant":"tn_a","other_tenant":"tn_b",
+                "organisation":"org-a","other_organisation":"org-b","no_primary_tenant":"tn_c"}))
+            probe=self.load_probe(runtime)
+            def jwt(claims):
+                return "h."+base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")+".s"
+            iss=probe.ISSUER
+            tokens={"w":jwt({"iss":iss,"aud":"baobab-control-plane","actor_type":"workload","scope":"context:resolve"}),
+                    "h":jwt({"iss":iss,"actor_type":"human"}),
+                    "o":jwt({"iss":iss,"aud":"baobab-pulse"})}
+            def request(method,url,body=None,token=None,context=None):
+                if url.endswith("/effective-authority"): return 200,{}
+                if url.endswith("/platform-context/resolve"):
+                    if token==tokens["o"]: return 401,{}
+                    if body=={"tenant_id":"tn_a","organisation_id":"org-a"}:
+                        return 200,{"tenant_id":"tn_a","organisation_id":"org-a","context_id":"ctx-a"}
+                    if body=={"tenant_id":"tn_b"}: return 200,{"context_id":"ctx-b"}
+                    return 403,{}
+                if url.endswith("/capabilities/resolve"):
+                    return 200,dict(decision_a if body["context_id"]=="ctx-a" else decision_b)
+                raise AssertionError(url)
+            out=io.StringIO()
+            with mock.patch.object(probe,"request",side_effect=request), \
+                 mock.patch.object(probe,"workload",return_value=tokens["w"]), \
+                 mock.patch.object(probe,"human",return_value=tokens["h"]), \
+                 mock.patch.object(probe,"other",return_value=tokens["o"]), \
+                 mock.patch.object(probe,"Path",side_effect=lambda p: runtime/"tok"), \
+                 contextlib.redirect_stdout(out):
+                probe.exercise()
+            return json.loads(out.getvalue())
+
+    def test_cp_refusing_an_uncertified_provider_is_blocked_not_pass(self):
+        r=self.run_exercise({"decision":"UNAVAILABLE","reason_code":"PROVIDER_HEALTH_UNKNOWN"},
+                            {"decision":"DENIED","reason_code":"GRANT_NOT_FOUND"})
+        self.assertEqual(r["scenarios"]["L4-CP-02"],"BLOCKED")
+        self.assertEqual(r["scenarios"]["L4-CP-03"],"BLOCKED")
+        self.assertTrue(r["checks"]["cp03_sibling_denied"])
+        self.assertTrue(r["checks"]["cp02_missing_grant_denied"])
+        self.assertEqual(r["observations"]["cp02_tenant_reason"],"PROVIDER_HEALTH_UNKNOWN")
+
+    def test_a_fixture_fault_is_fail(self):
+        r=self.run_exercise({"decision":"UNAVAILABLE","reason_code":"BINDING_NOT_FOUND"},
+                            {"decision":"DENIED","reason_code":"GRANT_NOT_FOUND"})
+        self.assertEqual(r["scenarios"]["L4-CP-02"],"FAIL")
+
+    def test_sibling_denial_counts_only_when_tenant_a_is_entitled(self):
+        r=self.run_exercise({"decision":"DENIED","reason_code":"GRANT_NOT_FOUND"},
+                            {"decision":"DENIED","reason_code":"GRANT_NOT_FOUND"})
+        self.assertFalse(r["checks"]["cp03_sibling_denied"])
+        self.assertEqual(r["scenarios"]["L4-CP-03"],"FAIL")
+        self.assertEqual(r["scenarios"]["L4-CP-02"],"FAIL")
+
+    def test_cp01_probe_negatives_include_missing_and_fabricated_organisation(self):
+        r=self.run_exercise({"decision":"UNAVAILABLE","reason_code":"PROVIDER_HEALTH_UNKNOWN"},
+                            {"decision":"DENIED","reason_code":"GRANT_NOT_FOUND"})
+        for name in ("cp01_missing_organisation_denied","cp01_fabricated_organisation_denied",
+                     "cp01_swapped_organisation_denied","cp01_fabricated_tenant_denied"):
+            self.assertTrue(r["checks"][name],name)
+        self.assertEqual(r["scenarios"]["L4-CP-01"],"BLOCKED")
+
+    def test_untrusted_reason_codes_never_reach_the_log(self):
+        r=self.run_exercise({"decision":"UNAVAILABLE","reason_code":"eyJ leak <script>"},
+                            {"decision":"WHATEVER","reason_code":"GRANT_NOT_FOUND"})
+        self.assertEqual(r["observations"]["cp02_tenant_reason"],"NONE")
+        self.assertEqual(r["observations"]["cp03_sibling_decision"],"OTHER")
+        summary=m.outcome_summary(r["scenarios"],r["checks"],r["observations"])
+        self.assertNotIn("eyJ",summary)
 
 
 def keycloak_environment(compose):

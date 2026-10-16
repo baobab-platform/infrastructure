@@ -193,12 +193,52 @@ def denied(token_value,body):
     return status in DENIED
 
 def unmapped():
-    # Runs BEFORE the harness links this Keycloak subject to a CP Principal:
-    # a validly signed, correctly scoped token for an unmapped principal
-    # must be refused (L4-CP-01 negative "unmapped principal").
+    # Runs BEFORE the harness links any Keycloak subject to a CP Principal.
+    # L4-CP-01 "unmapped principal": CP never auto-provisions a HUMAN on the
+    # admin routes, so a validly signed human token with no Principal link
+    # must be refused (401/403). Workloads are auto-provisioned by design on
+    # first context resolution (ADR-0004 s13, ADR-0007 s46), so a workload
+    # cannot be "unmapped" there; its status is recorded as an observation.
     fixtures=json.loads((RUNTIME/"fixtures.json").read_text())
-    print(json.dumps({"unmapped_denied":denied(workload(),
-        {"tenant_id":fixtures["tenant"],"organisation_id":fixtures["organisation"]})}))
+    human_status,_=request("GET",CP+"/v1/admin/effective-authority",token=human())
+    workload_status,_=request("POST",CP+"/v1/platform-context/resolve",
+        {"tenant_id":fixtures["tenant"],"organisation_id":fixtures["organisation"]},workload())
+    print(json.dumps({"unmapped_human_denied":human_status in DENIED,
+                      "observations":{"unlinked_human_effective_authority_status":human_status,
+                                      "unlinked_workload_context_status":workload_status}}))
+
+REASON=__import__("re").compile(r"[A-Z0-9_]{1,48}")
+# CP decisions that mean the FIXTURE (grant, binding, capability or contract)
+# is wrong, never that CP correctly refused an uncertified provider.
+FIXTURE_FAULTS={"GRANT_NOT_FOUND","GRANT_REVOKED","GRANT_SUSPENDED","GRANT_EXPIRED",
+                "CAPABILITY_UNKNOWN","CAPABILITY_INACTIVE","BINDING_NOT_FOUND",
+                "BINDING_AMBIGUOUS","CONTRACT_VERSION_UNSUPPORTED"}
+
+def capability_decision(token_value,context_id):
+    """CP's decision for the fixture capability: fixed vocabulary only."""
+    status,r=request("POST",CP+"/v1/capabilities/resolve",
+        {"context_id":context_id,"capability_key":"intelligence.evidence.search",
+         "required_contract_version":1,"correlation_id":str(uuid.uuid4())},token_value)
+    decision=r.get("decision") if r.get("decision") in ("RESOLVED","DENIED","UNAVAILABLE","AMBIGUOUS","INCOMPATIBLE") else "OTHER"
+    reason=r.get("reason_code") if isinstance(r.get("reason_code"),str) and REASON.fullmatch(r.get("reason_code")) else "NONE"
+    return status,decision,reason,r
+
+def context_for(token_value,body):
+    status,c=request("POST",CP+"/v1/platform-context/resolve",body,token_value)
+    return c.get("context_id") if status==200 else None
+
+def grant_revoked():
+    # After the harness revokes tenant A's grant: the same entitled context
+    # must now be DENIED for GRANT_REVOKED (L4-CP-01 "revoked grant").
+    fixture=json.loads((RUNTIME/"fixtures.json").read_text())
+    good=workload()
+    context_id=context_for(good,{"tenant_id":fixture["tenant"],"organisation_id":fixture["organisation"]})
+    if not context_id:
+        print(json.dumps({"revoked_grant_denied":False,"observations":{"revoked_grant_context":"NONE"}}))
+        return
+    status,decision,reason,_=capability_decision(good,context_id)
+    print(json.dumps({"revoked_grant_denied":status==200 and decision=="DENIED" and reason=="GRANT_REVOKED",
+                      "observations":{"revoked_grant_decision":decision,"revoked_grant_reason":reason}}))
 
 def verify(expected,fn):
     try:
@@ -271,42 +311,54 @@ def exercise():
             "cp01_swapped_organisation_denied":denied(good,
                 {"tenant_id":tenant,"organisation_id":fixture["other_organisation"]}),
             "cp01_fabricated_tenant_denied":denied(good,
-                {"tenant_id":"tn_l4fabricated"+uuid.uuid4().hex[:12]})}
+                {"tenant_id":"tn_l4fabricated"+uuid.uuid4().hex[:12]}),
+            # Matrix: "missing or fabricated Organisation".
+            "cp01_fabricated_organisation_denied":denied(good,
+                {"tenant_id":tenant,"organisation_id":str(uuid.uuid4())}),
+            "cp01_missing_organisation_denied":denied(good,
+                {"tenant_id":fixture["no_primary_tenant"]})}
+    observations={}
+    # Probe-side negatives only; the orchestrator adds the unmapped-principal,
+    # revoked-grant and revoked-identity negatives and alone may promote.
     state["L4-CP-01"]="BLOCKED" if all(checks.values()) else "FAIL"
+    entitled=False
     if positive:
-        status2,cap=request("POST",CP+"/v1/capabilities/resolve",
-            {"context_id":context["context_id"],"capability_key":"intelligence.evidence.search",
-             "required_contract_version":1,"correlation_id":str(uuid.uuid4())},good)
-        # CP can resolve a synthetic binding without a live provider. A
-        # resolved record is useful diagnostic evidence, but Accepted EA
-        # L4-CP-02 also requires *current certified provider health*.
-        # Do NOT report PASS until a real owner provider is running and
-        # its binding, certification and live readiness are observed.
-        provider_record = (status2==200 and cap.get("decision")=="RESOLVED"
-            and cap.get("grant_id") and cap.get("binding_id")
-            and cap.get("invocation",{}).get("engine_instance_id"))
-        state["L4-CP-02"]="BLOCKED" if provider_record else "FAIL"
+        status2,decision,reason,cap=capability_decision(good,context["context_id"])
+        observations["cp02_tenant_decision"]=decision
+        observations["cp02_tenant_reason"]=reason
+        # Entitlement passed when CP did not refuse for a grant reason.
+        entitled=status2==200 and not (decision=="DENIED" and reason.startswith("GRANT_"))
+        provider_record=(decision=="RESOLVED" and cap.get("grant_id") and cap.get("binding_id")
+                         and cap.get("invocation",{}).get("engine_instance_id"))
+        # L4-CP-02 needs a CURRENT CERTIFIED provider; the synthetic provider
+        # never is one. CP resolving it, or refusing it as unavailable for a
+        # health/provider reason (fail closed), is BLOCKED pending a live
+        # certified provider. A grant/binding/capability fault is FAIL.
+        fail_closed=(status2==200 and decision=="UNAVAILABLE" and reason not in FIXTURE_FAULTS)
+        checks["cp02_uncertified_provider_not_resolved_as_certified"]=bool(provider_record) or fail_closed
+        state["L4-CP-02"]="BLOCKED" if (entitled and (provider_record or fail_closed)) else "FAIL"
     else:
         state["L4-CP-02"]="BLOCKED"
     # Tenant-neutral workloads MAY resolve a second tenant context: the
-    # authorised boundary is the tenant's ACTIVE scoped CapabilityGrant, not
-    # an unconditional tenant claim. A missing grant MUST never resolve.
-    foreign,body=request("POST",CP+"/v1/platform-context/resolve",
-                         {"tenant_id":other_tenant},good)
+    # boundary is the tenant's ACTIVE scoped CapabilityGrant. A real
+    # differential: tenant A passes entitlement while sibling B, with no
+    # grant, is refused for exactly GRANT_NOT_FOUND.
     sibling_deny=False
-    if foreign==200 and body.get("context_id"):
-        sc,r=request("POST",CP+"/v1/capabilities/resolve",
-          {"context_id":body["context_id"],
-           "capability_key":"intelligence.evidence.search",
-           "required_contract_version":1,"correlation_id":str(uuid.uuid4())},good)
-        sibling_deny=(sc==200 and r.get("decision")=="DENIED" and
-                      not r.get("invocation"))
+    foreign_context=context_for(good,{"tenant_id":other_tenant})
+    if foreign_context:
+        sc,decision_b,reason_b,r=capability_decision(good,foreign_context)
+        observations["cp03_sibling_decision"]=decision_b
+        observations["cp03_sibling_reason"]=reason_b
+        sibling_deny=(entitled and sc==200 and decision_b=="DENIED" and reason_b=="GRANT_NOT_FOUND"
+                      and not r.get("invocation"))
+    # Matrix CP-02 negative "missing grant" is the same observation.
+    checks["cp02_missing_grant_denied"]=sibling_deny
     # L4-CP-03 also requires parent, independently governed subsidiary and
     # external-user cases (matrix). Only the sibling case runs here, so a
     # sibling denial is recorded but CP-03 stays BLOCKED, never PASS.
     checks["cp03_sibling_denied"]=sibling_deny
     state["L4-CP-03"]="BLOCKED" if sibling_deny else "FAIL"
-    print(json.dumps({"scenarios":state,"checks":checks},sort_keys=True))
+    print(json.dumps({"scenarios":state,"checks":checks,"observations":observations},sort_keys=True))
 
 def tls():
     """Observe verified TLS on both edge names, and refusal without the CA."""
@@ -356,6 +408,8 @@ def main():
         unmapped()
     elif name=="tls":
         tls()
+    elif name=="grant-revoked":
+        grant_revoked()
     else:
         raise SystemExit("unsupported integration operation")
 if __name__=="__main__":

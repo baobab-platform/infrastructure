@@ -517,8 +517,8 @@ def run_probe(p, envfile, mode):
     return compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
                    mode, capture=True, timeout=180)
 
-CP_FIXTURE_STEPS = {"tenant_a", "tenant_b", "capability_binding", "identity_workload",
-                    "identity_human", "revoke_workload"}
+CP_FIXTURE_STEPS = {"tenant_a", "tenant_b", "tenant_no_primary", "capability_binding",
+                    "identity_workload", "identity_human", "revoke_grant", "revoke_workload"}
 
 def cp_sql(p, envfile, step, statement, timeout=30):
     """Run one synthetic-fixture statement in the disposable CP database.
@@ -614,6 +614,22 @@ def seed_tenants(p, directory, envfile):
         COMMIT;
         """
         cp_sql(p, envfile, step, statement, timeout=35)
+    # L4-CP-01 "missing Organisation": a real tenant with NO PRIMARY
+    # Organisation mapping. Context resolution for it must be refused.
+    tenant_c = "tn_l4" + secrets.token_hex(8)
+    cp_sql(p, envfile, "tenant_no_primary", f"""
+        BEGIN;
+        INSERT INTO legal_entities(legal_entity_id) VALUES ('LE-L4-C');
+        INSERT INTO tenants (tenant_id,legal_entity_id,display_name,
+            isolation_strategy,residency_region,observed_state,
+            primary_organisation_enforced,registration_basis,
+            bootstrap_reason,bootstrap_evidence_reference)
+            VALUES ('{tenant_c}','LE-L4-C','INT-02 disposable test',
+            'row_level_security','af-south-1','active',false,'BOOTSTRAP',
+            'INT-02 synthetic fixture registered outside admission',
+            'int02-synthetic-fixture');
+        COMMIT;
+        """, timeout=35)
     # A capability binding is NOT its own grant. One ACTIVE scoped grant is
     # intentionally given to A only, so sibling B receives a real CP denial.
     # This synthetic provider is a resolution fixture, not a published or
@@ -675,6 +691,7 @@ def seed_tenants(p, directory, envfile):
     must(written == "1:1", "CP's synced catalogue has no ACTIVE intelligence.evidence.search")
     private(directory / "fixtures.json",json.dumps({
         "tenant":tenant_a,"other_tenant":tenant_b,"organisation":org_a,
+        "no_primary_tenant":tenant_c,
         "other_organisation":org_b})+"\n")
 
 def test(lock):
@@ -691,6 +708,16 @@ def test(lock):
     unmapped = json.loads(run_probe(p, envfile, "unmapped"))
     held = seed_identities(p, envfile, ids)
     report = json.loads(run_probe(p, envfile, "test"))
+    # L4-CP-01 "revoked grant": revoke tenant A's grant (synthetic-fixture
+    # operation in the throwaway DB) and require CP to refuse the same
+    # entitled context for GRANT_REVOKED, while the identity is still valid.
+    tenant_a = json.loads((directory / "fixtures.json").read_text())["tenant"]
+    must(re.fullmatch(r"tn_l4[0-9a-f]{16}", tenant_a) is not None, "Invalid fixture tenant")
+    revoked_grants = cp_sql(p, envfile, "revoke_grant",
+        "UPDATE capability.capability_grant SET status='REVOKED' WHERE tenant_id='" + tenant_a +
+        "' AND status='ACTIVE' RETURNING grant_id;", timeout=35)
+    must(revoked_grants.strip() != "", "Expected fixture grant not revoked")
+    grant_after = json.loads(run_probe(p, envfile, "grant-revoked"))
     # An already-issued IAM token must lose CP authority when its canonical
     # (issuer,subject) link is revoked. Keycloak continues to verify that
     # JWT cryptographically; CP is responsible for enforcing current mapping.
@@ -710,7 +737,11 @@ def test(lock):
     after = json.loads(run_probe(p, envfile, "revoked"))
     cases = report.get("scenarios", {})
     checks = report.setdefault("checks", {})
-    checks["cp01_unmapped_principal_denied"] = unmapped.get("unmapped_denied") is True
+    checks["cp01_unmapped_principal_denied"] = unmapped.get("unmapped_human_denied") is True
+    checks["cp01_revoked_grant_denied"] = grant_after.get("revoked_grant_denied") is True
+    observations = report.setdefault("observations", {})
+    for source in (unmapped, grant_after):
+        observations.update(source.get("observations", {}))
     checks["cp01_revoked_identity_denied"] = after.get("revocation_denied") is True
     # Observed CP behaviour, recorded rather than assumed: whether CP had
     # already provisioned the workload principal when the harness linked it.
@@ -719,22 +750,23 @@ def test(lock):
     transport = json.loads(run_probe(p, envfile, "tls"))
     for name in TLS_CHECKS:
         checks[name] = transport.get(name) is True
-    # L4-CP-01 is PASS only with its positive AND every matrix negative
-    # (swapped Organisation, fabricated tenant, unmapped principal, revoked
-    # identity), all observed in this run. Revocation never promotes L4-CP-03.
+    # L4-CP-01 is PASS only with its positive AND every matrix negative,
+    # all observed in this run: missing and fabricated Organisation, swapped
+    # Organisation/Tenant, unmapped principal and revoked grant (plus the
+    # fabricated tenant and revoked identity). Never promotes L4-CP-03.
     if cases.get("L4-CP-01") == "BLOCKED":
-        cases["L4-CP-01"] = ("PASS" if checks["cp01_unmapped_principal_denied"]
-                             and checks["cp01_revoked_identity_denied"] else "FAIL")
+        cases["L4-CP-01"] = ("PASS" if all(checks.get(name) is True for name in CP01_REQUIRED)
+                             else "FAIL")
     required = set(lock["mandatory"])
     must(set(cases) == required, "Mandatory IAM/CP scenarios missing")
     if any(cases[x] != "PASS" for x in required) or not tls_verified(checks):
         # Preserve the sanitized report for triage, NEVER promote to PASS.
         write_evidence(p, lock, report, accepted=False)
-        print(outcome_summary(cases, checks), flush=True)
+        print(outcome_summary(cases, checks, observations), flush=True)
         raise Blocked("Real IAM/CP scenario denied or unavailable, or local TLS "
                       "not verified (EA v2.2 INT-02); see scrubbed evidence")
     write_evidence(p, lock, report, accepted=True)
-    print(outcome_summary(cases, checks), flush=True)
+    print(outcome_summary(cases, checks, observations), flush=True)
     print("INT-02 actual IAM↔CP profile PASS; not protected staging")
 
 # EA v2.2 matrix (INT-02 backlog): the real IAM/CP process test runs "over
@@ -742,8 +774,13 @@ def test(lock):
 # IAM and CP each answer over TLS verified against this run's CA and edge
 # hostname, and the same endpoint is refused without that CA.
 TLS_CHECKS = ("tls_iam_verified", "tls_cp_verified", "tls_untrusted_refused")
+# EA v2.2 matrix L4-CP-01, every check observed in the same run.
+CP01_REQUIRED = ("cp01_positive", "cp01_missing_organisation_denied",
+                 "cp01_fabricated_organisation_denied", "cp01_swapped_organisation_denied",
+                 "cp01_fabricated_tenant_denied", "cp01_unmapped_principal_denied",
+                 "cp01_revoked_grant_denied", "cp01_revoked_identity_denied")
 
-def outcome_summary(cases, checks):
+def outcome_summary(cases, checks, observations=None):
     """The run's outcome for the job log: fixed vocabulary only.
 
     Scenario states are PASS/FAIL/BLOCKED and checks are booleans, so this
@@ -753,7 +790,11 @@ def outcome_summary(cases, checks):
                       for k in sorted(REQUIRED))
     named = " ".join(f"{k}={'true' if v is True else 'false'}"
                      for k, v in sorted(checks.items()) if re.fullmatch(r"[a-z0-9_]{1,48}", k))
-    return f"INT-02 scenarios: {states}\nINT-02 checks: {named}"
+    seen = " ".join(f"{k}={v}" for k, v in sorted((observations or {}).items())
+                    if re.fullmatch(r"[a-z0-9_]{1,48}", k) and
+                    (isinstance(v, int) and not isinstance(v, bool) or
+                     isinstance(v, str) and re.fullmatch(r"[A-Z0-9_]{1,48}", v)))
+    return f"INT-02 scenarios: {states}\nINT-02 checks: {named}\nINT-02 observations: {seen}"
 
 def tls_verified(checks):
     return all(checks.get(name) is True for name in TLS_CHECKS)
@@ -787,6 +828,8 @@ def write_evidence(p, lock, report, accepted):
        "scenario_ids":lock["mandatory"],"scenarios":report["scenarios"],
        # Named positive/negative sub-checks (booleans only; no responses).
        "checks":report.get("checks", {}),
+       # CP's fixed-vocabulary decisions and HTTP statuses behind the checks.
+       "observations":report.get("observations", {}),
        # EA v2.2 §4.4 (iv)-(vi): build provenance, executing profile and
        # limits, and actual vs simulated components.
        "images":{"built_from_pinned_source":built,

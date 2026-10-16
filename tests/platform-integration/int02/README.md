@@ -50,16 +50,26 @@ Receipts record the candidate harness Git SHA as distinct from dependency pins.
 - **Startup:** a literal `\n` inside a YAML comment had swallowed `KC_DB_PASSWORD`, so Keycloak started without
   database credentials and exited (live job: `keycloak=exited`). The static test now parses the keycloak environment
   structurally and rejects literal `\n`.
-- **L4-CP-01** is PASS only with its positive and every matrix negative from the same run. The negatives are:
-  - a swapped Organisation;
-  - a fabricated tenant;
-  - an unmapped principal: a valid workload token, before the harness links its Keycloak subject, with no tenant
-    authority. CP auto-provisions workload principals on first context resolution (ADR-0004 §13, ADR-0007 §46), so
-    the harness reuses that link rather than duplicating it, and records `cp_workload_principal_auto_provisioned`;
+- **L4-CP-01** is PASS only with its positive and every matrix negative from the same run (`CP01_REQUIRED`). The
+  negatives are:
+  - a missing Organisation: a real tenant with no PRIMARY Organisation mapping;
+  - a fabricated Organisation under the real tenant;
+  - a swapped Organisation (tenant B's PRIMARY Organisation under tenant A) and a fabricated tenant;
+  - an unmapped principal: a validly signed **human** token before its subject is linked, on the admin route. CP
+    auto-provisions *workload* principals on first context resolution by design (ADR-0004 §13, ADR-0007 §46), so a
+    workload cannot be unmapped there; its status is recorded as an observation, not counted;
+  - a revoked grant: CP must refuse the same entitled context with `GRANT_REVOKED`;
   - a revoked identity, using a token issued before the revocation.
 
-  A denial means HTTP 401/403 only; a 404, a 5xx or a transport error is never counted.
-- **L4-CP-03** covers only the sibling case here; the parent, independently governed subsidiary and external cases are
+  A denial means HTTP 401/403 or the named CP decision only; a 404, a 5xx or a transport error is never counted.
+- **L4-CP-02** is never PASS here: the provider is synthetic, never a current certified one. If CP resolves it, or
+  refuses it as `UNAVAILABLE` for a health or provider reason (failing closed), the result is BLOCKED pending a live
+  certified provider. A grant, binding, capability or contract fault is FAIL. The sibling's `GRANT_NOT_FOUND` is the
+  matrix's "missing grant" negative.
+- **Observations.** CP's fixed-vocabulary decisions, reason codes and HTTP statuses behind each check are recorded in
+  the receipt and printed in the job log with the scenario states and checks.
+- **L4-CP-03** covers only the sibling case here, and counts it only as a real differential (tenant A entitled,
+  sibling B refused for `GRANT_NOT_FOUND`); the parent, independently governed subsidiary and external cases are
   not exercised. A sibling denial is recorded in `checks`, but CP-03 stays BLOCKED. Revocation no longer promotes it.
 - **Receipt (EA v2.2 §4.4)** now records:
   - the built image IDs and runtime pins;
