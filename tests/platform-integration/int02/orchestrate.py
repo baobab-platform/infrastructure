@@ -259,8 +259,11 @@ def materialise(lock):
           "secret":runtime["L4_TEST_ADMIN_CLIENT_SECRET"],
           "serviceAccountsEnabled":False, "standardFlowEnabled":False,
           "directAccessGrantsEnabled":True, "implicitFlowEnabled":False,
+          # Keycloak 26 issues `sub` only through its built-in "basic" client
+          # scope; an explicit scope list without it yields tokens CP cannot
+          # map to a principal (observed live: has_sub=false).
           "protocol":"openid-connect", "defaultClientScopes":[
-            "openid","actor-type-human","authority:self"
+            "basic","openid","actor-type-human","authority:self"
           ],"optionalClientScopes":[]
         }
         other_client = {
@@ -269,7 +272,7 @@ def materialise(lock):
           "serviceAccountsEnabled":True,"standardFlowEnabled":False,
           "directAccessGrantsEnabled":False,"implicitFlowEnabled":False,
           "protocol":"openid-connect","defaultClientScopes":[
-            "openid","actor-type-workload","intelligence:evidence:search"
+            "basic","openid","actor-type-workload","intelligence:evidence:search"
           ],"optionalClientScopes":[]
         }
         private(directory / "test-client.json",json.dumps(admin_client)+"\n")

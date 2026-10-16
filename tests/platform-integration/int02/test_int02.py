@@ -342,6 +342,11 @@ class TransportTest(unittest.TestCase):
                      "INT02_DIAG step=probe_wait_iam exception=KeyError"):
             self.assertIsNotNone(allow.fullmatch(line),line)
 
+    def test_fixture_clients_request_keycloak_basic_scope_for_sub(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertIn('"basic","openid","actor-type-human","authority:self"',runner)
+        self.assertIn('"basic","openid","actor-type-workload","intelligence:evidence:search"',runner)
+
     def test_every_tls_check_is_collected_from_the_probe(self):
         runner=(BASE/"orchestrate.py").read_text()
         self.assertIn('transport = json.loads(run_probe(p, envfile, "tls"))',runner)
