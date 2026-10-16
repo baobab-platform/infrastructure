@@ -386,6 +386,14 @@ class TransportTest(unittest.TestCase):
             with self.assertRaises(m.Blocked):
                 m.seed_identities({},None,ids)
 
+    def test_fixture_binds_to_cps_synced_canonical_capability(self):
+        # CP syncs Shared's catalogue at startup; the fixture must never
+        # fabricate a competing capability row (live: 23505 capability_code_key).
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertNotIn("INSERT INTO capability.capability(",runner)
+        self.assertIn("WHERE code='intelligence.evidence.search' AND status='ACTIVE'",runner)
+        self.assertIn('must(written == "1:1"',runner)
+
     def test_every_tls_check_is_collected_from_the_probe(self):
         runner=(BASE/"orchestrate.py").read_text()
         self.assertIn('transport = json.loads(run_probe(p, envfile, "tls"))',runner)

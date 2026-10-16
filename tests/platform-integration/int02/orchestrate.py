@@ -540,9 +540,12 @@ def seed_tenants(p, directory, envfile):
     # executable Baobab Pulse implementation and never satisfies INT-08.
     statement = f"""
     WITH c AS (
-      INSERT INTO capability.capability(code,name,status,maturity)
-      VALUES ('intelligence.evidence.search','INT-02 resolver fixture','ACTIVE','SUPPORTED')
-      RETURNING capability_id
+      -- CP syncs Shared's canonical capability catalogue at startup
+      -- (catalogue.SyncEmbedded, ADR-SHARED-017 G-CP-2): the capability
+      -- already exists and its meaning comes from Shared. Bind to it; never
+      -- fabricate a competing capability row.
+      SELECT capability_id FROM capability.capability
+      WHERE code='intelligence.evidence.search' AND status='ACTIVE'
     ), e AS (
       INSERT INTO topology.engine(code,name)
       VALUES ('baobab-pulse','INT-02 synthetic pulse provider')
@@ -569,16 +572,20 @@ def seed_tenants(p, directory, envfile):
       SELECT c.capability_id,i.engine_instance_id,s.scope_id,
              'PRIMARY','ACTIVE','1',now()-interval '1 hour',p.provider_id
       FROM c,i,s,p RETURNING id
+    ), g AS (
+      INSERT INTO capability.capability_grant
+        (tenant_id,capability_id,scope_id,source,status,effective_from)
+      SELECT '{tenant_a}',c.capability_id,s.scope_id,
+             'PLATFORM_BASELINE','ACTIVE',now()-interval '1 hour'
+      FROM c,s RETURNING 1
     )
-    INSERT INTO capability.capability_grant
-      (tenant_id,capability_id,scope_id,source,status,effective_from)
-    SELECT '{tenant_a}',c.capability_id,s.scope_id,
-           'PLATFORM_BASELINE','ACTIVE',now()-interval '1 hour'
-    FROM c,s;
+    SELECT (SELECT count(*) FROM b) || ':' || (SELECT count(*) FROM g);
     """
-    compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate", "-v",
-            "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
-            "-c", statement, capture=True, timeout=30)
+    written = compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate",
+                      "-At", "-v", "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
+                      "-c", statement, capture=True, timeout=30).strip()
+    # Exactly one binding and one grant, or the canonical capability is absent.
+    must(written == "1:1", "CP's synced catalogue has no ACTIVE intelligence.evidence.search")
     private(directory / "fixtures.json",json.dumps({
         "tenant":tenant_a,"other_tenant":tenant_b,"organisation":org_a,
         "other_organisation":org_b})+"\n")
