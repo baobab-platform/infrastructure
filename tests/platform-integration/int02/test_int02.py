@@ -497,15 +497,41 @@ class ParityTest(unittest.TestCase):
 
     def test_live_job_runs_the_codespace_entrypoints_in_the_devcontainer(self):
         wf=(m.ROOT/".github/workflows/platform-int02.yml").read_text()
-        self.assertIn("uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca",wf)
-        self.assertIn("configFile: .devcontainer/platform-integration/devcontainer.json",wf)
-        self.assertIn("runCmd: bash tests/platform-integration/int02/run-in-devcontainer.sh",wf)
-        self.assertIn("push: never",wf)
+        # Only organisation-trusted action owners; the CLI comes from a lockfile.
+        self.assertNotIn("devcontainers/ci@",wf)
+        self.assertIn("npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts",wf)
+        self.assertEqual(wf.count("--config .devcontainer/platform-integration/devcontainer.json"),2)
+        self.assertIn("bash tests/platform-integration/int02/run-in-devcontainer.sh",wf)
+        lock=json.loads((m.ROOT/"tests/platform-integration/devcontainer-cli/package-lock.json").read_text())
+        cli=lock["packages"]["node_modules/@devcontainers/cli"]
+        self.assertEqual(cli["version"],"0.89.0")
+        self.assertTrue(cli["integrity"].startswith("sha512-"))
+        self.assertFalse(any(v.get("hasInstallScript") for v in lock["packages"].values()))
         script=(BASE/"run-in-devcontainer.sh").read_text()
         for stage in ("materialise","up","test","evidence"):
             self.assertIn('python3 "$L4" '+stage+" iam-cp",script)
         self.assertIn("trap cleanup EXIT",script)
         self.assertIn('[ "$rc" -ne 0 ] || rc=3',script)
+
+    def test_devcontainer_image_is_pinned_and_apt_source_repaired(self):
+        dc=json.loads((m.ROOT/".devcontainer/platform-integration/devcontainer.json").read_text())
+        self.assertEqual(dc["build"],{"dockerfile":"Dockerfile"})
+        self.assertNotIn("image",dc)
+        docker=(m.ROOT/".devcontainer/platform-integration/Dockerfile").read_text()
+        self.assertRegex(docker,r"(?m)^FROM mcr\.microsoft\.com/devcontainers/python:1-3\.12-bookworm@sha256:[0-9a-f]{64}$")
+        self.assertIn("RUN rm -f /etc/apt/sources.list.d/yarn.list",docker)
+
+    def test_only_organisation_trusted_action_owners(self):
+        import re
+        wf=(m.ROOT/".github/workflows/platform-int02.yml").read_text()
+        trusted={"actions","github","docker","anchore","astral-sh","aquasecurity","codecov","sigstore",
+                 "softprops","hashicorp","dtolnay","pnpm","changesets","baobab-platform"}
+        steps="\n".join(l for l in wf.splitlines() if not l.lstrip().startswith("#"))
+        found=re.findall(r"uses: ([A-Za-z0-9_.-]+)/[^@\s]+@([^\s#]+)",steps)
+        self.assertGreaterEqual(len(found),3)
+        for owner,ref in found:
+            self.assertIn(owner,trusted)
+            self.assertRegex(ref,r"^[0-9a-f]{40}$")
 
     def test_reusable_workflow_inputs_are_validated_and_never_interpolated(self):
         import re

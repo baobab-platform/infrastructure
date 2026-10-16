@@ -86,9 +86,14 @@ Receipts record the candidate harness Git SHA as distinct from dependency pins.
 ADR-SHARED-036 §6.3 requires one harness and identical entrypoints on Codespaces and Actions; §6.8 and §6.10
 require a CP or IAM pull request to run the affected L4 profile against its own head. This profile does both.
 
-- **One executor.** The Actions live job runs `run-in-devcontainer.sh` inside
-  `.devcontainer/platform-integration` through `devcontainers/ci` (pinned by commit). A developer runs the same script,
-  or the same six commands, in the integration Codespace. Both use one image, one toolchain and one teardown.
+- **One executor.** The Actions live job builds `.devcontainer/platform-integration` and runs
+  `run-in-devcontainer.sh` inside it with the Dev Containers CLI, the engine Codespaces uses. The CLI is installed from
+  `devcontainer-cli/package-lock.json` (sha512 integrity, `npm ci --ignore-scripts`), not a third-party action, because
+  the organisation baseline admits only trusted action owners. A developer runs the same script, or the same six
+  commands, in the integration Codespace: one image, one toolchain, one teardown.
+- **Image.** The devcontainer builds a digest-pinned Dockerfile that removes the base image's Yarn apt source. Its
+  signing key is unavailable (`NO_PUBKEY 62D54FD4003F6525`), which made `apt-get update`, and so the
+  docker-outside-of-docker feature, fail; the integration Codespace could not build either.
 - **docker-outside-of-docker.** In that devcontainer the Docker daemon runs on the host and resolves bind-mount
   sources against the host filesystem, where the workspace lives at another path. The devcontainer passes
   `LOCAL_WORKSPACE_FOLDER` and `CONTAINER_WORKSPACE_FOLDER` through `remoteEnv`, and `host_path()` translates only the

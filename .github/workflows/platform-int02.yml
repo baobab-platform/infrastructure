@@ -1,7 +1,7 @@
 name: INT-02 real IAM and CP integration
 # ADR-SHARED-036 s6: real-component IAM <-> CP integration testing with no
-# protected staging. The live job runs inside the integration devcontainer,
-# the same image and entrypoints a developer uses in the integration
+# protected staging. The live job runs inside the integration devcontainer
+# (Dev Containers CLI), the same image and entrypoints a developer uses in the integration
 # Codespace (s6.3). A CP or IAM pull request calls this workflow to test its
 # own head against the other locked pin (s6.8, s6.10):
 #
@@ -92,19 +92,29 @@ jobs:
           repository: ${{ inputs.harness_sha && 'baobab-platform/infrastructure' || github.repository }}
           ref: ${{ inputs.harness_sha || github.sha }}
           persist-credentials: false
-      - name: INT-02 inside the integration devcontainer (Codespaces parity)
-        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
+      # The Dev Containers CLI is the engine Codespaces and devcontainers/ci
+      # both build on. It is installed from a committed lockfile (sha512
+      # integrity, no install scripts) rather than a third-party action, which
+      # the organisation's trusted-owner baseline does not admit.
+      - name: Dev Containers CLI (locked)
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Build and start the integration devcontainer (Codespaces parity)
+        run: |
+          set -eu
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: INT-02 inside the integration devcontainer
         env:
           INT02_CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository }}
           INT02_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-        with:
-          configFile: .devcontainer/platform-integration/devcontainer.json
-          push: never
-          env: |
-            INT02_CANDIDATE_REPOSITORY
-            INT02_CANDIDATE_SHA
-            GITHUB_ACTIONS
-          runCmd: bash tests/platform-integration/int02/run-in-devcontainer.sh
+        run: |
+          set -eu
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env "INT02_CANDIDATE_REPOSITORY=$INT02_CANDIDATE_REPOSITORY" \
+            --remote-env "INT02_CANDIDATE_SHA=$INT02_CANDIDATE_SHA" \
+            --remote-env GITHUB_ACTIONS=true \
+            bash tests/platform-integration/int02/run-in-devcontainer.sh
       # The scrubbed receipt is written for BLOCKED/FAIL runs too (passed=false)
       # and is the triage record; upload it whatever the outcome. The job
       # keeps its failing status.
