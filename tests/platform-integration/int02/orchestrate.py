@@ -124,7 +124,16 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
         # at most 40 safe characters) leave this process.
         diags = [line[len("INT02_DIAG "):] for line in p.stderr.splitlines()
                  if re.fullmatch(r"INT02_DIAG( [a-z_]{1,24}=[A-Za-z0-9_.-]{1,40}){1,6}", line)]
+        # psql runs with VERBOSITY=sqlstate: its error is then only a
+        # five-character SQLSTATE code, never a row, value or statement.
+        sqlstate = ""
+        if "psql" in args:
+            for line in p.stderr.splitlines():
+                code = re.fullmatch(r"(?:psql:[^ ]* )?ERROR:  ([0-9A-Z]{5})", line.strip())
+                if code:
+                    sqlstate = code.group(1)
         raise Blocked("External command failed: " + Path(args[0]).name +
+                      (f"; CP SQL state: {sqlstate}" if sqlstate else "") +
                       (f"; IAM diagnostics: {' | '.join(diags[-3:])}" if diags else "") +
                       (f"; INT-02 fixture HTTP class: {fixture_http}" if fixture_http else "") +
                       (f"; INT-02 fixture class: {fixture_stage}" if fixture_stage else "") +
@@ -187,7 +196,7 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
         safe_cause = str(cause) if any(
             marker in str(cause) for marker in
             ("IAM bootstrap class:", "INT-02 fixture class:",
-             "INT-02 fixture HTTP class:", "IAM diagnostics:")) else ""
+             "INT-02 fixture HTTP class:", "IAM diagnostics:", "CP SQL state:")) else ""
         raise Blocked(f"Compose {stage}/{target} failed; service states: "
                       + (", ".join(sorted(snapshot)) if snapshot else "unavailable")
                       + (f"; {safe_cause}" if safe_cause else "")) from cause
@@ -457,7 +466,7 @@ def seed_identities(p, envfile, ids):
                 "INSERT INTO identity.external_identity(principal_id,issuer,subject,status) "
                 "VALUES ('" + identity + "','" + ISSUER + "','"
                 + subject + "','ACTIVE');")
-        compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v",
+        compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate", "-v",
                 "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
                 "-c", stmt, capture=True, timeout=25)
 
@@ -486,11 +495,17 @@ def seed_tenants(p, directory, envfile):
              effective_from,legal_status)
             VALUES ('{legal}','{org}','Synthetic fixture','l4-synthetic',
                     now() - interval '1 hour','ACTIVE');
+        -- CP requires a registration basis. A fixture is registered outside
+        -- admission, so it is BOOTSTRAP with its reason and evidence, as in
+        -- CP's own repository fixtures; never ONBOARDING.
         INSERT INTO tenants (tenant_id,legal_entity_id,display_name,
             isolation_strategy,residency_region,observed_state,
-            primary_organisation_enforced)
+            primary_organisation_enforced,registration_basis,
+            bootstrap_reason,bootstrap_evidence_reference)
             VALUES ('{tenant}','{legal}','INT-02 disposable test',
-            'row_level_security','af-south-1','active',true);
+            'row_level_security','af-south-1','active',true,'BOOTSTRAP',
+            'INT-02 synthetic fixture registered outside admission',
+            'int02-synthetic-fixture');
         INSERT INTO registry.tenant_organisation_mapping
             (tenant_id,organisation_id,mapping_role,status,effective_from,provenance)
             VALUES ('{tenant}','{org}','PRIMARY_ORGANISATION','ACTIVE',
@@ -501,7 +516,7 @@ def seed_tenants(p, directory, envfile):
                     now() - interval '1 hour','int02-synthetic-fixture');
         COMMIT;
         """
-        compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v",
+        compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate", "-v",
             "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
             "-c", statement, capture=True, timeout=35)
     # A capability binding is NOT its own grant. One ACTIVE scoped grant is
@@ -546,7 +561,7 @@ def seed_tenants(p, directory, envfile):
            'PLATFORM_BASELINE','ACTIVE',now()-interval '1 hour'
     FROM c,s;
     """
-    compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v",
+    compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate", "-v",
             "ON_ERROR_STOP=1", "-U", "controlplane", "-d", "controlplane",
             "-c", statement, capture=True, timeout=30)
     private(directory / "fixtures.json",json.dumps({
@@ -581,7 +596,7 @@ def test(lock):
       AND subject='""" + subject + """' AND status='ACTIVE'
       RETURNING external_identity_id;
     """)
-    result = compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X",
+    result = compose(p, envfile, "exec", "-T", "cp-db", "psql", "-X", "-v", "VERBOSITY=sqlstate",
                      "-At", "-v", "ON_ERROR_STOP=1", "-U", "controlplane",
                      "-d", "controlplane", "-c", revoked, capture=True, timeout=35)
     must(result.strip() != "", "Expected canonical external identity not revoked")

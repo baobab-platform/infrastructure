@@ -347,6 +347,27 @@ class TransportTest(unittest.TestCase):
         self.assertIn('"basic","openid","actor-type-human","authority:self"',runner)
         self.assertIn('"basic","openid","actor-type-workload","intelligence:evidence:search"',runner)
 
+    def test_cp_sql_failures_report_only_the_sqlstate(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertEqual(runner.count('"psql", "-X", "-v", "VERBOSITY=sqlstate",'),4)
+        self.assertNotIn('"psql", "-X", "-v", "ON_ERROR_STOP',runner)
+        failed=mock.Mock(returncode=1,stdout="",stderr="ERROR:  23502\n")
+        with mock.patch.object(m.subprocess,"run",return_value=failed):
+            with self.assertRaises(m.Blocked) as caught:
+                m.execute(["docker","compose","exec","-T","cp-db","psql","-c","SELECT 1"])
+        self.assertIn("CP SQL state: 23502",str(caught.exception))
+        leaky=mock.Mock(returncode=1,stdout="",stderr="ERROR:  null value in column \"x\"\n")
+        with mock.patch.object(m.subprocess,"run",return_value=leaky):
+            with self.assertRaises(m.Blocked) as caught:
+                m.execute(["docker","compose","exec","-T","cp-db","psql","-c","SELECT 1"])
+        self.assertNotIn("null value",str(caught.exception))
+        self.assertNotIn("CP SQL state",str(caught.exception))
+
+    def test_tenant_fixtures_are_bootstrap_registered_never_onboarding(self):
+        runner=(BASE/"orchestrate.py").read_text()
+        self.assertIn("'row_level_security','af-south-1','active',true,'BOOTSTRAP',",runner)
+        self.assertNotIn("'ONBOARDING'",runner)
+
     def test_every_tls_check_is_collected_from_the_probe(self):
         runner=(BASE/"orchestrate.py").read_text()
         self.assertIn('transport = json.loads(run_probe(p, envfile, "tls"))',runner)
