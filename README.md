@@ -12,6 +12,12 @@ defines an isolated Compose foundation, immutable image/source lock, no-public-p
 service topology and identical Python lifecycle commands for Codespaces and CI.
 No source-only run qualifies IAM/CP integration, protected staging or production.
 
+The [Nabhold v2.0 critical-path audit and implementation queue](docs/testing/nabhold-go-live-audit-2026-10-16.md)
+tracks the current INT-02 blocker, cross-repository PR dependencies and exact
+merge conditions. [INT-02's workload proof](tests/platform-integration/int02/README.md)
+now isolates same-client audience denial and client issuance revocation;
+remaining mandatory live scenarios still gate PR #35.
+
 ## Foundation status
 
 Foundation 0 established the architecture and trust boundaries. Foundation 1
@@ -105,3 +111,11 @@ not the `full` profile this repo carried before. The SHA-pinned
 `foundation` workflow validates the development contract and reproducibility,
 then scans dependencies, configuration, secrets, and applicable containers.
 Protect `main` with pull requests, CODEOWNER review, and required CI checks.
+
+### INT-02 closure candidate — 16 October 2026
+
+[The closure register](docs/testing/int02-closure-2026-10-16.md) tracks the
+real browser/code/S256/MFA ceremony, governed PRIMARY runtime guard,
+four-principal isolation and exact workload-registry enforcement. The dependency pins include CP #407/#408, Shared #322 and merged IAM #118/#117 plus the explicitly unmerged IAM #119 assurance candidate. Run39005422172 passes CP-01/IAM-01/IAM-02 and all 14 browser checks, but CP-03 fails and CP-02 stays blocked; final-pin acceptance remains open.
+no protected acceptance follows from those source merges. Provider qualification remains
+independently mandatory and the complete profile stays blocked until proven.

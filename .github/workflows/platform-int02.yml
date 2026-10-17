@@ -1,0 +1,142 @@
+name: INT-02 real IAM and CP integration
+# ADR-SHARED-036 s6: real-component IAM <-> CP integration testing with no
+# protected staging. The live job runs inside the integration devcontainer
+# (Dev Containers CLI), the same image and entrypoints a developer uses in the integration
+# Codespace (s6.3). A CP or IAM pull request calls this workflow to test its
+# own head against the other locked pin (s6.8, s6.10):
+#
+#   jobs:
+#     int02:
+#       uses: baobab-platform/infrastructure/.github/workflows/platform-int02.yml@<infrastructure-sha>
+#       with:
+#         harness_sha: <the same infrastructure-sha>
+#         candidate_repository: baobab-cp
+#         candidate_sha: ${{ github.event.pull_request.head.sha }}
+#
+# Caller inputs are validated before use and reach scripts only through the
+# environment, never by expression interpolation into shell. No secret is
+# passed or needed: every credential is generated per run and destroyed.
+on:
+  pull_request:
+    paths:
+      - tests/platform-integration/**
+      - .github/workflows/platform-int02.yml
+      - .devcontainer/platform-integration/**
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      harness_sha:
+        description: Full commit SHA of baobab-platform/infrastructure to run (the SHA the caller pins in uses)
+        type: string
+        required: true
+      candidate_repository:
+        description: baobab-iam or baobab-cp, whose pin is replaced by candidate_sha
+        type: string
+        required: false
+        default: ""
+      candidate_sha:
+        description: Full 40-character commit SHA of the candidate repository
+        type: string
+        required: false
+        default: ""
+permissions:
+  contents: read
+jobs:
+  static:
+    name: INT-02 source and trust-boundary checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # In a reusable-workflow call the github context is the CALLER's;
+          # always check out this harness at the SHA the caller pinned.
+          repository: ${{ inputs.harness_sha && 'baobab-platform/infrastructure' || github.repository }}
+          ref: ${{ inputs.harness_sha || github.sha }}
+          persist-credentials: false
+      - name: Validate caller inputs
+        env:
+          HARNESS_SHA: ${{ inputs.harness_sha }}
+          CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -eu
+          sha='^[0-9a-f]{40}$'
+          if [ -n "$HARNESS_SHA" ] && ! [[ "$HARNESS_SHA" =~ $sha ]]; then echo "harness_sha must be a full commit SHA" >&2; exit 2; fi
+          if [ -n "$CANDIDATE_REPOSITORY$CANDIDATE_SHA" ]; then
+            case "$CANDIDATE_REPOSITORY" in baobab-iam|baobab-cp) ;; *) echo "candidate_repository must be baobab-iam or baobab-cp" >&2; exit 2;; esac
+            [[ "$CANDIDATE_SHA" =~ $sha ]] || { echo "candidate_sha must be a full commit SHA" >&2; exit 2; }
+          fi
+          if [ -n "$HARNESS_SHA" ] && [ "$(git rev-parse HEAD)" != "$HARNESS_SHA" ]; then echo "harness checkout does not match harness_sha" >&2; exit 2; fi
+      - run: python3 tests/platform-integration/l4.py preflight iam-cp --static
+      - run: python3 -m unittest discover -s tests/platform-integration/int02 -p test_int02.py -v
+      - run: python3 -m py_compile tests/platform-integration/int02/*.py
+      - name: Confidential callback validator checks
+        run: |
+          npm ci --prefix tests/platform-integration/int02/human --ignore-scripts --no-audit --no-fund
+          npm test --prefix tests/platform-integration/int02/human
+  image-discovery:
+    name: Probe image digest review
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          set -eu
+          docker pull python:3.12.12-slim >/dev/null
+          docker image inspect --format 'PROBE_PIN={{index .RepoDigests 0}}' python:3.12.12-slim
+  live:
+    name: Real Keycloak -> CP L4-01 acceptance
+    needs: [static]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.harness_sha && 'baobab-platform/infrastructure' || github.repository }}
+          ref: ${{ inputs.harness_sha || github.sha }}
+          persist-credentials: false
+      # The Dev Containers CLI is the engine Codespaces and devcontainers/ci
+      # both build on. It is installed from a committed lockfile (sha512
+      # integrity, no install scripts) rather than a third-party action, which
+      # the organisation's trusted-owner baseline does not admit.
+      - name: Dev Containers CLI (locked)
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Build and start the integration devcontainer (Codespaces parity)
+        run: |
+          set -eu
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: INT-02 inside the integration devcontainer
+        env:
+          INT02_CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository }}
+          INT02_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -eu
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env "INT02_CANDIDATE_REPOSITORY=$INT02_CANDIDATE_REPOSITORY" \
+            --remote-env "INT02_CANDIDATE_SHA=$INT02_CANDIDATE_SHA" \
+            --remote-env GITHUB_ACTIONS=true \
+            bash tests/platform-integration/int02/run-in-devcontainer.sh
+      # The scrubbed receipt is written for BLOCKED/FAIL runs too (passed=false)
+      # and is the triage record; upload it whatever the outcome. The job
+      # keeps its failing status.
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: int02-synthetic-real-component-receipt
+          path: tests/platform-integration/evidence/*-int02.json
+          if-no-files-found: warn
+      # The run script tears down inside the devcontainer. If the container
+      # itself died, remove any Compose project it left on the shared daemon.
+      - if: always()
+        name: Destroy any disposable resources left behind
+        run: |
+          set -eu
+          session=tests/platform-integration/.runtime/int02-session.json
+          [ -f "$session" ] || { echo "No INT-02 project left behind"; exit 0; }
+          project=$(python3 -c 'import json,re,sys; p=json.load(open(sys.argv[1]))["project"]; print(p if re.fullmatch(r"l4-[0-9a-f]{16}", p) else "")' "$session")
+          [ -n "$project" ] || { echo "Unrecognised INT-02 project" >&2; exit 2; }
+          docker compose -p "$project" down --volumes --remove-orphans
+          echo "INT-02 project $project destroyed from the host"

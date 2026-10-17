@@ -1,0 +1,706 @@
+#!/usr/bin/env python3
+"""Real Keycloak-issued tokens exercised against a running CP process.
+
+Only JSON summary reports are emitted; bearer tokens and provider bodies are
+never printed, uploaded or included in evidence. Synthetic identities are
+seeded into an entirely disposable CP database by the owning test harness.
+"""
+import base64
+import json
+import os
+from pathlib import Path
+import ssl
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+
+ISSUER=os.environ["L4_ISSUER"]
+CP=os.environ["L4_CP"]
+RUNTIME=Path("/run/l4")
+# EA v2.2 INT-02 "verified local TLS": every request to IAM and CP is
+# verified against THIS run's throwaway CA, with hostname checking on. The
+# probe never disables verification and never trusts any other root.
+TLS=ssl.create_default_context(cafile=os.environ["L4_CA_FILE"])
+TLS.minimum_version=ssl.TLSVersion.TLSv1_3
+
+def request(method,url,body=None,token=None,context=None,headers=None):
+    data = (urllib.parse.urlencode(body).encode() if body is not None and
+            url.endswith(("/token", "/token/introspect")) else
+            json.dumps(body).encode() if body is not None else None)
+    hdr={"Accept":"application/json",**(headers or {})}
+    if data is not None:
+        hdr["Content-Type"]=("application/x-www-form-urlencoded"
+                             if url.endswith(("/token", "/token/introspect")) else "application/json")
+    if token:
+        hdr["Authorization"]="Bearer "+token
+    req=urllib.request.Request(url,data=data,method=method,headers=hdr)
+    try:
+        with urllib.request.urlopen(req,timeout=8,context=context or TLS) as response:
+            status=response.status
+            raw=response.read(65537)
+    except urllib.error.HTTPError as exc:
+        status=exc.code
+        raw=exc.read(65537)
+    if len(raw)>65536:
+        raise ValueError("response too large")
+    try:
+        result=json.loads(raw) if raw else {}
+    except ValueError:
+        result={}
+    return status,result
+
+def token(client,secret,grant,**params):
+    status,reply=request("POST",ISSUER+"/protocol/openid-connect/token",
+                         {"grant_type":grant,"client_id":client,
+                          "client_secret":secret,**params})
+    if status!=200 or not reply.get("access_token"):
+        error=reply.get("error") if isinstance(reply,dict) else None
+        diagnostic(step="token_"+grant, client=client if client.replace("-","").isalnum() else "other",
+                   status=status, error=error if error in OAUTH_ERRORS else "other")
+        raise RuntimeError("real IAM token grant not accepted")
+    return reply["access_token"]
+
+def decode(token_value):
+    # This is a diagnostic extraction ONLY, not authentication. CP independently
+    # verifies issuer, signature, time, audience, actor type and scopes.
+    payload=token_value.split(".")[1]
+    return json.loads(base64.urlsafe_b64decode(payload+"="*(-len(payload)%4)))
+
+def workload():
+    prefix=os.environ["L4_WORKLOAD_SEED"]
+    # IAM bootstrap.sh deliberately suffixes ONLY the independent
+    # zuribeans-backend and thamani-backend test clients. Platform-owned
+    # baobab-cms-workload receives the literal BOOTSTRAP seed.
+    return token("baobab-cms-workload",prefix,"client_credentials")
+
+def human(user="human"):
+    # Access token obtained ONLY by the real browser/code/S256 callback. No
+    # human password grant or locally signed token can substitute for it.
+    status, reply = request("GET", "https://human.int02.test/token?user="+user,
+                            token=os.environ["L4_TEST_ADMIN_CLIENT_SECRET"])
+    if status != 200 or not reply.get("access_token"):
+        raise RuntimeError("real human callback token unavailable")
+    return reply["access_token"]
+
+
+def human_proof():
+    # Browser installation/startup and every security check happen inside the
+    # same private, digest-built service in Codespaces and Actions. Only its
+    # fixed check names/booleans are returned; never token/callback material.
+    for _ in range(60):
+        try:
+            if request("GET", "https://human.int02.test/readyz")[0] == 200:
+                break
+        except (OSError, ValueError):
+            # Connection/JSON failures are expected while the private browser
+            # service warms up. Retry without exposing transport response data.
+            pass
+        time.sleep(1)
+    # Browser logins take longer than ordinary CP operations. A separate
+    # bounded request still verifies the run CA and refuses redirects.
+    req = urllib.request.Request("https://human.int02.test/proof", method="POST",
+        headers={"Authorization":"Bearer " + os.environ["L4_TEST_ADMIN_CLIENT_SECRET"]})
+    try:
+        with urllib.request.urlopen(req, timeout=180, context=TLS) as response:
+            report = json.loads(response.read(16384))
+    except urllib.error.HTTPError as exc:
+        body = json.loads(exc.read(16384))
+        stage = body.get("stage", "unknown")
+        diagnostic(step="human_proof", stage=stage if __import__("re").fullmatch(
+            r"(?:startup|browser_launch|discovery|callback_exchange|login_(?:normal|state|nonce|pkce)(?:_(?:visit|form|username|password|submit|result|mfa))?)",stage)
+            else "unknown", status=exc.code)
+        diagnostic(step="human_protocol", failure_class=body.get("failureClass") if
+            __import__("re").fullmatch(r"[A-Za-z]{1,40}", str(body.get("failureClass"))) else "Other",
+            failure_code=body.get("failureCode") if
+            __import__("re").fullmatch(r"[A-Z0-9_]{1,40}", str(body.get("failureCode"))) else "OTHER")
+        # A second allowlist at the output boundary prevents a future browser
+        # diagnostic change from leaking free-form page content or a URL.
+        facts = body.get("pageFacts")
+        if isinstance(facts, dict):
+            allowed = {"host": {"IAM", "RP", "OTHER"},
+                "path": {"AUTHORIZE", "ACTION", "CALLBACK", "OTHER"},
+                "type": {"HTML", "JSON", "OTHER"},
+                "marker": {"COOKIE_MISSING", "PROFILE_REQUIRED", "INVALID_PARAMETER",
+                           "ISSUER_ERROR", "ORGANISATION_SELECTION", "NONE"},
+                "body": {"TEXT", "EMPTY", "ABSENT"}}
+            safe = {key: value for key, value in facts.items()
+                    if key in allowed and isinstance(value, str) and value in allowed[key]}
+            safe.update({key: str(facts[key]) for key in
+                         ("forms", "inputs", "username", "password", "totp", "otp")
+                         if type(facts.get(key)) is int and 0 <= facts[key] <= 9})
+            # execute() admits at most six key/value pairs per line. Keep
+            # this vocabulary within that existing transport boundary;
+            # otherwise an informative page snapshot would be discarded.
+            diagnostic(step="human_page", **{key: safe[key] for key in allowed if key in safe})
+            counts = "".join(label + safe.get(key, "X") for label, key in
+                             (("F", "forms"), ("I", "inputs"), ("U", "username"),
+                              ("P", "password"), ("T", "totp"), ("O", "otp")))
+            diagnostic(step="human_form", counts=counts)
+        raise RuntimeError("human proof failed") from None
+    if not isinstance(report.get("checks"), dict):
+        raise RuntimeError("human proof unavailable")
+    print(json.dumps({"checks":{k:v is True for k,v in report["checks"].items()
+                               if __import__("re").fullmatch(r"iam01_[a-z_]{1,48}",k)}}))
+
+
+def other():
+    return token("l4-int02-other-audience",
+                 (RUNTIME/"other-secret").read_text().strip(),
+                 "client_credentials")
+
+# Standard OAuth 2.0 / Keycloak error codes are public protocol vocabulary,
+# never credentials; anything else is reported as "other".
+OAUTH_ERRORS={"invalid_grant","invalid_client","unauthorized_client","invalid_request",
+              "invalid_scope","unsupported_grant_type","access_denied","temporarily_unavailable"}
+
+def diagnostic(**fields):
+    """One fixed-format diagnostic line (short tokens only) that the
+    orchestrator may forward to CI; never bodies, tokens or credentials."""
+    print("INT02_DIAG " + " ".join(f"{k}={v}" for k,v in fields.items()), file=sys.stderr)
+
+def verify_master_administrator():
+    # Use Keycloak's unmodified built-in master/admin-cli grant. This is the
+    # same password grant used by IAM's kcadm.sh product bootstrap, issued
+    # by the REAL Keycloak process. Never print an access token or password.
+    master=ISSUER.rsplit("/realms/",1)[0]+"/realms/master"
+    code,body=request("POST",master+"/protocol/openid-connect/token",{
+        "grant_type":"password","client_id":"admin-cli",
+        "username":"l4admin","password":os.environ["L4_KC_ADMIN_PASSWORD"]})
+    if code!=200 or not body.get("access_token"):
+        error=body.get("error") if isinstance(body,dict) else None
+        diagnostic(step="master_admin", status=code,
+                   error=error if error in OAUTH_ERRORS else "other")
+        raise RuntimeError("Keycloak master admin credential was not accepted")
+    print('{"master_admin_token_verified":true}')
+
+def wait_iam():
+    # Readiness is the real OIDC discovery document, fetched over verified TLS
+    # through the edge: HTTP 200 AND the exact expected issuer. The baobab
+    # realm only exists after IAM's bootstrap.sh, which runs later; the
+    # built-in master realm is the pre-bootstrap issuer (hostname +
+    # /realms/master). The master-admin step then verifies real token
+    # issuance. Neither mocks IAM, authorises CP access, or certifies L4.
+    master_issuer = ISSUER.rsplit("/realms/", 1)[0] + "/realms/master"
+    discovery = master_issuer + "/.well-known/openid-configuration"
+    last = "unavailable"
+    for _ in range(150):
+        try:
+            status,document = request("GET",discovery)
+            last = str(status)
+            if status == 200 and document.get("issuer") == master_issuer:
+                print('{"issuer_ready":true,"method":"verified-tls-oidc-discovery"}')
+                return
+            if status == 200:
+                last = "issuer_mismatch"
+        except ssl.SSLCertVerificationError:
+            last = "tls_unverified"
+        except urllib.error.URLError as exc:
+            last = "tls_unverified" if isinstance(exc.reason, ssl.SSLCertVerificationError) else "unavailable"
+        except (OSError, ValueError):
+            last = "unavailable"
+        time.sleep(1)
+    # Status classes and HTTP codes are safe; never include bodies, URLs
+    # containing credentials, tokens or raw container logs in Actions. This
+    # fixed-format line is the only diagnostic the orchestrator forwards.
+    diagnostic(step="iam_readiness", discovery=last)
+    raise RuntimeError("real Keycloak readiness unavailable: discovery=" + last)
+
+def wait():
+    # CP at the pin serves readiness at /readyz (it pings its database) and
+    # liveness at /healthz (api/router.go). Readiness, over verified TLS.
+    last="unavailable"
+    for _ in range(90):
+        try:
+            s,_=request("GET",CP+"/readyz")
+            last=str(s)
+            if s==200:
+                print('{"ready":true}')
+                return
+        except ssl.SSLCertVerificationError:
+            last="tls_unverified"
+        except urllib.error.URLError as exc:
+            # CP may not yet have bound its listener; poll until readiness or
+            # the bounded deadline, never skipping the check.
+            last=("tls_unverified" if isinstance(exc.reason,ssl.SSLCertVerificationError)
+                  else "unavailable")
+        except (OSError,ValueError):
+            last="unavailable"
+        time.sleep(1)
+    diagnostic(step="cp_readiness", readyz=last)
+    raise RuntimeError("real CP did not become ready")
+
+def claim_profile(label,claims,actor):
+    """Fixed-vocabulary facts about one real token: never its values."""
+    found=claims.get("actor_type")
+    diagnostic(step="claims_"+label, iss_match=str(claims.get("iss")==ISSUER).lower(),
+               has_sub=str(bool(claims.get("sub"))).lower(),
+               actor=found if found in ("human","workload") else ("none" if found is None else "other"))
+    return claims.get("iss")==ISSUER and bool(claims.get("sub")) and found==actor
+
+def identities():
+    h,w=decode(human()),decode(workload())
+    isolation = {label+"_sub":decode(human(label))["sub"] for label in ("parent","subsidiary","sibling","external")}
+    # Evaluate both, so each token's profile is reported before refusing.
+    human_ok,workload_ok=claim_profile("human",h,"human"),claim_profile("workload",w,"workload")
+    if not (human_ok and workload_ok):
+        raise RuntimeError("real IAM token profile mismatch")
+    print(json.dumps({"source":"keycloak-issued","issuer":ISSUER,
+                      "human_sub":h["sub"],"workload_sub":w["sub"],**isolation}))
+
+DENIED=(401,403)
+
+def denied(token_value,body):
+    """A real CP denial: 401/403 only. A 404, 5xx or transport error is not
+    proof of policy and must never be counted as a negative PASS."""
+    status,_=request("POST",CP+"/v1/platform-context/resolve",body,token_value)
+    return status in DENIED
+
+def unmapped():
+    # Runs BEFORE the harness links any Keycloak subject to a CP Principal.
+    # L4-CP-01 "unmapped principal": CP never auto-provisions a HUMAN on the
+    # admin routes, so a validly signed human token with no Principal link
+    # must be refused (401/403). Workloads are auto-provisioned by design on
+    # first context resolution (ADR-0004 s13, ADR-0007 s46), so a workload
+    # cannot be "unmapped" there; its status is recorded as an observation.
+    fixtures=json.loads((RUNTIME/"fixtures.json").read_text())
+    human_status,_=request("GET",CP+"/v1/admin/effective-authority",token=human())
+    workload_status,_=request("POST",CP+"/v1/platform-context/resolve",
+        {"tenant_id":fixtures["tenant"],"organisation_id":fixtures["organisation"]},workload())
+    print(json.dumps({"unmapped_human_denied":human_status in DENIED,
+                      "observations":{"unlinked_human_effective_authority_status":human_status,
+                                      "unlinked_workload_context_status":workload_status}}))
+
+REASON=__import__("re").compile(r"[A-Z0-9_]{1,48}")
+# CP decisions that mean the FIXTURE (grant, binding, capability or contract)
+# is wrong, never that CP correctly refused an uncertified provider.
+FIXTURE_FAULTS={"GRANT_NOT_FOUND","GRANT_REVOKED","GRANT_SUSPENDED","GRANT_EXPIRED",
+                "CAPABILITY_UNKNOWN","CAPABILITY_INACTIVE","BINDING_NOT_FOUND",
+                "BINDING_AMBIGUOUS","CONTRACT_VERSION_UNSUPPORTED"}
+
+def capability_decision(token_value,context_id):
+    """CP's decision for the fixture capability: fixed vocabulary only."""
+    status,r=request("POST",CP+"/v1/capabilities/resolve",
+        {"context_id":context_id,"capability_key":"intelligence.evidence.search",
+         "required_contract_version":1,"correlation_id":str(uuid.uuid4())},token_value)
+    decision=r.get("decision") if r.get("decision") in ("RESOLVED","DENIED","UNAVAILABLE","AMBIGUOUS","INCOMPATIBLE") else "OTHER"
+    reason=r.get("reason_code") if isinstance(r.get("reason_code"),str) and REASON.fullmatch(r.get("reason_code")) else "NONE"
+    return status,decision,reason,r
+
+def context_for(token_value,body):
+    status,c=request("POST",CP+"/v1/platform-context/resolve",body,token_value)
+    return c.get("context_id") if status==200 else None
+
+def grant_revoked():
+    # After the harness revokes tenant A's grant: the same entitled context
+    # must now be DENIED for GRANT_REVOKED (L4-CP-01 "revoked grant").
+    fixture=json.loads((RUNTIME/"fixtures.json").read_text())
+    good=workload()
+    context_id=context_for(good,{"tenant_id":fixture["tenant"],"organisation_id":fixture["organisation"]})
+    if not context_id:
+        print(json.dumps({"revoked_grant_denied":False,"observations":{"revoked_grant_context":"NONE"}}))
+        return
+    status,decision,reason,_=capability_decision(good,context_id)
+    print(json.dumps({"revoked_grant_denied":status==200 and decision=="DENIED" and reason=="GRANT_REVOKED",
+                      "observations":{"revoked_grant_decision":decision,"revoked_grant_reason":reason}}))
+
+def verify(expected,fn):
+    try:
+        return "PASS" if fn() is True else "FAIL"
+    except Exception:
+        return "BLOCKED"
+
+def confirm_revoked():
+    # Same in-memory-container token issued before CP link was revoked.
+    # The token remains time-valid and Keycloak-signed, but CP must deny
+    # identity or context lookup after the canonical external link change.
+    token_path = Path("/tmp/l4-workload-issued-before-revocation")
+    raw = token_path.read_text()
+    token_path.unlink(missing_ok=True)
+    claims = decode(raw)
+    if claims.get("iss") != ISSUER or int(claims.get("exp", 0)) <= time.time():
+        raise RuntimeError("Previously issued IAM token is not live")
+    fixtures = json.loads((RUNTIME / "fixtures.json").read_text())
+    code, data = request("POST", CP + "/v1/platform-context/resolve",
+                         {"tenant_id":fixtures["tenant"],
+                          "organisation_id":fixtures["organisation"]},raw)
+    print(json.dumps({"revocation_denied": code in DENIED}))
+
+# L4-IAM-02 is an independent same-client differential, not the older
+# different-client smoke negative in exercise(). These checks are emitted as
+# booleans only. CP remains the JWT verifier; decoding here is diagnostic.
+IAM02_CHECKS = ("iam02_registered_workload_positive", "iam02_same_client_audience_only",
+                "iam02_wrong_audience_denied", "iam02_disabled_client_issuance_denied",
+                "iam02_fixture_restored")
+
+
+def audience_set(claims):
+    value = claims.get("aud")
+    return {value} if isinstance(value, str) else set(value) if isinstance(value, list) else set()
+
+
+def same_workload_except_audience(positive, negative):
+    """Reject a confounded audience negative before counting CP's denial.
+
+    Both tokens must be live, for the same actual issuer, subject, client,
+    actor and exact scope set. Independent issuance changes iat/jti/exp, so
+    compare current validity rather than requiring identical timestamps.
+    This never authenticates a JWT: positive CP acceptance and real issuer
+    introspection are required separately by workload_proof().
+    """
+    now = time.time()
+    for claims in (positive, negative):
+        if not (claims.get("iss") == ISSUER and claims.get("sub") and
+                claims.get("azp") == "baobab-cms-workload" and
+                claims.get("actor_type") == "workload" and
+                type(claims.get("exp")) is int and claims["exp"] > now and
+                type(claims.get("iat")) is int and claims["iat"] <= now and
+                ("nbf" not in claims or type(claims["nbf"]) is int and claims["nbf"] <= now) and
+                isinstance(claims.get("scope"), str) and
+                "context:resolve" in claims["scope"].split()):
+            return False
+    return (all(positive.get(k) == negative.get(k) for k in
+                ("iss", "sub", "azp", "actor_type", "tenant_id")) and
+            set(positive["scope"].split()) == set(negative["scope"].split()) and
+            "baobab-control-plane" in audience_set(positive) and
+            "baobab-control-plane" not in audience_set(negative) and
+            "l4-int02-admin" in audience_set(negative))
+
+
+def workload_proof():
+    """Actual issuer/CP workload proof in the disposable realm only.
+
+    Preserve the registered CMS client and its subject/scopes. Temporarily
+    alter ONLY context:resolve's audience mapper, then restore it even if a
+    request fails. Separately disable the same client and observe a fresh
+    grant denial, then restore its original state. No product IAM source or
+    protected realm is changed. Previously issued JWT revocation remains a
+    distinct CP canonical-link ceremony in confirm_revoked().
+    """
+    fixture = json.loads((RUNTIME / "fixtures.json").read_text())
+    body = {"tenant_id": fixture["tenant"], "organisation_id": fixture["organisation"]}
+    checks = dict.fromkeys(IAM02_CHECKS, False)
+    observations = {}
+    positive_token = workload()
+    positive = decode(positive_token)
+    status, resolved = request("POST", CP + "/v1/platform-context/resolve", body, positive_token)
+    checks["iam02_registered_workload_positive"] = bool(status == 200 and
+        resolved.get("context_id") and resolved.get("tenant_id") == body["tenant_id"] and
+        resolved.get("organisation_id") == body["organisation_id"])
+
+    # The existing test master administrator is confined to this disposable
+    # Keycloak. Keep its token in memory and use the verified TLS edge; never
+    # send an admin credential to CP or upload raw Admin REST responses.
+    master = ISSUER.rsplit("/realms/", 1)[0] + "/realms/master"
+    code, auth = request("POST", master + "/protocol/openid-connect/token", {
+        "grant_type": "password", "client_id": "admin-cli", "username": "l4admin",
+        "password": os.environ["L4_KC_ADMIN_PASSWORD"]})
+    if code != 200 or not auth.get("access_token"):
+        raise RuntimeError("disposable IAM administrator unavailable")
+    admin_token = auth["access_token"]
+    admin = ISSUER.rsplit("/realms/", 1)[0] + "/admin/realms/baobab"
+
+    def admin_call(method, path, document=None, expected=200):
+        status, response = request(method, admin + path, document, admin_token)
+        if status != expected:
+            raise RuntimeError("disposable IAM fixture operation failed")
+        return response
+
+    def unique(records, key, value):
+        matches = [r for r in records if r.get(key) == value]
+        if len(matches) != 1:
+            raise ValueError("disposable IAM fixture is ambiguous")
+        record = matches[0]
+        # Keycloak-generated IDs are UUIDs. Validate before constructing an
+        # Admin REST path so provider data cannot select another endpoint.
+        uuid.UUID(record["id"])
+        return record
+
+    client = unique(admin_call("GET", "/clients?clientId=baobab-cms-workload"),
+                    "clientId", "baobab-cms-workload")
+    scope = unique(admin_call("GET", "/client-scopes"), "name", "context:resolve")
+    mapper = unique(scope.get("protocolMappers", []), "name", "audience-baobab-control-plane")
+    if client.get("enabled") is not True or mapper.get("protocolMapper") != "oidc-audience-mapper":
+        raise ValueError("unexpected disposable IAM baseline")
+    if mapper.get("config", {}).get("included.custom.audience") != "baobab-control-plane":
+        raise ValueError("unexpected disposable IAM audience")
+    mapper_path = "/client-scopes/" + scope["id"] + "/protocol-mappers/models/" + mapper["id"]
+    changed = {**mapper, "config": {**mapper["config"], "included.custom.audience": "l4-int02-admin"}}
+    try:
+        admin_call("PUT", mapper_path, changed, expected=204)
+        wrong_token = workload()
+        wrong = decode(wrong_token)
+        # A real issuer must still consider the wrong-audience token active.
+        # Otherwise CP's 401 could be expiry/revocation rather than audience.
+        introspect_status, introspection = request("POST", ISSUER + "/protocol/openid-connect/token/introspect", {
+            # Keycloak 26.7 requires the introspecting client to be in aud.
+            # The disposable mapper targets this already-confidential test
+            # client, so introspection is permitted without disabling that
+            # safeguard or adding any audience to the product IAM contract.
+            "client_id": "l4-int02-admin", "client_secret": os.environ["L4_TEST_ADMIN_CLIENT_SECRET"],
+            "token": wrong_token})
+        checks["iam02_claims_isolated"] = same_workload_except_audience(positive, wrong)
+        checks["iam02_introspection_active"] = introspect_status == 200 and introspection.get("active") is True
+        checks["iam02_introspection_subject_matches"] = introspection.get("sub") == positive.get("sub")
+        observations["iam02_introspection_status"] = introspect_status
+        isolated = (checks["iam02_claims_isolated"] and checks["iam02_introspection_active"] and
+                    checks["iam02_introspection_subject_matches"])
+        checks["iam02_same_client_audience_only"] = isolated
+        denied_status, _ = request("POST", CP + "/v1/platform-context/resolve", body, wrong_token)
+        observations["iam02_wrong_audience_status"] = denied_status
+        checks["iam02_wrong_audience_denied"] = isolated and denied_status == 401
+    finally:
+        admin_call("PUT", mapper_path, mapper, expected=204)
+
+    client_path = "/clients/" + client["id"]
+    try:
+        admin_call("PUT", client_path, {"enabled": False}, expected=204)
+        disabled_status, error = request("POST", ISSUER + "/protocol/openid-connect/token", {
+            "grant_type": "client_credentials", "client_id": "baobab-cms-workload",
+            "client_secret": os.environ["L4_WORKLOAD_SEED"]})
+        observations["iam02_disabled_client_status"] = disabled_status
+        checks["iam02_disabled_client_issuance_denied"] = (disabled_status in (400, 401) and
+            error.get("error") in ("invalid_client", "unauthorized_client") and not error.get("access_token"))
+    finally:
+        admin_call("PUT", client_path, {"enabled": True}, expected=204)
+
+    # A restore is observed through issuance and CP acceptance, not inferred
+    # from a successful administrative PUT. The remaining scenarios run only
+    # after this check, so fixture mutation cannot silently contaminate them.
+    restored = workload()
+    restored_status, restored_context = request("POST", CP + "/v1/platform-context/resolve", body, restored)
+    checks["iam02_fixture_restored"] = bool(restored_status == 200 and
+        restored_context.get("tenant_id") == body["tenant_id"] and
+        restored_context.get("organisation_id") == body["organisation_id"] and
+        same_workload_except_audience(decode(restored), wrong))
+    print(json.dumps({"checks": checks, "observations": observations}, sort_keys=True))
+
+
+def exercise():
+    fixture=json.loads((RUNTIME/"fixtures.json").read_text())
+    tenant,other_tenant=fixture["tenant"],fixture["other_tenant"]
+    organisation=fixture["organisation"]
+    good,human_token=workload(),human()
+    tok = Path("/tmp/l4-workload-issued-before-revocation")
+    tok.write_text(good)
+    tok.chmod(0o600)
+    wclaims=decode(good)
+    hclaims=decode(human_token)
+    def auth_good():
+        return (wclaims.get("iss")==ISSUER and
+                "baobab-control-plane" in
+                ([wclaims.get("aud")] if isinstance(wclaims.get("aud"),str) else wclaims.get("aud",[]))
+                and wclaims.get("actor_type")=="workload" and
+                "context:resolve" in wclaims.get("scope","").split() and
+                hclaims.get("actor_type")=="human" and
+                request("GET",CP+"/v1/admin/effective-authority",token=human_token)[0]==200)
+    def wrong_audience():
+        wrong=other()
+        w=decode(wrong)
+        aud=w.get("aud",[])
+        return (w.get("iss")==ISSUER and
+                "baobab-pulse" in ([aud] if isinstance(aud,str) else aud) and
+                "baobab-control-plane" not in ([aud] if isinstance(aud,str) else aud)
+                and request("POST",CP+"/v1/platform-context/resolve",
+                            {"tenant_id":tenant},wrong)[0]==401)
+    state={}
+    # The positive check proves actual signed token and CP acceptance.
+    # Shared's L4-IAM-01 additionally REQUIRES human code+PKCE, single-use
+    # state/nonce and callback replay denial; password-grant test fixture
+    # alone is not that proof and MUST NOT be reported as accepted.
+    state["L4-IAM-01"]="BLOCKED" if auth_good() else "FAIL"
+    # Different-client wrong-audience denial is a useful real negative,
+    # but is NOT sufficient for isolated same-client audience-only proof.
+    # Until the same-client audience-differential test runs, BLOCKED.
+    state["L4-IAM-02"]="BLOCKED" if wrong_audience() else "FAIL"
+    status,context=request("POST",CP+"/v1/platform-context/resolve",
+                           {"tenant_id":tenant,"organisation_id":organisation},good)
+    # Matrix L4-CP-01 positive: Principal / PRIMARY Organisation / Tenant /
+    # MARKET context read: the tenant's ACTIVE market participation.
+    positive=bool(status==200 and context.get("tenant_id")==tenant and
+        context.get("organisation_id")==organisation and context.get("context_id") and
+        context.get("country_code")==fixture["market_country"] and
+        context.get("market_id")==fixture["market"])
+    # L4-CP-01 negatives (matrix): a swapped Organisation (tenant B's PRIMARY
+    # Organisation under tenant A) and a fabricated tenant must be refused.
+    # The unmapped-principal and revoked-identity negatives run in the
+    # orchestrator, which alone may promote CP-01 to PASS.
+    checks={"cp01_positive":positive,
+            "cp01_swapped_organisation_denied":denied(good,
+                {"tenant_id":tenant,"organisation_id":fixture["other_organisation"]}),
+            "cp01_fabricated_tenant_denied":denied(good,
+                {"tenant_id":"tn_l4fabricated"+uuid.uuid4().hex[:12]}),
+            # Matrix: "missing or fabricated Organisation".
+            "cp01_fabricated_organisation_denied":denied(good,
+                {"tenant_id":tenant,"organisation_id":str(uuid.uuid4())}),
+            }
+    observations={}
+    # Matrix: "missing Organisation ... denied". Shared control-plane/v1
+    # makes the Organisation OPTIONAL on this endpoint ("optionally attests
+    # an organisation the caller names"; an empty body is valid). Record what
+    # CP does; it must never invent an Organisation. Whether issuing an
+    # Organisation-less context satisfies the matrix is unresolved (see the
+    # README), so the orchestrator never promotes CP-01 on it.
+    ms,mc=request("POST",CP+"/v1/platform-context/resolve",{"tenant_id":fixture["no_primary_tenant"]},good)
+    missing=("DENIED" if ms in DENIED else
+             "ISSUED_WITHOUT_ORGANISATION" if ms==200 and not mc.get("organisation_id") else
+             "FABRICATED" if ms==200 else "OTHER")
+    observations["cp01_missing_organisation_outcome"]=missing
+    checks["cp01_missing_organisation_not_fabricated"]=missing in ("DENIED","ISSUED_WITHOUT_ORGANISATION")
+    # Probe-side negatives only; the orchestrator adds the unmapped-principal,
+    # revoked-grant and revoked-identity negatives and alone may promote.
+    state["L4-CP-01"]="BLOCKED" if all(checks.values()) else "FAIL"
+    entitled=False
+    if positive:
+        status2,decision,reason,cap=capability_decision(good,context["context_id"])
+        observations["cp02_tenant_decision"]=decision
+        observations["cp02_tenant_reason"]=reason
+        # Entitlement passed when CP did not refuse for a grant reason.
+        entitled=status2==200 and not (decision=="DENIED" and reason.startswith("GRANT_"))
+        provider_record=(decision=="RESOLVED" and cap.get("grant_id") and cap.get("binding_id")
+                         and cap.get("invocation",{}).get("engine_instance_id"))
+        # L4-CP-02 needs a CURRENT CERTIFIED provider; the synthetic provider
+        # never is one. CP resolving it, or refusing it as unavailable for a
+        # health/provider reason (fail closed), is BLOCKED pending a live
+        # certified provider. A grant/binding/capability fault is FAIL.
+        fail_closed=(status2==200 and decision=="UNAVAILABLE" and reason not in FIXTURE_FAULTS)
+        checks["cp02_uncertified_provider_not_resolved_as_certified"]=bool(provider_record) or fail_closed
+        state["L4-CP-02"]="BLOCKED" if (entitled and (provider_record or fail_closed)) else "FAIL"
+    else:
+        state["L4-CP-02"]="BLOCKED"
+    # Tenant-neutral workloads MAY resolve a second tenant context: the
+    # boundary is the tenant's ACTIVE scoped CapabilityGrant. A real
+    # differential: tenant A passes entitlement while sibling B, with no
+    # grant, is refused for exactly GRANT_NOT_FOUND.
+    sibling_deny=False
+    foreign_context=context_for(good,{"tenant_id":other_tenant})
+    if foreign_context:
+        sc,decision_b,reason_b,r=capability_decision(good,foreign_context)
+        observations["cp03_sibling_decision"]=decision_b
+        observations["cp03_sibling_reason"]=reason_b
+        sibling_deny=(entitled and sc==200 and decision_b=="DENIED" and reason_b=="GRANT_NOT_FOUND"
+                      and not r.get("invocation"))
+    # Matrix CP-02 negative "missing grant" is the same observation.
+    checks["cp02_missing_grant_denied"]=sibling_deny
+    # L4-CP-03 also requires parent, independently governed subsidiary and
+    # external-user cases (matrix). Only the sibling case runs here, so a
+    # sibling denial is recorded but CP-03 stays BLOCKED, never PASS.
+    checks["cp03_sibling_denied"]=sibling_deny
+    state["L4-CP-03"]="BLOCKED" if sibling_deny else "FAIL"
+    print(json.dumps({"scenarios":state,"checks":checks,"observations":observations},sort_keys=True))
+
+def isolation_proof():
+    """Read actual CP directory/overview records with four different humans.
+
+    A 404 counts only at the exact overview route after that same principal's
+    own read succeeded and CP returned its registered non-disclosing reason.
+    Transport, routing, identity and 5xx failures are never policy evidence.
+    """
+    fixtures=json.loads((RUNTIME/"fixtures.json").read_text())["isolation"]
+    checks={}
+    observations={}
+    codes={"AUTHORIZATION_DENIED","AUTH_VERIFIER_UNAVAILABLE","ORGANISATION_NOT_FOUND",
+           "AUTHORITY_UNAVAILABLE","IDENTITY_UNAVAILABLE","PRINCIPAL_INACTIVE",
+           "DIRECTORY_AUTHORITY_UNAVAILABLE","DIRECTORY_UNAVAILABLE","DIRECTORY_INCOMPLETE",
+           "ORGANISATION_OVERVIEW_UNAVAILABLE"}
+    def observe(label, operation, status, body):
+        # Only fixed response classifications leave this function; raw bodies
+        # and Organisation/token/session identifiers remain private in memory.
+        observations["cp03_"+label+"_"+operation+"_status"] = status if type(status) is int and 100<=status<=599 else 0
+        code=body.get("code")
+        observations["cp03_"+label+"_"+operation+"_code"] = "NONE" if code is None else code if isinstance(code,str) and code in codes else "OTHER"
+    for label,target in fixtures.items():
+        bearer=human(label)
+        status,own=request("GET",CP+"/v1/organisations/"+target["organisation"]+"/overview",token=bearer)
+        # The overview identifies its selected Organisation at the top level.
+        observe(label,"own",status,own)
+        own_id=own.get("organisation_id")
+        checks["cp03_"+label+"_own_record"]=status==200 and own_id==target["organisation"]
+        ds,directory=request("GET",CP+"/v1/organisations/directory",token=bearer)
+        observe(label,"directory",ds,directory)
+        checks["cp03_"+label+"_directory_exact"]=ds==200 and [row.get("organisation_id") for row in directory.get("items",[])]==[target["organisation"]]
+        denials=[];spoofs=[]
+        for neighbour,foreign in fixtures.items():
+            if neighbour==label: continue
+            url=CP+"/v1/organisations/"+foreign["organisation"]+"/overview"
+            for outcomes,extra in ((denials,{}),(spoofs,{"X-Tenant-ID":foreign["tenant"]})):
+                code,body=request("GET",url,token=bearer,headers=extra)
+                outcomes.append(code==404 and body.get("code")=="ORGANISATION_NOT_FOUND" and
+                    foreign["organisation"] not in json.dumps(body) and not body.get("organisation"))
+        checks["cp03_"+label+"_neighbours_denied"]=checks["cp03_"+label+"_own_record"] and all(denials)
+        checks["cp03_"+label+"_tenant_spoof_denied"]=checks["cp03_"+label+"_own_record"] and all(spoofs)
+    print(json.dumps({"checks":checks,"observations":observations},sort_keys=True))
+
+
+def tls():
+    """Observe verified TLS on both edge names, and refusal without the CA."""
+    result={"tls_iam_verified":False,"tls_cp_verified":False,"tls_untrusted_refused":False}
+    try:
+        master=ISSUER.rsplit("/realms/",1)[0]+"/realms/master"
+        status,document=request("GET",master+"/.well-known/openid-configuration")
+        result["tls_iam_verified"]=status==200 and document.get("issuer")==master
+    except (OSError,ValueError):
+        # A failed handshake, connection or parse is "not verified"; the
+        # error itself is never reported, and acceptance stays blocked.
+        result["tls_iam_verified"]=False
+    try:
+        result["tls_cp_verified"]=request("GET",CP+"/healthz")[0]==200
+    except (OSError,ValueError):
+        # As above: any failure leaves CP transport unverified.
+        result["tls_cp_verified"]=False
+    # A context that trusts only the image's public roots must refuse the
+    # edge: this run's CA is the sole reason the requests above succeed.
+    try:
+        request("GET",CP+"/healthz",context=ssl.create_default_context())
+    except urllib.error.URLError as exc:
+        result["tls_untrusted_refused"]=isinstance(exc.reason,ssl.SSLCertVerificationError)
+    except ssl.SSLCertVerificationError:
+        result["tls_untrusted_refused"]=True
+    except (OSError,ValueError):
+        # Only a certificate-verification refusal proves the CA is required;
+        # a connection or parse failure proves nothing, so the check fails.
+        result["tls_untrusted_refused"]=False
+    print(json.dumps(result,sort_keys=True))
+
+def main():
+    name=sys.argv[1] if len(sys.argv)>1 else ""
+    if name=="isolation-proof":
+        isolation_proof()
+    elif name=="human-proof":
+        human_proof()
+    elif name=="wait":
+        wait()
+    elif name=="wait-iam":
+        wait_iam()
+    elif name=="master-admin":
+        verify_master_administrator()
+    elif name=="identities":
+        identities()
+    elif name=="test":
+        exercise()
+    elif name=="workload-proof":
+        workload_proof()
+    elif name=="revoked":
+        confirm_revoked()
+    elif name=="unmapped":
+        unmapped()
+    elif name=="tls":
+        tls()
+    elif name=="grant-revoked":
+        grant_revoked()
+    else:
+        raise SystemExit("unsupported integration operation")
+if __name__=="__main__":
+    try:
+        main()
+    except Exception as exc:
+        # Never print responses or token payloads in exception traces.
+        print("INT-02 probe BLOCKED:",type(exc).__name__,file=sys.stderr)
+        # The exception CLASS only (a Python identifier), never its message.
+        name=type(exc).__name__
+        diagnostic(step="probe_"+(sys.argv[1].replace("-","_") if len(sys.argv)>1 and
+                                  sys.argv[1].replace("-","").isalpha() else "unknown"),
+                   exception=name if name.isidentifier() and len(name)<=40 else "other")
+        raise SystemExit(2)

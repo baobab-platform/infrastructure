@@ -1,0 +1,17 @@
+# INT-02 profile; gates are mandatory and cannot be auto-skipped.
+profile: iam-cp
+source_of_truth: tests/platform-integration/int02/lock.json
+real_components:
+  - baobab-iam/Keycloak
+  - baobab-cp/HTTP API + PostgreSQL
+synthetic_only:
+  - independently generated short-lived human/workload identities
+  - organisations, tenants, grants, provider bindings
+acceptance:
+  - L4-IAM-01
+  - L4-IAM-02
+  - L4-CP-01
+  - L4-CP-02
+  - L4-CP-03
+no_public_ports: true
+production_credentials: forbidden
