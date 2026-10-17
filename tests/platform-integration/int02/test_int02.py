@@ -155,6 +155,16 @@ class ContractTest(unittest.TestCase):
 
 
 class DiagnosticsTest(unittest.TestCase):
+    def test_keycloak_fault_fingerprint_contains_source_locations_not_messages(self):
+        log = ("keycloak | secret=sentinel-secret\n"
+               "keycloak | at org.keycloak.authentication.SampleAuthenticator.authenticate(SampleAuthenticator.java:42)\n"
+               "keycloak | at org.keycloak.forms.SampleForm.render(SampleForm.java:7)\n"
+               "keycloak | at org.keycloak.authentication.secret.payload(WrongFile.java:9)\n")
+        with mock.patch.object(m.subprocess,"run",return_value=mock.Mock(stdout=log,stderr="")):
+            sites=m.keycloak_fault_sites({"project":"l4-0000000000000000"},Path("/nonexistent"))
+        self.assertEqual(sites,"SampleAuthenticator.authenticate_L42,SampleForm.render_L7")
+        self.assertNotIn("sentinel-secret",sites)
+
     def test_browser_checkpoint_retains_protocol_evidence_without_promoting_acceptance(self):
         proof = {"checks": {**{name: True for name in m.IAM01_REQUIRED}, "access_token": "secret"}}
         report = m.browser_checkpoint(m.load(), proof)

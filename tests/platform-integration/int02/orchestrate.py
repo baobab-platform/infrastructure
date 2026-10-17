@@ -138,7 +138,7 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
                     sqlstate = code.group(1)
         raise Blocked("External command failed: " + Path(args[0]).name +
                       (f"; CP SQL state: {sqlstate}" if sqlstate else "") +
-                      (f"; IAM diagnostics: {' | '.join(diags[-3:])}" if diags else "") +
+                      (f"; IAM diagnostics: {' | '.join(diags[-5:])}" if diags else "") +
                       (f"; INT-02 fixture HTTP class: {fixture_http}" if fixture_http else "") +
                       (f"; INT-02 fixture class: {fixture_stage}" if fixture_stage else "") +
                       (f"; IAM bootstrap class: {stage}" if stage else "") +
@@ -476,6 +476,12 @@ KEYCLOAK_LOG_CLASSES = (
     ("error=invalid_client_credentials", "LOGIN_INVALID_CLIENT_CREDENTIALS"),
     ("error=resolve_required_actions", "LOGIN_REQUIRED_ACTIONS"),
     ("error=not_allowed", "LOGIN_NOT_ALLOWED"),
+    ("REQUIRED and ALTERNATIVE elements at same level", "FLOW_MIXED_LEVELS"),
+    ("AuthenticationFlowException", "FLOW_EXCEPTION"),
+    ("Failed to process template", "TEMPLATE_FAILED"),
+    ("NullPointerException", "NULL_POINTER"),
+    ("IllegalStateException", "ILLEGAL_STATE"),
+    ("KC-SERVICES0013", "AUTHENTICATION_FAILED"),
 )
 
 def keycloak_log_classes(p, envfile):
@@ -487,6 +493,35 @@ def keycloak_log_classes(p, envfile):
         return "unavailable"
     found = [code for marker, code in KEYCLOAK_LOG_CLASSES if marker in raw.stdout + raw.stderr]
     return ",".join(found) if found else "none"
+
+
+def keycloak_fault_sites(p, envfile):
+    """Only Java source locations in Keycloak auth code, never log messages.
+
+    Error pages intentionally hide the provider exception. A bounded source
+    fingerprint is sufficient to look up the pinned implementation without
+    exporting a URL, event/user record, exception message or credential.
+    """
+    base = ["docker", "compose", "--env-file", str(envfile), "-f", str(COMPOSE), "-p", p["project"]]
+    try:
+        result = subprocess.run([*base, "logs", "--no-color", "--tail", "200", "keycloak"],
+                                capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return "unavailable"
+    matches = re.findall(r"\bat (org\.keycloak\.(?:authentication|forms|services\.managers|services\.resources)"
+                         r"\.[A-Za-z0-9_.$]+)\(([A-Za-z0-9_$]+)\.java:([0-9]{1,5})\)",
+                         result.stdout + result.stderr)
+    sites = []
+    for qualified, filename, line in matches:
+        # Require agreement between the Java file and declaring class. Only
+        # the source class/method and numeric line leave, not any nearby text.
+        pieces = qualified.split(".")
+        if len(pieces) < 2 or pieces[-2].split("$")[0] != filename:
+            continue
+        label = pieces[-2] + "." + pieces[-1] + "_L" + line
+        if label not in sites:
+            sites.append(label)
+    return ",".join(sites[:8]) if sites else "none"
 
 def seed_keycloak(p, envfile):
     # A Docker bind mount preserves HOST permissions, not the container's
@@ -795,14 +830,15 @@ def test(lock):
     p, directory, envfile = current()
     try:
         human_report = json.loads(run_probe(p, envfile, "human-proof"))
-    except Blocked:
+    except Blocked as cause:
         # A failed browser ceremony must still leave a scrubbed receipt.
         # No downstream scenario ran, so they remain BLOCKED, never PASS.
         failed = {"scenarios":{name:"FAIL" if name == "L4-IAM-01" else "BLOCKED"
                                for name in lock["mandatory"]},
                   "checks":{"iam01_browser_ceremony_completed":False}}
         write_evidence(p, lock, failed, accepted=False)
-        raise
+        raise Blocked(f"{cause}; Keycloak log classes: {keycloak_log_classes(p, envfile)}; "
+                      f"Keycloak fault sites: {keycloak_fault_sites(p, envfile)}") from cause
     # Preserve actual browser observations even if a later database fixture
     # or authority probe aborts. Protocol positives alone cannot promote IAM-01:
     # CP must still authenticate the linked human and every scenario must run.
