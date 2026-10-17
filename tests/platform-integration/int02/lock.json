@@ -8,7 +8,7 @@
   "evidence_class": "REAL_COMPONENT_SYNTHETIC_DATA",
   "sources": {
     "infrastructure": "09d3774fbcbcf08b190330429915a6f9393839e6",
-    "baobab-iam": "f2d39f0665ae9fb6ec13c9f04c0db3cd3aa4966c",
+    "baobab-iam": "47c00c2b1eba1c654418a992d44afb17e5e99527",
     "baobab-cp": "a795a8eb59a6083a3195060530af19d13ea03834",
     "shared": "07bad90db360f03747c9165d60bbac5e35b0b319"
   },
