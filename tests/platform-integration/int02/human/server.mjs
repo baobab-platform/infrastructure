@@ -6,12 +6,13 @@
 import http from 'node:http';
 import { chromium } from 'playwright';
 import { configuration, begin, exchange, validateCallback, verifyIdToken, opaque, equal, issuer, origin, redirectUri, totp } from './protocol.mjs';
+import { pageDiagnostics } from './page-diagnostics.mjs';
 const secret = process.env.L4_TEST_ADMIN_CLIENT_SECRET;
 const password = process.env.L4_TEST_USER_PASSWORD;
 const attempts = new Map();
 const humanTokens = new Map();
 const authenticators = new Map();
-let settings, latest, proofRunning = false, mode = 'normal', lastExchange, stage = 'startup', failureClass = 'none', failureCode = 'none';
+let settings, latest, proofRunning = false, mode = 'normal', lastExchange, stage = 'startup', failureClass = 'none', failureCode = 'none', pageFacts;
 function reply(res, status, value) { res.writeHead(status, {'content-type':'application/json','cache-control':'no-store'}); res.end(JSON.stringify(value)); }
 function cookie(req) { return req.headers.cookie?.split('; ').find(v=>v.startsWith('attempt='))?.slice(8); }
 async function rejected(fn) { try { await fn(); return false; } catch { return true; } }
@@ -74,6 +75,11 @@ async function proof() {
       stage = 'login_' + which + '_result';
       const response = await page.locator('body').innerText();
       return JSON.parse(response).accepted === true;
+    } catch (error) {
+      // Read only the closed-vocabulary snapshot after the timeout/error.
+      // Diagnostic collection must not replace the original failure.
+      try { pageFacts = await pageDiagnostics(page); } catch { pageFacts = undefined; }
+      throw error;
     } finally { await page.close(); }
   }
   try {
@@ -161,6 +167,6 @@ const server = http.createServer(async(req,res)=>{
       } catch (error) { failureClass = /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : 'Other'; failureCode = /^[A-Z_]{1,48}$/.test(error.code) ? error.code : 'OTHER'; return reply(res,401,{accepted:false}); }
     }
     reply(res,404,{});
-  } catch (error) { if (failureClass === 'none') failureClass = /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : 'Other'; reply(res,500,{error:'HUMAN_PROOF_FAILED',stage,failureClass,failureCode}); }
+  } catch (error) { if (failureClass === 'none') failureClass = /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : 'Other'; reply(res,500,{error:'HUMAN_PROOF_FAILED',stage,failureClass,failureCode,pageFacts}); }
 });
 server.listen(8080,'0.0.0.0');

@@ -2,6 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPair, SignJWT } from 'jose';
 import { validateCallback, verifyIdToken, redirectUri, issuer, clientId, totp } from './protocol.mjs';
+import { locationClass } from './page-diagnostics.mjs';
+test('browser diagnostics never return a URL, query secret or foreign hostname', () => {
+  assert.deepEqual(locationClass(issuer+'/protocol/openid-connect/auth?code=secret'), {host:'IAM',path:'AUTHORIZE'});
+  assert.deepEqual(locationClass('https://foreign.invalid/private?token=secret'), {host:'OTHER',path:'OTHER'});
+  assert.deepEqual(locationClass(redirectUri+'?code=secret'), {host:'RP',path:'CALLBACK'});
+});
 test('callback rejects expiry, state, duplicate parameters and wrong callback before exchange', () => {
   const tx = { state: 'expected', expires: Date.now() + 60000 };
   validateCallback(new URL(redirectUri + '?state=expected&code=real'), tx);

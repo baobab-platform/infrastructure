@@ -95,6 +95,8 @@ def human_proof():
             if request("GET", "https://human.int02.test/readyz")[0] == 200:
                 break
         except (OSError, ValueError):
+            # Connection/JSON failures are expected while the private browser
+            # service warms up. Retry without exposing transport response data.
             pass
         time.sleep(1)
     # Browser logins take longer than ordinary CP operations. A separate
@@ -114,6 +116,22 @@ def human_proof():
             __import__("re").fullmatch(r"[A-Za-z]{1,40}", str(body.get("failureClass"))) else "Other",
             failure_code=body.get("failureCode") if
             __import__("re").fullmatch(r"[A-Z0-9_]{1,40}", str(body.get("failureCode"))) else "OTHER")
+        # A second allowlist at the output boundary prevents a future browser
+        # diagnostic change from leaking free-form page content or a URL.
+        facts = body.get("pageFacts")
+        if isinstance(facts, dict):
+            allowed = {"host": {"IAM", "RP", "OTHER"},
+                "path": {"AUTHORIZE", "ACTION", "CALLBACK", "OTHER"},
+                "type": {"HTML", "JSON", "OTHER"},
+                "marker": {"COOKIE_MISSING", "PROFILE_REQUIRED", "INVALID_PARAMETER",
+                           "ISSUER_ERROR", "ORGANISATION_SELECTION", "NONE"},
+                "body": {"TEXT", "EMPTY", "ABSENT"}}
+            safe = {key: value for key, value in facts.items()
+                    if key in allowed and isinstance(value, str) and value in allowed[key]}
+            safe.update({key: str(facts[key]) for key in
+                         ("forms", "inputs", "username", "password", "totp", "otp")
+                         if type(facts.get(key)) is int and 0 <= facts[key] <= 9})
+            diagnostic(step="human_page", **safe)
         raise RuntimeError("human proof failed") from None
     if not isinstance(report.get("checks"), dict):
         raise RuntimeError("human proof unavailable")
