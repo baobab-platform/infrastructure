@@ -399,7 +399,7 @@ class TransportTest(unittest.TestCase):
 
     def test_fixture_clients_request_keycloak_basic_scope_for_sub(self):
         runner=(BASE/"orchestrate.py").read_text()
-        self.assertIn('"basic","openid","actor-type-human","authority:self"',runner)
+        self.assertIn('"basic","openid","roles","actor-type-human","authority:self"',runner)
         self.assertIn('"basic","openid","actor-type-workload","intelligence:evidence:search"',runner)
 
     def test_cp_sql_failures_report_only_the_sqlstate(self):
@@ -921,6 +921,80 @@ class IsolationProofTest(unittest.TestCase):
         report={"scenarios":{"L4-CP-03":"BLOCKED"}}
         m.apply_isolation_proof(report,{"checks":{n:True for n in m.ISOLATION_REQUIRED}})
         self.assertEqual(report["scenarios"]["L4-CP-03"],"PASS")
+
+    def test_only_bounded_isolation_observations_reach_receipt(self):
+        report={"scenarios":{"L4-CP-03":"BLOCKED"}}
+        m.apply_isolation_proof(report,{"observations":{
+            "cp03_parent_own_status":403, "cp03_parent_own_code":"AUTHORIZATION_DENIED",
+            "cp03_external_own_code":"eyJ.secret", "cp03_sibling_directory_status":True,
+            "cp03_parent_directory_status":999, "token":"secret"}})
+        self.assertEqual(report["observations"],{
+            "cp03_parent_own_status":403,"cp03_parent_own_code":"AUTHORIZATION_DENIED"})
+
+
+class IsolationHTTPProofTest(unittest.TestCase):
+    """Scripted transport checks evidence semantics, not real acceptance."""
+    load_probe = ScenarioClassificationTest.load_probe
+
+    def exercise(self, own_status=200, neighbour_status=404, code="ORGANISATION_NOT_FOUND"):
+        import contextlib, io
+        fixtures={label:{"organisation":"org-"+label,"tenant":"tn_"+label}
+                  for label in ("parent","subsidiary","sibling","external")}
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)
+            (runtime/"fixtures.json").write_text(json.dumps({"isolation":fixtures}))
+            probe=self.load_probe(runtime)
+            def request(method,url,body=None,token=None,headers=None):
+                target=fixtures[token]["organisation"]
+                if url.endswith("/directory"):
+                    return own_status,{"items":[{"organisation_id":target}],"code":code}
+                if url.endswith("/"+target+"/overview"):
+                    return own_status,{"organisation_id":target,"code":code}
+                return neighbour_status,{"code":code}
+            output=io.StringIO()
+            with mock.patch.object(probe,"human",side_effect=lambda label:label), \
+                 mock.patch.object(probe,"request",side_effect=request), contextlib.redirect_stdout(output):
+                probe.isolation_proof()
+            return json.loads(output.getvalue()),output.getvalue()
+
+    def test_own_reads_and_exact_non_disclosing_neighbour_denials_pass(self):
+        report,_=self.exercise()
+        self.assertTrue(all(report["checks"].values()))
+
+    def test_outer_gate_and_server_errors_are_not_isolation_evidence(self):
+        for own_status,neighbour_status in [(403,404),(500,404),(200,403),(200,500)]:
+            report,_=self.exercise(own_status,neighbour_status)
+            for label in ("parent","subsidiary","sibling","external"):
+                self.assertFalse(report["checks"]["cp03_"+label+"_neighbours_denied"])
+                self.assertFalse(report["checks"]["cp03_"+label+"_tenant_spoof_denied"])
+
+    def test_response_identifiers_and_unregistered_error_text_are_not_exported(self):
+        report,output=self.exercise(code="eyJ.private-response")
+        self.assertNotIn("eyJ.private-response",output)
+        self.assertNotIn("org-parent",output)
+        self.assertEqual(report["observations"]["cp03_parent_own_code"],"OTHER")
+
+
+class MaterialisedHumanClientTest(unittest.TestCase):
+    def test_actual_fixture_keeps_role_mapper_and_confidential_s256_boundary(self):
+        import contextlib,io
+        lock=m.load()
+        def execute(args,**kwargs):
+            return lock["sources"][Path(args[2]).name] if "rev-parse" in args else ""
+        with tempfile.TemporaryDirectory() as directory:
+            state=Path(directory)
+            with mock.patch.object(m,"STATE",state),mock.patch.object(m,"SESSION",state/"session.json"), \
+                 mock.patch.object(m,"check_prerequisites"),mock.patch.object(m,"candidate_pins",return_value=(lock["sources"],None)), \
+                 mock.patch.object(m,"execute",side_effect=execute),mock.patch.object(m,"throwaway_tls"), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                m.materialise(lock)
+            session=json.loads((state/"session.json").read_text())
+            client=json.loads((Path(session["directory"])/"test-client.json").read_text())
+            self.assertTrue({"roles","basic","canonical:read","actor-type-human"} <= set(client["defaultClientScopes"]))
+            self.assertFalse(client["publicClient"])
+            self.assertFalse(client["directAccessGrantsEnabled"])
+            self.assertFalse(client["serviceAccountsEnabled"])
+            self.assertEqual(client["attributes"]["pkce.code.challenge.method"],"S256")
 
 
 if __name__ == "__main__":

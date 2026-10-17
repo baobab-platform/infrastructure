@@ -258,3 +258,15 @@ The real CP now loads `WORKLOAD_REGISTRY_FILE` from the exact materialised
 Shared commit. Its nonproduction missing-registry fallback is not acceptable
 L4 workload lifecycle evidence. Registry ceilings/status and JWT verification
 are separate checks; neither is bypassed by disposable fixture configuration.
+
+### 17 October qualification progress
+
+Run39005422172 observed CP-01, IAM-01 and IAM-02 PASS, 14/14 browser checks
+and verified TLS; CP-03 FAIL and CP-02 BLOCKED kept the receipt unaccepted.
+The next candidate adds the native `roles` mapper to the confidential synthetic
+human client: current CP route entry remains role-authoritative, and inner
+Organisation grants independently limit every record read. Raw response data
+is excluded from diagnostics; only known HTTP statuses/reasons are retained.
+A negative read cannot count until the same caller's own positive succeeds.
+IAM #119 is explicitly an unmerged candidate until its final-head CI/review
+clears. All five mandatory scenarios must pass again on final exact pins.

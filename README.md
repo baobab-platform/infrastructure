@@ -116,6 +116,6 @@ Protect `main` with pull requests, CODEOWNER review, and required CI checks.
 
 [The closure register](docs/testing/int02-closure-2026-10-16.md) tracks the
 real browser/code/S256/MFA ceremony, governed PRIMARY runtime guard,
-four-principal isolation and exact workload-registry enforcement. The dependency pins include CP #407/#408, Shared #322 and merged IAM #118's browser-hierarchy repair on top of #117.
+four-principal isolation and exact workload-registry enforcement. The dependency pins include CP #407/#408, Shared #322 and merged IAM #118/#117 plus the explicitly unmerged IAM #119 assurance candidate. Run39005422172 passes CP-01/IAM-01/IAM-02 and all 14 browser checks, but CP-03 fails and CP-02 stays blocked; final-pin acceptance remains open.
 no protected acceptance follows from those source merges. Provider qualification remains
 independently mandatory and the complete profile stays blocked until proven.

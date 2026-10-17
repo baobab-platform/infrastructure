@@ -600,13 +600,26 @@ def isolation_proof():
     """
     fixtures=json.loads((RUNTIME/"fixtures.json").read_text())["isolation"]
     checks={}
+    observations={}
+    codes={"AUTHORIZATION_DENIED","AUTH_VERIFIER_UNAVAILABLE","ORGANISATION_NOT_FOUND",
+           "AUTHORITY_UNAVAILABLE","IDENTITY_UNAVAILABLE","PRINCIPAL_INACTIVE",
+           "DIRECTORY_AUTHORITY_UNAVAILABLE","DIRECTORY_UNAVAILABLE","DIRECTORY_INCOMPLETE",
+           "ORGANISATION_OVERVIEW_UNAVAILABLE"}
+    def observe(label, operation, status, body):
+        # Only fixed response classifications leave this function; raw bodies
+        # and Organisation/token/session identifiers remain private in memory.
+        observations["cp03_"+label+"_"+operation+"_status"] = status if type(status) is int and 100<=status<=599 else 0
+        code=body.get("code")
+        observations["cp03_"+label+"_"+operation+"_code"] = "NONE" if code is None else code if isinstance(code,str) and code in codes else "OTHER"
     for label,target in fixtures.items():
         bearer=human(label)
         status,own=request("GET",CP+"/v1/organisations/"+target["organisation"]+"/overview",token=bearer)
         # The overview identifies its selected Organisation at the top level.
+        observe(label,"own",status,own)
         own_id=own.get("organisation_id")
         checks["cp03_"+label+"_own_record"]=status==200 and own_id==target["organisation"]
         ds,directory=request("GET",CP+"/v1/organisations/directory",token=bearer)
+        observe(label,"directory",ds,directory)
         checks["cp03_"+label+"_directory_exact"]=ds==200 and [row.get("organisation_id") for row in directory.get("items",[])]==[target["organisation"]]
         denials=[];spoofs=[]
         for neighbour,foreign in fixtures.items():
@@ -616,9 +629,9 @@ def isolation_proof():
                 code,body=request("GET",url,token=bearer,headers=extra)
                 outcomes.append(code==404 and body.get("code")=="ORGANISATION_NOT_FOUND" and
                     foreign["organisation"] not in json.dumps(body) and not body.get("organisation"))
-        checks["cp03_"+label+"_neighbours_denied"]=all(denials)
-        checks["cp03_"+label+"_tenant_spoof_denied"]=all(spoofs)
-    print(json.dumps({"checks":checks},sort_keys=True))
+        checks["cp03_"+label+"_neighbours_denied"]=checks["cp03_"+label+"_own_record"] and all(denials)
+        checks["cp03_"+label+"_tenant_spoof_denied"]=checks["cp03_"+label+"_own_record"] and all(spoofs)
+    print(json.dumps({"checks":checks,"observations":observations},sort_keys=True))
 
 
 def tls():

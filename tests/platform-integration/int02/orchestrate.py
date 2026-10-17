@@ -340,8 +340,12 @@ def materialise(lock):
           # Keycloak 26 issues `sub` only through its built-in "basic" client
           # scope; an explicit scope list without it yields tokens CP cannot
           # map to a principal (observed live: has_sub=false).
+          # The current read routes retain their role-authoritative outer
+          # gate (Shared enforcement policy), then require exact CP grants.
+          # Emit the roles already assigned to these synthetic users; an
+          # absent roles mapper denies every read before isolation is tested.
           "protocol":"openid-connect", "defaultClientScopes":[
-            "basic","openid","actor-type-human","authority:self","canonical:read"
+            "basic","openid","roles","actor-type-human","authority:self","canonical:read"
           ],"optionalClientScopes":[]
         }
         other_client = {
@@ -823,6 +827,21 @@ def apply_isolation_proof(report, proof):
     for name in ISOLATION_REQUIRED:
         checks[name] = proof.get("checks", {}).get(name) is True
     report["scenarios"]["L4-CP-03"] = "PASS" if all(checks[n] for n in ISOLATION_REQUIRED) else "FAIL"
+    # Independent output boundary: no body, token, identifier or arbitrary
+    # code from the probe may enter the retained receipt or summary.
+    observations = report.setdefault("observations", {})
+    codes = {"NONE", "OTHER", "AUTHORIZATION_DENIED", "AUTH_VERIFIER_UNAVAILABLE",
+             "ORGANISATION_NOT_FOUND", "AUTHORITY_UNAVAILABLE", "IDENTITY_UNAVAILABLE",
+             "PRINCIPAL_INACTIVE", "DIRECTORY_AUTHORITY_UNAVAILABLE", "DIRECTORY_UNAVAILABLE",
+             "DIRECTORY_INCOMPLETE", "ORGANISATION_OVERVIEW_UNAVAILABLE"}
+    for name, value in proof.get("observations", {}).items():
+        if not re.fullmatch(r"cp03_(parent|subsidiary|sibling|external)_(own|directory)_(status|code)", name):
+            continue
+        if name.endswith("_status") and type(value) is int and (value == 0 or 100 <= value <= 599):
+            observations[name] = value
+        elif name.endswith("_code") and isinstance(value, str) and value in codes:
+            observations[name] = value
+
 
 
 def test(lock):
