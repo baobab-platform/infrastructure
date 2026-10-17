@@ -131,7 +131,14 @@ def human_proof():
             safe.update({key: str(facts[key]) for key in
                          ("forms", "inputs", "username", "password", "totp", "otp")
                          if type(facts.get(key)) is int and 0 <= facts[key] <= 9})
-            diagnostic(step="human_page", **safe)
+            # execute() admits at most six key/value pairs per line. Keep
+            # this vocabulary within that existing transport boundary;
+            # otherwise an informative page snapshot would be discarded.
+            diagnostic(step="human_page", **{key: safe[key] for key in allowed if key in safe})
+            counts = "".join(label + safe.get(key, "X") for label, key in
+                             (("F", "forms"), ("I", "inputs"), ("U", "username"),
+                              ("P", "password"), ("T", "totp"), ("O", "otp")))
+            diagnostic(step="human_form", counts=counts)
         raise RuntimeError("human proof failed") from None
     if not isinstance(report.get("checks"), dict):
         raise RuntimeError("human proof unavailable")
