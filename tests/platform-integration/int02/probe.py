@@ -603,7 +603,7 @@ def isolation_proof():
     for label,target in fixtures.items():
         bearer=human(label)
         status,own=request("GET",CP+"/v1/organisations/"+target["organisation"]+"/overview",token=bearer)
-        # The authoritative response nests the profile in organisation.
+        # The overview identifies its selected Organisation at the top level.
         own_id=own.get("organisation_id")
         checks["cp03_"+label+"_own_record"]=status==200 and own_id==target["organisation"]
         ds,directory=request("GET",CP+"/v1/organisations/directory",token=bearer)

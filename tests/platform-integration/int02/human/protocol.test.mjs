@@ -2,11 +2,26 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPair, SignJWT } from 'jose';
 import { validateCallback, verifyIdToken, redirectUri, issuer, clientId, totp } from './protocol.mjs';
-import { locationClass } from './page-diagnostics.mjs';
+import { locationClass, pageDiagnostics } from './page-diagnostics.mjs';
 test('browser diagnostics never return a URL, query secret or foreign hostname', () => {
   assert.deepEqual(locationClass(issuer+'/protocol/openid-connect/auth?code=secret'), {host:'IAM',path:'AUTHORIZE'});
   assert.deepEqual(locationClass('https://foreign.invalid/private?token=secret'), {host:'OTHER',path:'OTHER'});
   assert.deepEqual(locationClass(redirectUri+'?code=secret'), {host:'RP',path:'CALLBACK'});
+});
+test('page classification cannot export issuer text, credential values or unbounded counts', async () => {
+  const previous = globalThis.document;
+  globalThis.document = {contentType:'text/html', body:{innerText:'Private credential sentinel-secret'},
+    querySelectorAll:()=>Array(50).fill({value:'sentinel-secret'})};
+  try {
+    const facts = await pageDiagnostics({url:()=>issuer+'/login-actions/authenticate?code=sentinel-secret',
+      evaluate:async fn=>fn()});
+    assert.deepEqual(facts, {host:'IAM',path:'ACTION',type:'HTML',marker:'NONE',
+      forms:9,inputs:9,username:9,password:9,totp:9,otp:9,body:'TEXT'});
+    assert.ok(!JSON.stringify(facts).includes('sentinel-secret'));
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
 });
 test('callback rejects expiry, state, duplicate parameters and wrong callback before exchange', () => {
   const tx = { state: 'expected', expires: Date.now() + 60000 };

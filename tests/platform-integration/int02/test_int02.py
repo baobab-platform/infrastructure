@@ -155,6 +155,19 @@ class ContractTest(unittest.TestCase):
 
 
 class DiagnosticsTest(unittest.TestCase):
+    def test_browser_classification_survives_existing_bounded_transport(self):
+        # Preserve the final-page classification without widening execute's
+        # filter to permit URLs, body text, or longer/more numerous fields.
+        safe = ("INT02_DIAG step=human_page host=IAM path=AUTHORIZE type=HTML marker=NONE body=TEXT\n"
+                "INT02_DIAG step=human_form counts=F0I0U0P0T0O0\n")
+        with mock.patch.object(m.subprocess,"run",return_value=mock.Mock(
+                returncode=2,stdout="",stderr=safe+"private body sentinel-secret\n")):
+            with self.assertRaises(m.Blocked) as raised:
+                m.execute(["docker","compose","exec","probe"])
+        self.assertIn("host=IAM path=AUTHORIZE",str(raised.exception))
+        self.assertIn("counts=F0I0U0P0T0O0",str(raised.exception))
+        self.assertNotIn("sentinel-secret",str(raised.exception))
+
     def test_readiness_codes_are_forwarded_and_nothing_else(self):
         # A failed probe must surface its fixed status line, not raw output.
         with mock.patch.object(m.subprocess,"run",return_value=mock.Mock(

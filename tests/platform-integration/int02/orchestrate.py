@@ -746,7 +746,9 @@ def seed_isolation_authority(p, directory, envfile, ids):
           INSERT INTO policy.administrative_grant
           (grant_id,principal_id,permission,scope_level,scope,grant_type,source,
            risk_class,valid_from,valid_until,status,granted_by,reason)
-          SELECT '{uuid.uuid4()}',principal_id,'organisation.view','ORGANISATION',
+          -- Canonical identity uses UUIDs; administrative grants deliberately
+          -- accept a textual principal reference. Keep the conversion explicit.
+          SELECT '{uuid.uuid4()}',principal_id::text,'organisation.view','ORGANISATION',
                  '{scope}'::jsonb,'TIME_BOUND','DIRECT','LOW',now()-interval '1 minute',
                  now()+interval '30 minutes','ACTIVE','int02-independent-fixture-authoriser',
                  'INT-02 synthetic exact Organisation read; no group-derived access'
