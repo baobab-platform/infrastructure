@@ -803,6 +803,13 @@ def test(lock):
                   "checks":{"iam01_browser_ceremony_completed":False}}
         write_evidence(p, lock, failed, accepted=False)
         raise
+    # Preserve actual browser observations even if a later database fixture
+    # or authority probe aborts. Protocol positives alone cannot promote IAM-01:
+    # CP must still authenticate the linked human and every scenario must run.
+    checkpoint = browser_checkpoint(lock, human_report)
+    write_evidence(p, lock, checkpoint, accepted=False)
+    print("INT-02 actual browser sub-checks: " +
+          str(sum(checkpoint["checks"].values())) + "/" + str(len(IAM01_REQUIRED)), flush=True)
     ids = json.loads(run_probe(p, envfile, "identities"))
     must(ids.get("source") == "keycloak-issued" and
          ids.get("issuer") == ISSUER,
@@ -898,6 +905,14 @@ IAM01_REQUIRED = (
     "iam01_wrong_pkce_denied", "iam01_forged_signature_denied", "iam01_wrong_issuer_denied",
     "iam01_wrong_audience_denied", "iam01_expired_token_denied",
     "iam01_unregistered_callback_denied", "iam01_callback_path_denied")
+
+
+def browser_checkpoint(lock, proof):
+    """Only known observed booleans; no scenario acceptance or token material."""
+    observed = proof.get("checks") if isinstance(proof, dict) else None
+    observed = observed if isinstance(observed, dict) else {}
+    return {"scenarios": {name: "BLOCKED" for name in lock["mandatory"]},
+            "checks": {name: observed.get(name) is True for name in IAM01_REQUIRED}}
 
 
 def apply_human_proof(report, proof):

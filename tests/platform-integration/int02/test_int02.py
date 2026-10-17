@@ -155,6 +155,16 @@ class ContractTest(unittest.TestCase):
 
 
 class DiagnosticsTest(unittest.TestCase):
+    def test_browser_checkpoint_retains_protocol_evidence_without_promoting_acceptance(self):
+        proof = {"checks": {**{name: True for name in m.IAM01_REQUIRED}, "access_token": "secret"}}
+        report = m.browser_checkpoint(m.load(), proof)
+        self.assertEqual(set(report["checks"]), set(m.IAM01_REQUIRED))
+        self.assertTrue(all(report["checks"].values()))
+        self.assertEqual(set(report["scenarios"].values()), {"BLOCKED"})
+        self.assertNotIn("secret", json.dumps(report))
+        proof["checks"][m.IAM01_REQUIRED[0]] = "true"
+        self.assertFalse(m.browser_checkpoint(m.load(), proof)["checks"][m.IAM01_REQUIRED[0]])
+
     def test_browser_classification_survives_existing_bounded_transport(self):
         # Preserve the final-page classification without widening execute's
         # filter to permit URLs, body text, or longer/more numerous fields.
