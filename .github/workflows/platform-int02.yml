@@ -130,6 +130,7 @@ jobs:
           path: |
             tests/platform-integration/evidence/*-int02.json
             tests/platform-integration/evidence/*-provider-proof.json
+            tests/platform-integration/evidence/*-image-manifest.json
           if-no-files-found: warn
       # The run script tears down inside the devcontainer. If the container
       # itself died, remove any Compose project it left on the shared daemon.

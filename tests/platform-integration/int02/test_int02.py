@@ -1066,6 +1066,13 @@ if __name__ == "__main__":
 
 
 class ProviderQualificationTest(unittest.TestCase):
+    def test_provider_gate_and_observation_set_agree(self):
+        spec=importlib.util.spec_from_file_location("provider_fixture_test",BASE/"provider_fixture.py")
+        fixture=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fixture)
+        self.assertEqual(set(fixture.REQUIRED),set(m.PROVIDER_REQUIRED))
+        self.assertEqual(len(fixture.REQUIRED),len(set(fixture.REQUIRED)))
+
     def test_certification_is_current_exact_and_release_bound(self):
         import sys
         import types
@@ -1120,3 +1127,33 @@ class ProviderQualificationTest(unittest.TestCase):
             self.assertTrue(result["teardown_verified"])
             self.assertEqual(result["qualification_state"],"QUALIFIED_SYNTHETIC_RUN")
             self.assertFalse(directory.exists())
+
+
+class LocalImageManifestTest(unittest.TestCase):
+    def test_manifest_identifies_image_content_and_rejects_changed_layers(self):
+        import io
+        import tarfile
+        spec=importlib.util.spec_from_file_location("image_manifest_test",BASE/"image_manifest.py")
+        image=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(image)
+        layer=b"synthetic uncompressed layer fixture"
+        config=json.dumps({"rootfs":{"type":"layers","diff_ids":[image.sha256(layer)]}}).encode()
+        descriptor=[{"Config":"config.json","Layers":["layer.tar"]}]
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"image.tar"
+            def save(layer_content):
+                with tarfile.open(path,"w") as tar:
+                    for name,raw in {"manifest.json":json.dumps(descriptor).encode(),
+                                     "config.json":config,"layer.tar":layer_content}.items():
+                        member=tarfile.TarInfo(name)
+                        member.size=len(raw)
+                        tar.addfile(member,io.BytesIO(raw))
+            save(layer)
+            raw=image.manifest_from_export(path,image.sha256(config))
+            manifest=json.loads(raw)
+            self.assertEqual(manifest["config"]["digest"],image.sha256(config))
+            self.assertEqual(manifest["layers"][0]["digest"],image.sha256(layer))
+            self.assertNotEqual(image.sha256(raw),image.sha256(config))
+            save(b"changed layer")
+            with self.assertRaises(ValueError):
+                image.manifest_from_export(path,image.sha256(config))

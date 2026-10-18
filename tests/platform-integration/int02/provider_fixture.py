@@ -42,10 +42,25 @@ def prove(o, project, directory, envfile, report):
     # Separate binding scope from the grant so each negative isolates one fact.
     scope = str(uuid.uuid4())
     sql(f"INSERT INTO capability.capability_scope(scope_id,tenant_id) VALUES ('{scope}','{tenant}'); UPDATE capability.capability_binding SET provider_id='{provider_uuid}',scope_id='{scope}' WHERE id='{binding}';")
+    if __package__:
+        from .image_manifest import manifest_from_export, sha256
+    else:
+        from image_manifest import manifest_from_export, sha256
+    image_config=o.image_id(envfile, "L4_PULSE_IMAGE")
+    o.must(re.fullmatch(r"sha256:[0-9a-f]{64}", image_config) is not None, "Actual Pulse image config missing")
+    archive=directory/"pulse-image.tar"
+    o.execute(["docker", "image", "save", "--output", str(archive), image_config], timeout=180)
+    try:
+        image_manifest=manifest_from_export(archive, image_config)
+    finally:
+        archive.unlink(missing_ok=True)
+    image_digest=sha256(image_manifest)
+    o.EVIDENCE.mkdir(exist_ok=True)
+    (o.EVIDENCE/(project["project"]+"-image-manifest.json")).write_bytes(image_manifest)
     frozen = {"classification":"REAL_COMPONENT_SYNTHETIC_DATA", "sources":project["sources"],
         "harness_sha":o.harness_sha(), "provider_key":"baobab-pulse.core", "contract_version":1,
         "native_and_http_checks":{n:report["checks"][n] for n in o.PULSE_NATIVE_REQUIRED+o.PULSE_HTTP_REQUIRED},
-        "pulse_image_config_digest":o.image_id(envfile, "L4_PULSE_IMAGE"),
+        "pulse_image_config_digest":image_config, "pulse_image_manifest_digest":image_digest,
         "declaration_sha256":"sha256:"+hashlib.sha256((directory/"baobab-pulse/.baobab/capability-provider.yaml").read_bytes()).hexdigest(),
         "limits":"Local built image, deterministic reference embeddings; synthetic run only"}
     encoded = json.dumps(frozen, sort_keys=True, indent=2)+"\n"
@@ -57,7 +72,7 @@ def prove(o, project, directory, envfile, report):
     # orchestrator forwards the actual numeric run ID explicitly below.
     uri = ("https://github.com/baobab-platform/infrastructure/actions/runs/"+run_id if run_id.isdigit()
            else "https://github.com/baobab-platform/infrastructure/commit/"+o.harness_sha())
-    image = frozen["pulse_image_config_digest"]
+    image = frozen["pulse_image_manifest_digest"]
     o.must(re.fullmatch(r"sha256:[0-9a-f]{64}", image) is not None, "Actual Pulse image digest missing")
     source = {"provider_id":provider_id,
         "release":{"engine_id":"baobab-pulse", "release_version":"0.0.0-int02-"+project["project"],

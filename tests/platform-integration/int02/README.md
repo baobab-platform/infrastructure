@@ -76,8 +76,10 @@ on this disposable human fixture. The Pulse caller and validator receive no
 provider or certification authority.
 
 A frozen native/HTTP conformance report binds exact sources, the provider
-manifest digest and actual local image configuration digest. The EngineRelease
-records that local build, with no claim that a registry artifact was published.
+declaration digest, actual local image configuration digest and a manifest
+digest derived from the exported running image. The manifest is retained
+separately and its config/layer identity is checked. EngineRelease records the
+image manifest digest for that local build, with no claim that a registry artifact was published.
 Actual APIs record certification, refuse recorder self-certification, approve
 the release through ENGINE_RELEASE_APPROVAL and activate the registered DRAFT
 provider through PROVIDER_ACTIVATION. Certification is deliberately revoked,
@@ -113,7 +115,7 @@ checks fail closed. Cleanup failure leaves `passed: false` and retains recovery
 handles. No earlier run's result transfers to a new run or changed source pin.
 
 The workflow always retains scrubbed `*-int02.json` receipts and immutable
-`*-provider-proof.json` reports, including failed runs. Certification evidence
+`*-provider-proof.json` reports and `*-image-manifest.json`, including failed runs. Certification evidence
 names the actual Actions run (or local harness revision), identifies the
 provider-proof report and records its exact digest. A receipt carries a fresh
 self-digest after teardown. No real enterprise identity, legal verification,

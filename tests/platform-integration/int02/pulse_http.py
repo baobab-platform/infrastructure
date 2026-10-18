@@ -23,6 +23,7 @@ REQUIRED = (
 
 def prove():
     checks = dict.fromkeys(REQUIRED, False)
+    observations = {}
     fixture = json.loads((p.RUNTIME / "fixtures.json").read_text())
     secret = (p.RUNTIME / "pulse-secret").read_text().strip()
     cp_token = p.token(CLIENT, secret, "client_credentials", scope="context:resolve")
@@ -41,7 +42,7 @@ def prove():
     checks["pulse_http_caller_context"] = bool(context)
     if not context:
         p.diagnostic(step="pulse_http_context", status="absent")
-        print(json.dumps({"checks":checks}))
+        print(json.dumps({"checks":checks, "observations":observations}))
         return
 
     validator = p.token("baobab-pulse-workload", p.os.environ["L4_WORKLOAD_SEED"], "client_credentials", scope="context:validate")
@@ -57,41 +58,43 @@ def prove():
     def code_of(result):
         value=result.get("code", "NONE")
         return value if value in allowed_codes else "OTHER"
-    p.diagnostic(step="pulse_direct_validation", status=validation_status, code=code_of(validation))
+    observations["pulse_direct_validation_status"]=validation_status
+    observations["pulse_direct_validation_code"]=code_of(validation)
 
-    def search(token=pulse_token, context_id=context, evidence=None):
+    def search(label, token=pulse_token, context_id=context, evidence=None):
         body = {"query_text":"INT-02 synthetic canonical evidence for provider conformance.", "top_k":10}
         if evidence:
             body["evidence_set_id"] = evidence
         status,result=p.request("POST", PULSE + "/evidence/search", body, token,
                          headers={"X-Baobab-Context-Id":context_id})
-        p.diagnostic(step="pulse_search", status=status, code=code_of(result))
+        observations["pulse_"+label+"_status"]=status
+        observations["pulse_"+label+"_code"]=code_of(result)
         return status,result
 
-    status, result = search()
+    status, result = search("positive")
     candidates = result.get("candidates", [])
     checks["pulse_http_search_current_canonical"] = bool(status == 200 and len(candidates) == 1 and
         candidates[0].get("canonical_object_id") == "evd_int02_native" and
         candidates[0].get("evidence_set_id") == "evs_int02_native" and
         candidates[0].get("is_stale") is False)
-    status, result = search(evidence="evs_int02_restricted")
+    status, result = search("restricted", evidence="evs_int02_restricted")
     checks["pulse_http_restricted_denied"] = status == 200 and result.get("candidates") == []
     wrong_owner = p.context_for(p.workload(), context_body)
-    status, result = search(context_id=wrong_owner or str(uuid.uuid4()))
+    status, result = search("wrong_owner", context_id=wrong_owner or str(uuid.uuid4()))
     checks["pulse_http_wrong_owner_denied"] = bool(wrong_owner and status == 404 and result.get("code") == "CONTEXT_NOT_FOUND")
     neighbour = p.context_for(cp_token, {"tenant_id":fixture["other_tenant"],
                                          "organisation_id":fixture["other_organisation"]})
-    status, result = search(context_id=neighbour or str(uuid.uuid4()))
+    status, result = search("neighbour", context_id=neighbour or str(uuid.uuid4()))
     checks["pulse_http_neighbour_no_leak"] = bool(neighbour and status == 200 and result.get("candidates") == [])
-    status, result = search(token=cp_token)
+    status, result = search("wrong_audience", token=cp_token)
     checks["pulse_http_wrong_audience_denied"] = status == 401 and result.get("code") == "AUTH_TOKEN_INVALID"
-    status, result = search(context_id=str(uuid.uuid4()))
+    status, result = search("fabricated_context", context_id=str(uuid.uuid4()))
     checks["pulse_http_fabricated_context_denied"] = status == 404 and result.get("code") == "CONTEXT_NOT_FOUND"
     status, result = p.request("POST", p.ISSUER+"/protocol/openid-connect/token", {
         "grant_type":"client_credentials", "client_id":CLIENT, "client_secret":secret+"invalid",
         "scope":"context:resolve"})
-    p.diagnostic(step="pulse_wrong_credential", status=status,
-        error=result.get("error") if result.get("error") in p.OAUTH_ERRORS else "other")
+    observations["pulse_wrong_credential_status"]=status
+    observations["pulse_wrong_credential_code"]=(result.get("error").upper() if result.get("error") in p.OAUTH_ERRORS else "OTHER")
     checks["pulse_http_wrong_credential_denied"] = status in (400,401) and result.get("error") == "invalid_client"
     master = p.ISSUER.rsplit("/realms/", 1)[0]+"/realms/master"
     status, auth = p.request("POST", master+"/protocol/openid-connect/token", {
@@ -119,4 +122,4 @@ def prove():
             raise RuntimeError("fixture restore failed")
     restored = p.token(CLIENT, secret, "client_credentials", scope="context:resolve")
     checks["pulse_http_client_restored"] = bool(p.context_for(restored, context_body))
-    print(json.dumps({"checks":checks}))
+    print(json.dumps({"checks":checks, "observations":observations}))

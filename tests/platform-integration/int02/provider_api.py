@@ -16,8 +16,8 @@ REQUIRED = ("cp02_release_recorded", "cp02_self_certification_denied",
 
 
 def call(method, path, who, body=None, expected=200, headers=None):
-    status, result, response_headers = p.request(method, p.CP+path, body, p.human(who),
-                                               headers=headers, return_headers=True)
+    status, result, response_headers = p.request_with_headers(method, p.CP+path, body, p.human(who),
+                                               headers=headers)
     if status != expected:
         code = result.get("code", "OTHER") if isinstance(result, dict) else "OTHER"
         p.diagnostic(step="provider_api", status=status,

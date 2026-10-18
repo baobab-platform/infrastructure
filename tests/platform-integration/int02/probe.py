@@ -26,7 +26,7 @@ RUNTIME=Path("/run/l4")
 TLS=ssl.create_default_context(cafile=os.environ["L4_CA_FILE"])
 TLS.minimum_version=ssl.TLSVersion.TLSv1_3
 
-def request(method,url,body=None,token=None,context=None,headers=None,return_headers=False):
+def request_with_headers(method,url,body=None,token=None,context=None,headers=None):
     data = (urllib.parse.urlencode(body).encode() if body is not None and
             url.endswith(("/token", "/token/introspect")) else
             json.dumps(body).encode() if body is not None else None)
@@ -52,7 +52,12 @@ def request(method,url,body=None,token=None,context=None,headers=None,return_hea
         result=json.loads(raw) if raw else {}
     except ValueError:
         result={}
-    return (status,result,response_headers) if return_headers else (status,result)
+    return status,result,response_headers
+
+def request(method,url,body=None,token=None,context=None,headers=None):
+    status,result,_=request_with_headers(method,url,body,token,context,headers)
+    return status,result
+
 
 def token(client,secret,grant,**params):
     status,reply=request("POST",ISSUER+"/protocol/openid-connect/token",

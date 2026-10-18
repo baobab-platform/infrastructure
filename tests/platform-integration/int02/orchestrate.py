@@ -1130,6 +1130,17 @@ def apply_pulse_http_proof(report, proof):
     checks = report.setdefault("checks", {})
     for name in PULSE_HTTP_REQUIRED:
         checks[name] = proof.get("checks", {}).get(name) is True
+    allowed_codes={"AUTH_TOKEN_INVALID", "CAPABILITY_AUTHORITY_UNAVAILABLE", "CAPABILITY_ACCESS_DENIED",
+        "CONTEXT_NOT_FOUND", "PULSE_INTERNAL_ERROR", "TENANT_CONTEXT_MISSING", "CAPABILITY_RUNTIME_UNAVAILABLE",
+        "SEMANTIC_RETRIEVAL_UNAVAILABLE", "CONTEXT_STORE_UNAVAILABLE", "AUTH_VERIFIER_UNAVAILABLE",
+        "CONTEXT_VALIDATION_UNAVAILABLE", "SUBJECT_TOKEN_INVALID", "VALIDATION_FAILED", "NONE", "OTHER",
+        "INVALID_CLIENT", "UNAUTHORIZED_CLIENT", "INVALID_GRANT", "INVALID_REQUEST", "INVALID_SCOPE"}
+    observations=report.setdefault("observations", {})
+    for name,value in proof.get("observations", {}).items():
+        if re.fullmatch(r"pulse_(direct_validation|positive|restricted|wrong_owner|neighbour|wrong_audience|fabricated_context|wrong_credential)_status",name) and type(value) is int and 100<=value<=599:
+            observations[name]=value
+        elif re.fullmatch(r"pulse_(direct_validation|positive|restricted|wrong_owner|neighbour|wrong_audience|fabricated_context|wrong_credential)_code",name) and isinstance(value,str) and value in allowed_codes:
+            observations[name]=value
 
 
 PROVIDER_REQUIRED = (
