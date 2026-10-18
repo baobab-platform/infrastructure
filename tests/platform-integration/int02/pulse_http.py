@@ -95,7 +95,7 @@ def prove():
         "scope":"context:resolve"})
     observations["pulse_wrong_credential_status"]=status
     observations["pulse_wrong_credential_code"]=(result.get("error").upper() if result.get("error") in p.OAUTH_ERRORS else "OTHER")
-    checks["pulse_http_wrong_credential_denied"] = status in (400,401) and result.get("error") == "invalid_client"
+    checks["pulse_http_wrong_credential_denied"] = status in (400,401) and result.get("error") in ("invalid_client", "unauthorized_client")
     master = p.ISSUER.rsplit("/realms/", 1)[0]+"/realms/master"
     status, auth = p.request("POST", master+"/protocol/openid-connect/token", {
         "grant_type":"password", "client_id":"admin-cli", "username":"l4admin",

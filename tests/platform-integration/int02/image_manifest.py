@@ -1,7 +1,7 @@
 """Content-address the actual local image, independently of its config ID.
 
 Docker's image ID is a configuration digest, not an OCI image-manifest
- digest. Read the real `docker image save` export without extracting paths.
+digest. Read the real `docker image save` export without extracting paths.
 If the daemon supplies OCI blobs, preserve its exact manifest bytes; legacy
 exports are represented by the same config and ordered uncompressed layers.
 See https://github.com/opencontainers/image-spec/blob/v1.1.1/manifest.md.

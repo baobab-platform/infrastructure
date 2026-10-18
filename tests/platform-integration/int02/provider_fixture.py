@@ -101,7 +101,11 @@ def prove(o, project, directory, envfile, report):
     def decide(name, decision, reason="", contract=1, neighbour=False, current=True):
         expectation = {"decision":decision,"reason":reason,"contract_version":contract,
             "current_resolution":current,"provider_id":provider_id,"instance_id":"ei_"+instance.replace("-", ""),"neighbour":neighbour}
-        o.private(directory/"provider-expect.json",json.dumps(expectation)+"\n")
+        # Each differential replaces its public selectors atomically; the
+        # generic private() helper intentionally refuses overwriting secrets.
+        temporary=directory/("provider-expect-"+str(uuid.uuid4())+".json")
+        o.private(temporary,json.dumps(expectation)+"\n")
+        os.replace(temporary,directory/"provider-expect.json")
         result=json.loads(o.run_probe(project, envfile, "provider-resolution"))
         checks[name]=result.get("matched") is True
         # Retain only fixed CP vocabulary/status returned by the probe.
