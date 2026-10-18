@@ -3,8 +3,8 @@
 Authority: Accepted ADR-SHARED-036, EA v2.2 mandatory acceptance matrix and
 [the owner-approved named bootstrap decision](https://github.com/baobab-platform/shared/blob/33f1dd6aa7c0db43743dbb02cff16d5dc0802610/docs/architecture/int02-pulse-proof-bootstrap-decision.md).
 
-Status: implementation candidate until a complete final-pin live run passes.
-All five mandatory scenarios, every required provider observation and teardown
+Acceptance is established per run by its retained receipt. All five mandatory
+scenarios, every required provider observation and teardown
 must pass. Schema tests, token issuance, native conformance and ACTIVE workload
 status independently establish no complete qualification.
 
@@ -52,6 +52,14 @@ validated reusable-workflow inputs, without shell expression interpolation.
   Native persistence, hydration, stale projections and classification/tenant
   isolation are distinct from HTTP authorization. Embeddings use the owner's
   deterministic reference implementation; no model-quality claim follows.
+
+CP #415 repairs the actual subject-token verifier's former single-colon scope
+parser. The registered `intelligence:evidence:search` scope must survive
+cryptographic verification unchanged; no scope renaming, JWT editing or
+resource-server bypass substitutes for this production-path repair. CP #416
+also makes a binding's isolation restriction a hard eligibility condition:
+matching context evidence is required; a missing profile cannot inherit that
+restriction. An unrestricted binding remains eligible under existing policy.
 
 All external application requests traverse the TLS 1.3 edge and verify this
 run's one-day CA and hostnames. The CA signing key is destroyed immediately.
