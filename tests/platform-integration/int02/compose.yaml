@@ -75,6 +75,63 @@ services:
     # orchestrate.py independently proves Keycloak 9000 /health/ready.
     healthcheck:
       disable: true
+  pulse-db:
+    image: ${L4_POSTGRES_IMAGE:?locked PostgreSQL required}
+    environment:
+      POSTGRES_DB: pulse
+      POSTGRES_USER: pulse
+      POSTGRES_PASSWORD: ${L4_PULSE_DB_PASSWORD:?per-run secret required}
+    volumes: [pulsedata:/var/lib/postgresql/data]
+    networks: [lab]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulse -d pulse"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+  pulse-qdrant:
+    image: ${L4_QDRANT_IMAGE:?digest-pinned vector server required}
+    volumes: [pulsevectors:/qdrant/storage]
+    networks: [lab]
+    environment:
+      QDRANT__TELEMETRY_DISABLED: "true"
+  pulse-migrate:
+    build:
+      context: ${L4_PULSE_SOURCE:?pinned Pulse source required}
+      dockerfile: ${L4_PULSE_DOCKERFILE:?reviewed pinned builder required}
+    image: ${L4_PULSE_IMAGE:?project-scoped image required}
+    entrypoint: ["python", "scripts/migrate.py"]
+    environment:
+      PULSE_DATABASE_URL: postgresql://pulse:${L4_PULSE_DB_PASSWORD}@pulse-db:5432/pulse
+    networks: [lab]
+    depends_on:
+      pulse-db: {condition: service_healthy}
+  pulse:
+    image: ${L4_PULSE_IMAGE:?project-scoped image required}
+    restart: "no"
+    environment:
+      PULSE_ENVIRONMENT: development
+      PULSE_DATABASE_URL: postgresql://pulse:${L4_PULSE_DB_PASSWORD}@pulse-db:5432/pulse
+      PULSE_QDRANT_URL: http://pulse-qdrant:6333
+      PULSE_QDRANT_COLLECTION_PREFIX: int02
+      PULSE_EMBEDDING_PROVIDER: mock
+      PULSE_EMBEDDING_DIMENSION: "16"
+      PULSE_IAM_ISSUER_URL: https://iam.int02.test/realms/baobab
+      PULSE_IAM_JWKS_URL: https://iam.int02.test/realms/baobab/protocol/openid-connect/certs
+      PULSE_IAM_TOKEN_URL: https://iam.int02.test/realms/baobab/protocol/openid-connect/token
+      PULSE_IAM_CLIENT_ID: baobab-pulse-workload
+      PULSE_IAM_CLIENT_SECRET: ${L4_WORKLOAD_SEED:?per-run validator secret required}
+      PULSE_CONTROL_PLANE_CONTEXT_VALIDATION_URL: https://cp.int02.test/v1/platform-context/validate
+      SSL_CERT_FILE: /run/l4-tls/ca.pem
+      HAYSTACK_TELEMETRY_ENABLED: "false"
+    networks: [lab]
+    volumes:
+      - "${L4_TLS:?per-run CA required}:/run/l4-tls:ro"
+      - "${L4_RUNTIME:?private runtime directory}:/run/l4:ro"
+      - "${L4_PROBE_SOURCE:?reviewed source}:/run/l4-source:ro"
+    depends_on:
+      pulse-migrate: {condition: service_completed_successfully}
+      pulse-qdrant: {condition: service_started}
+      cp: {condition: service_started}
   cp-migrate:
     build:
       context: ${L4_CP_SOURCE:?pinned CP checkout required}
@@ -125,7 +182,7 @@ services:
       - "${L4_TLS:?per-run TLS material}:/etc/nginx/tls:ro"
     networks:
       lab:
-        aliases: [iam.int02.test, cp.int02.test, human.int02.test]
+        aliases: [iam.int02.test, cp.int02.test, human.int02.test, pulse.int02.test]
   human:
     build:
       context: ${L4_HUMAN_SOURCE:?reviewed RP/browser source required}
@@ -168,3 +225,5 @@ networks:
 volumes:
   iamdata: {}
   cpdata: {}
+  pulsedata: {}
+  pulsevectors: {}

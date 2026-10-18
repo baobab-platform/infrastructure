@@ -36,7 +36,8 @@ IMAGE = re.compile(r"^[a-z0-9][a-z0-9./_-]*@sha256:[0-9a-f]{64}$")
 IAM_HOST = "iam.int02.test"
 CP_HOST = "cp.int02.test"
 ISSUER = "https://" + IAM_HOST + "/realms/baobab"
-SERVICES = {"keycloak", "iam-db", "cp", "cp-db", "edge", "probe", "human"}
+SERVICES = {"keycloak", "iam-db", "cp", "cp-db", "edge", "probe", "human",
+            "pulse", "pulse-migrate", "pulse-db", "pulse-qdrant"}
 # ADR-SHARED-036 s6.8/s6.10: a CP or IAM pull request runs this profile
 # against its own head through the reusable workflow; only these two pins
 # may be replaced, and only by a full commit SHA.
@@ -61,14 +62,15 @@ def load():
     must(set(data.get("mandatory", [])) == REQUIRED, "Missing mandatory scenario")
     must(all(SHA40.fullmatch(v) for v in data["sources"].values()),
          "Floating source ref is prohibited")
-    must(all(data["sources"].get(x) for x in ("baobab-iam", "baobab-cp", "shared", "infrastructure")),
+    must(all(data["sources"].get(x) for x in ("baobab-iam", "baobab-cp", "baobab-pulse", "shared", "infrastructure")),
          "Missing source pin")
     must(set(data["services"]) == SERVICES, "Unexpected services")
     must(data["requirements"]["public_ports"] == 0 and
          not re.search(r"(?m)^\s+ports\s*:", COMPOSE.read_text()), "Host ports forbidden")
     must(IMAGE.fullmatch(data["runtime_images"]["postgres"]) is not None and
-         IMAGE.fullmatch(data["runtime_images"]["tls_edge"]) is not None,
-         "Postgres and the TLS edge must be digest pinned")
+         IMAGE.fullmatch(data["runtime_images"]["tls_edge"]) is not None and
+         IMAGE.fullmatch(data["runtime_images"]["qdrant"]) is not None,
+         "Postgres, Qdrant and the TLS edge must be digest pinned")
     return data
 
 def execute(args, capture=False, input_text=None, env=None, timeout=300):
@@ -258,7 +260,8 @@ def verify_bind_mounts(p, directory, envfile, lock):
 
 def check_prerequisites(lock, static=False):
     must((BASE / "cp.Dockerfile").is_file() and (BASE / "probe.py").is_file()
-         and (BASE / "edge.conf").is_file(), "INT-02 source incomplete")
+         and (BASE / "edge.conf").is_file() and (BASE / "pulse.Dockerfile").is_file()
+         and (BASE / "pulse_native.py").is_file(), "INT-02 source incomplete")
     if static:
         return
     must(IMAGE.fullmatch(lock["runtime_images"]["python_probe"]) is not None,
@@ -284,7 +287,7 @@ def materialise(lock):
     directory.mkdir(mode=0o700, parents=True)
     # Always allowlist exact GitHub org paths; no redirects or arbitrary URL.
     try:
-        for name in ("baobab-iam", "baobab-cp", "shared"):
+        for name in ("baobab-iam", "baobab-cp", "baobab-pulse", "shared"):
             dest = directory / name
             execute(["git", "clone", "--quiet", "--no-checkout", "--",
                      "https://github.com/baobab-platform/" + name + ".git",
@@ -304,6 +307,11 @@ def materialise(lock):
             "L4_IAM_SOURCE": str(directory / "baobab-iam"),
             "L4_CP_SOURCE": str(directory / "baobab-cp"),
             "L4_CP_DOCKERFILE": str(BASE / "cp.Dockerfile"),
+            "L4_PULSE_SOURCE": str(directory / "baobab-pulse"),
+            "L4_PULSE_DOCKERFILE": str(BASE / "pulse.Dockerfile"),
+            "L4_PULSE_IMAGE": "l4-pulse-" + project,
+            "L4_PULSE_DB_PASSWORD": secrets.token_hex(28),
+            "L4_QDRANT_IMAGE": lock["runtime_images"]["qdrant"],
             "L4_HUMAN_SOURCE": str(BASE / "human"),
             "L4_HUMAN_IMAGE": "l4-human-" + project,
             "L4_WORKLOAD_REGISTRY": host_path(directory / "shared/contracts/identity/v1/workload-registry.yaml"),
@@ -393,7 +401,7 @@ def throwaway_tls(tls):
              "-keyout", str(ca_key), "-out", str(ca)], timeout=60)
     execute(["openssl", "req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=int02.test",
              "-keyout", str(key), "-out", str(csr)], timeout=60)
-    ext.write_text(f"subjectAltName=DNS:{IAM_HOST},DNS:{CP_HOST},DNS:human.int02.test\n"
+    ext.write_text(f"subjectAltName=DNS:{IAM_HOST},DNS:{CP_HOST},DNS:human.int02.test,DNS:pulse.int02.test\n"
                    "extendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n")
     execute(["openssl", "x509", "-req", "-in", str(csr), "-CA", str(ca), "-CAkey", str(ca_key),
              "-CAserial", str(tls.parent / "ca.srl"), "-CAcreateserial", "-days", "1",
@@ -417,6 +425,8 @@ def up(lock):
     compose(p, envfile, "build", "cp-migrate", timeout=1800)
     print("INT-02 build stage: real browser and confidential OIDC RP",flush=True)
     compose(p, envfile, "build", "human", timeout=900)
+    print("INT-02 build stage: actual Pulse source and frozen dependencies", flush=True)
+    compose(p, envfile, "build", "pulse-migrate", timeout=1800)
     print("INT-02 startup stage: disposable PostgreSQL databases and Keycloak",flush=True)
     print("INT-02 startup: Docker Compose private DB/IAM/probe services",flush=True)
     # The image-level Keycloak healthcheck was incorrectly implemented in
@@ -444,6 +454,9 @@ def up(lock):
     compose(p, envfile, "up", "-d", "cp", "probe", "human", timeout=180)
     compose(p, envfile, "exec", "-T", "probe", "python", "/app/probe.py",
             "wait", timeout=120)
+    compose(p, envfile, "up", "-d", "pulse-db", "pulse-qdrant", "pulse-migrate", timeout=240)
+    compose(p, envfile, "wait", "pulse-migrate", timeout=180)
+    compose(p, envfile, "up", "-d", "pulse", timeout=120)
     print("INT-02 genuine Keycloak issuer + CP binary started")
 
 def startup_with_iam(p, envfile):
@@ -873,6 +886,19 @@ def test(lock):
     # tenant and Organisation, and must run BEFORE the Keycloak subject is
     # linked to a CP Principal.
     seed_tenants(p, directory, envfile)
+    # Provider-owned native code, actual separate DB/vector processes, and
+    # synthetic data are necessary evidence, not CP qualification. Preserve
+    # that distinction: no call here promotes the PROVISIONED Pulse caller or
+    # invents a ProviderCapabilityCertification.
+    readiness = json.loads(run_probe(p, envfile, "wait-pulse"))
+    native_output = compose(p, envfile, "exec", "-T", "--user", "0", "pulse",
+        "python", "/run/l4-source/pulse_native.py", capture=True, timeout=180)
+    native_report = json.loads(native_output.strip().splitlines()[-1])
+    native_report.setdefault("checks", {})["pulse_native_https_readiness"] = readiness.get("pulse_native_https_readiness") is True
+    apply_pulse_native_proof(checkpoint, native_report)
+    write_evidence(p, lock, checkpoint, accepted=False)
+    must(all(checkpoint["checks"][name] for name in PULSE_NATIVE_REQUIRED),
+         "Actual Pulse persistence/projection conformance failed")
     unmapped = json.loads(run_probe(p, envfile, "unmapped"))
     held = seed_identities(p, envfile, ids)
     seed_isolation_authority(p, directory, envfile, ids)
@@ -881,6 +907,7 @@ def test(lock):
     # before returning; a failed restore aborts rather than tainting evidence.
     workload_report = json.loads(run_probe(p, envfile, "workload-proof"))
     report = json.loads(run_probe(p, envfile, "test"))
+    apply_pulse_native_proof(report, native_report)
     apply_workload_proof(report, workload_report)
     apply_human_proof(report, human_report)
     apply_isolation_proof(report, json.loads(run_probe(p, envfile, "isolation-proof")))
@@ -941,7 +968,7 @@ def test(lock):
             cases["L4-CP-01"] = "PASS"
     required = set(lock["mandatory"])
     must(set(cases) == required, "Mandatory IAM/CP scenarios missing")
-    if any(cases[x] != "PASS" for x in required) or not tls_verified(checks):
+    if not qualification_complete(cases, checks):
         # Preserve the sanitized report for triage, NEVER promote to PASS.
         write_evidence(p, lock, report, accepted=False)
         print(outcome_summary(cases, checks, observations), flush=True)
@@ -987,6 +1014,21 @@ IAM02_REQUIRED = ("iam02_registered_workload_positive", "iam02_same_client_audie
                   "iam02_wrong_audience_denied", "iam02_disabled_client_issuance_denied",
                   "iam02_fixture_restored")
 
+PULSE_NATIVE_REQUIRED = ("pulse_native_https_readiness", "pulse_native_persisted_search",
+    "pulse_native_canonical_hydration", "pulse_native_classification_denied",
+    "pulse_native_neighbour_denied", "pulse_native_stale_projection_observed",
+    "pulse_native_actual_dependencies")
+
+def apply_pulse_native_proof(report, proof):
+    """Native conformance cannot promote a CP certification scenario.
+
+    Fixed names and actual bools only: no logs, rows, DSNs or truthy strings
+    cross this boundary. Unknown provider-reported fields are discarded.
+    """
+    supplied = proof.get("checks", {})
+    supplied = supplied if isinstance(supplied, dict) else {}
+    report.setdefault("checks", {}).update({name: supplied.get(name) is True for name in PULSE_NATIVE_REQUIRED})
+
 
 def apply_workload_proof(report, proof):
     checks = report.setdefault("checks", {})
@@ -1030,11 +1072,16 @@ def outcome_summary(cases, checks, observations=None):
 def tls_verified(checks):
     return all(checks.get(name) is True for name in TLS_CHECKS)
 
+def qualification_complete(cases, checks):
+    """A native provider proof never substitutes for any mandatory scenario."""
+    return set(cases) == REQUIRED and all(cases[name] == "PASS" for name in REQUIRED) and \
+        tls_verified(checks) and all(checks.get(name) is True for name in PULSE_NATIVE_REQUIRED)
+
 def image_id(envfile, variable):
     """The locally built image's content ID (build provenance, EA v2.2 §4.4)."""
     for line in envfile.read_text().splitlines():
         name, _, value = line.partition("=")
-        if name == variable and re.fullmatch(r"l4-(iam|cp|human)-l4-[0-9a-f]{16}", value):
+        if name == variable and re.fullmatch(r"l4-(iam|cp|human|pulse)-l4-[0-9a-f]{16}", value):
             try:
                 return execute(["docker", "image", "inspect", "--format", "{{.Id}}", value],
                                capture=True, timeout=20).strip()
@@ -1054,6 +1101,7 @@ def write_evidence(p, lock, report, accepted):
     EVIDENCE.mkdir(exist_ok=True)
     envfile = Path(p.get("directory", "")) / "runtime.env"
     built = {"iam": image_id(envfile, "L4_IAM_IMAGE"), "cp": image_id(envfile, "L4_CP_IMAGE"),
+             "pulse": image_id(envfile, "L4_PULSE_IMAGE"),
              "human": image_id(envfile, "L4_HUMAN_IMAGE")} \
         if envfile.is_file() else {"iam": "unavailable", "cp": "unavailable"}
     receipt = {"profile":"iam-cp","classification":lock["evidence_class"],
@@ -1069,9 +1117,11 @@ def write_evidence(p, lock, report, accepted):
        "executing_profile":{"name":"iam-cp","requirements":lock["requirements"],
                             "runner":"github-actions" if os.environ.get("GITHUB_ACTIONS") else "local"},
        "components":{"real":["keycloak (pinned baobab-iam source)","control plane (pinned baobab-cp source)",
-                             "postgresql", "Chromium + confidential OIDC RP (synthetic login)"],
+                             "postgresql", "Chromium + confidential OIDC RP (synthetic login)",
+                             "Pulse (pinned provider source)", "separate Qdrant server"],
                      "simulated":["synthetic tenants, organisations, grants and provider binding"],
-                     "provider":"synthetic resolution fixture only; no live certified provider"},
+                     "provider":"real Pulse native persistence/projection; CP binding still synthetic, qualification blocked",
+                     "embedding":"owner deterministic mock reference embeddings; no model-quality claim"},
        "transport":{"tls_verified":tls_verified(report.get("checks", {})),
                     "mode":"tls1.3-edge-verified-per-run-ca",
                     "edge_to_upstream":"http-on-internal-compose-network",

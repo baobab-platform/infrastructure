@@ -296,7 +296,7 @@ class ScenarioTruthTest(unittest.TestCase):
         self.assertFalse(evidence["transport"]["tls_verified"])
         self.assertFalse(evidence["passed"])
         runner=(BASE/"orchestrate.py").read_text()
-        self.assertIn("or not tls_verified(checks):",runner)
+        self.assertIn("if not qualification_complete(cases, checks):",runner)
 
     def test_outcome_summary_is_fixed_vocabulary(self):
         cases={k:"BLOCKED" for k in m.REQUIRED}; cases["L4-CP-01"]="PASS"
@@ -348,7 +348,7 @@ class TransportTest(unittest.TestCase):
         compose=(BASE/"compose.yaml").read_text()
         self.assertIn("SSL_CERT_FILE: /run/l4-tls/ca.pem",compose)
         self.assertIn("WORKLOAD_OIDC_ISSUER: https://iam.int02.test/realms/baobab",compose)
-        self.assertIn("aliases: [iam.int02.test, cp.int02.test, human.int02.test]",compose)
+        self.assertIn("aliases: [iam.int02.test, cp.int02.test, human.int02.test, pulse.int02.test]",compose)
 
     def test_edge_is_digest_pinned_and_a_declared_service(self):
         data=m.load()
@@ -908,7 +908,7 @@ class WorkloadRegistryRuntimeTest(unittest.TestCase):
         runner=(BASE/"orchestrate.py").read_text()
         self.assertIn("WORKLOAD_REGISTRY_FILE: /run/l4-workload-registry.yaml",compose)
         self.assertIn('${L4_WORKLOAD_REGISTRY:?pinned Shared registry required}',compose)
-        self.assertIn('for name in ("baobab-iam", "baobab-cp", "shared"):',runner)
+        self.assertIn('for name in ("baobab-iam", "baobab-cp", "baobab-pulse", "shared"):',runner)
         self.assertIn('host_path(directory / "shared/contracts/identity/v1/workload-registry.yaml")',runner)
 
 
@@ -990,11 +990,52 @@ class MaterialisedHumanClientTest(unittest.TestCase):
                 m.materialise(lock)
             session=json.loads((state/"session.json").read_text())
             client=json.loads((Path(session["directory"])/"test-client.json").read_text())
-            self.assertTrue({"roles","basic","canonical:read","actor-type-human"} <= set(client["defaultClientScopes"]))
+            self.assertLessEqual({"roles","basic","canonical:read","actor-type-human"}, set(client["defaultClientScopes"]))
             self.assertFalse(client["publicClient"])
             self.assertFalse(client["directAccessGrantsEnabled"])
             self.assertFalse(client["serviceAccountsEnabled"])
             self.assertEqual(client["attributes"]["pkce.code.challenge.method"],"S256")
+
+
+class NativePulseBoundaryTest(unittest.TestCase):
+    def test_native_conformance_cannot_promote_any_mandatory_scenario(self):
+        report={"scenarios":{name:"BLOCKED" for name in m.REQUIRED}}
+        m.apply_pulse_native_proof(report,{"checks":{name:True for name in m.PULSE_NATIVE_REQUIRED}})
+        self.assertTrue(all(report["checks"].values()))
+        self.assertFalse(m.qualification_complete(report["scenarios"],report["checks"]))
+        self.assertEqual(report["scenarios"]["L4-CP-02"],"BLOCKED")
+
+    def test_missing_truthy_and_unknown_native_observations_fail_closed(self):
+        for value in (None,"true",1,[],{}):
+            report={}
+            m.apply_pulse_native_proof(report,{"checks":{name:value for name in m.PULSE_NATIVE_REQUIRED}|{"password":"must-not-leave-provider"}})
+            self.assertEqual(set(report["checks"]),set(m.PULSE_NATIVE_REQUIRED))
+            self.assertFalse(any(report["checks"].values()))
+
+    def test_acceptance_needs_all_native_checks_tls_and_all_scenarios(self):
+        cases={name:"PASS" for name in m.REQUIRED}
+        checks={name:True for name in (*m.PULSE_NATIVE_REQUIRED,*m.TLS_CHECKS)}
+        self.assertTrue(m.qualification_complete(cases,checks))
+        for name in checks:
+            with self.subTest(name=name):
+                self.assertFalse(m.qualification_complete(cases,{k:v for k,v in checks.items() if k!=name}))
+        self.assertFalse(m.qualification_complete({**cases,"L4-CP-02":"BLOCKED"},checks))
+
+    def test_actual_provider_build_and_separate_vector_server_are_pinned(self):
+        lock=m.load()
+        self.assertRegex(lock["sources"]["baobab-pulse"],r"^[0-9a-f]{40}$")
+        self.assertRegex(lock["runtime_images"]["qdrant"],r"@sha256:[0-9a-f]{64}$")
+        docker=(BASE/"pulse.Dockerfile").read_text()
+        for line in docker.splitlines():
+            if line.startswith("FROM "):
+                self.assertRegex(line,r"@sha256:[0-9a-f]{64}(?: AS [a-z]+)?$")
+        self.assertIn("uv sync --frozen --no-dev",docker)
+        self.assertIn("baobab_pulse.api.main:app",docker)
+        compose=(BASE/"compose.yaml").read_text()
+        self.assertIn("PULSE_QDRANT_URL: http://pulse-qdrant:6333",compose)
+        self.assertIn("PULSE_CONTROL_PLANE_CONTEXT_VALIDATION_URL: https://cp.int02.test/v1/platform-context/validate",compose)
+        self.assertNotIn('PULSE_QDRANT_LOCATION:',compose)
+        self.assertNotIn('override',docker)
 
 
 if __name__ == "__main__":

@@ -232,6 +232,28 @@ def wait():
     diagnostic(step="cp_readiness", readyz=last)
     raise RuntimeError("real CP did not become ready")
 
+def wait_pulse():
+    """Actual HTTPS provider plus both native dependencies, not liveness.
+
+    Pulse deliberately remains generally ready with vector search degraded;
+    that is insufficient for evidence-search conformance, so require the
+    explicit semantic-retrieval signal as well as the canonical database.
+    """
+    for _ in range(60):
+        try:
+            status, body = request("GET", "https://pulse.int02.test/readyz")
+            dependencies = body.get("dependencies", {})
+            if status == 200 and body.get("status") == "ready" and \
+                    dependencies.get("database") is True and dependencies.get("semantic_retrieval") is True:
+                print('{"pulse_native_https_readiness":true}')
+                return
+        except (OSError, ValueError):
+            # Startup may race pool/vector initialization. No error payload
+            # leaves the private probe and no readiness is assumed on timeout.
+            pass
+        time.sleep(1)
+    raise RuntimeError("actual Pulse evidence-search dependencies unavailable")
+
 def claim_profile(label,claims,actor):
     """Fixed-vocabulary facts about one real token: never its values."""
     found=claims.get("actor_type")
@@ -672,6 +694,8 @@ def main():
         human_proof()
     elif name=="wait":
         wait()
+    elif name=="wait-pulse":
+        wait_pulse()
     elif name=="wait-iam":
         wait_iam()
     elif name=="master-admin":
