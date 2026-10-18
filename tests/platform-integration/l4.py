@@ -221,4 +221,9 @@ def main():
         return 2
 
 if __name__ == "__main__":
+    # INT-02 is a selectable heavier real-process profile; the proven
+    # INT-01 foundation implementation and its default CLI remain unchanged.
+    if len(sys.argv) >= 3 and sys.argv[2] == "iam-cp":
+        from int02.orchestrate import main as int02_main
+        sys.exit(int02_main(sys.argv[1:]))
     sys.exit(main())

@@ -1,0 +1,9 @@
+{
+  "name": "baobab-int02-devcontainer-cli",
+  "private": true,
+  "description": "The Dev Containers CLI that runs INT-02 inside the integration devcontainer in CI (Codespaces parity, ADR-SHARED-036 s6.3). Locked by package-lock.json; installed with npm ci.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@devcontainers/cli": "0.89.0"
+  }
+}

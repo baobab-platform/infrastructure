@@ -1,0 +1,229 @@
+# INT-02 / real issuer + real Control Plane / completely private ephemeral network.
+# IAM and CP images are built FROM exact pinned repository commits in lock.json.
+# Never expose issuer/admin, database, or Control Plane host ports.
+name: ${L4_PROJECT:?explicit disposable project required}
+services:
+  iam-db:
+    image: ${L4_POSTGRES_IMAGE:?locked PostgreSQL required}
+    environment:
+      POSTGRES_DB: baobab_iam
+      POSTGRES_USER: baobab_iam
+      POSTGRES_PASSWORD: ${L4_IAM_DB_PASSWORD:?required}
+    volumes: [iamdata:/var/lib/postgresql/data]
+    networks: [lab]
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U baobab_iam -d baobab_iam"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+  cp-db:
+    image: ${L4_POSTGRES_IMAGE:?locked PostgreSQL required}
+    environment:
+      POSTGRES_DB: controlplane
+      POSTGRES_USER: controlplane
+      POSTGRES_PASSWORD: ${L4_CP_DB_PASSWORD:?required}
+    volumes: [cpdata:/var/lib/postgresql/data]
+    networks: [lab]
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U controlplane -d controlplane"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+  keycloak:
+    build:
+      context: ${L4_IAM_SOURCE:?pinned IAM checkout required}
+      dockerfile: Dockerfile
+    image: ${L4_IAM_IMAGE:?project-scoped built image}
+    command: ["start","--optimized","--http-enabled=true","--hostname=https://iam.int02.test","--hostname-strict=false"]
+    environment:
+      BAOBAB_ENVIRONMENT: ci
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://iam-db:5432/baobab_iam
+      # The product bootstrap runs INSIDE this Keycloak container. Its
+      # kcadm admin CLI should use loopback rather than Docker's service DNS
+      # and frontend/public issuer hostname. Other containers must still
+      # verify the real issuer at https://iam.int02.test/realms/baobab over
+      # the TLS edge.
+      # Keep these separate: this is an administration transport, never
+      # an issuer override or a substitute for OIDC/CP acceptance.
+      KC_URL: http://localhost:8080
+      # The private edge overwrites forwarded scheme/host headers. Keycloak
+      # must interpret its browser cookies/origin as the verified HTTPS hop;
+      # the documented upstream edge transport remains internal HTTP.
+      KC_PROXY_HEADERS: xforwarded
+      # Keycloak's JDBC username does not follow POSTGRES_USER automatically.
+      # Without it the optimized server attempts the wrong database role and
+      # never serves its real readiness/OIDC discovery endpoints.
+      KC_DB_USERNAME: baobab_iam
+      KC_DB_PASSWORD: ${L4_IAM_DB_PASSWORD:?required}
+      KEYCLOAK_ADMIN: l4admin
+      KEYCLOAK_ADMIN_PASSWORD: ${L4_KC_ADMIN_PASSWORD:?required}
+      KC_BOOTSTRAP_ADMIN_USERNAME: l4admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${L4_KC_ADMIN_PASSWORD:?required}
+      BOOTSTRAP_WORKLOAD_CLIENT_SECRET: ${L4_WORKLOAD_SEED:?required}
+      L4_TEST_USER_PASSWORD: ${L4_TEST_USER_PASSWORD:?required}
+      L4_TEST_ADMIN_CLIENT_SECRET: ${L4_TEST_ADMIN_CLIENT_SECRET:?required}
+    networks: [lab]
+    depends_on:
+      iam-db: {condition: service_healthy}
+    volumes:
+      - "${L4_RUNTIME:?private runtime directory}:/run/l4:ro"
+    # The IAM product Dockerfile embeds `HEALTHCHECK kc.sh health`, which
+    # is not a valid Keycloak CLI operation. A missing Compose healthcheck
+    # would INHERIT that image check and block `docker compose up --wait`.
+    # Turn off only the inherited image check for this disposable profile;
+    # orchestrate.py independently proves Keycloak 9000 /health/ready.
+    healthcheck:
+      disable: true
+  pulse-db:
+    image: ${L4_POSTGRES_IMAGE:?locked PostgreSQL required}
+    environment:
+      POSTGRES_DB: pulse
+      POSTGRES_USER: pulse
+      POSTGRES_PASSWORD: ${L4_PULSE_DB_PASSWORD:?per-run secret required}
+    volumes: [pulsedata:/var/lib/postgresql/data]
+    networks: [lab]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulse -d pulse"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+  pulse-qdrant:
+    image: ${L4_QDRANT_IMAGE:?digest-pinned vector server required}
+    volumes: [pulsevectors:/qdrant/storage]
+    networks: [lab]
+    environment:
+      QDRANT__TELEMETRY_DISABLED: "true"
+  pulse-migrate:
+    build:
+      context: ${L4_PULSE_SOURCE:?pinned Pulse source required}
+      dockerfile: ${L4_PULSE_DOCKERFILE:?reviewed pinned builder required}
+    image: ${L4_PULSE_IMAGE:?project-scoped image required}
+    entrypoint: ["python", "scripts/migrate.py"]
+    environment:
+      PULSE_DATABASE_URL: postgresql://pulse:${L4_PULSE_DB_PASSWORD}@pulse-db:5432/pulse
+    networks: [lab]
+    depends_on:
+      pulse-db: {condition: service_healthy}
+  pulse:
+    image: ${L4_PULSE_IMAGE:?project-scoped image required}
+    restart: "no"
+    environment:
+      PULSE_ENVIRONMENT: development
+      PULSE_DATABASE_URL: postgresql://pulse:${L4_PULSE_DB_PASSWORD}@pulse-db:5432/pulse
+      PULSE_QDRANT_URL: http://pulse-qdrant:6333
+      PULSE_QDRANT_COLLECTION_PREFIX: int02
+      PULSE_EMBEDDING_PROVIDER: mock
+      PULSE_EMBEDDING_DIMENSION: "16"
+      PULSE_IAM_ISSUER_URL: https://iam.int02.test/realms/baobab
+      PULSE_IAM_JWKS_URL: https://iam.int02.test/realms/baobab/protocol/openid-connect/certs
+      PULSE_IAM_TOKEN_URL: https://iam.int02.test/realms/baobab/protocol/openid-connect/token
+      PULSE_IAM_CLIENT_ID: baobab-pulse-workload
+      PULSE_IAM_CLIENT_SECRET: ${L4_WORKLOAD_SEED:?per-run validator secret required}
+      PULSE_CONTROL_PLANE_CONTEXT_VALIDATION_URL: https://cp.int02.test/v1/platform-context/validate
+      SSL_CERT_FILE: /run/l4-tls/ca.pem
+      HAYSTACK_TELEMETRY_ENABLED: "false"
+    networks: [lab]
+    volumes:
+      - "${L4_TLS:?per-run CA required}:/run/l4-tls:ro"
+      - "${L4_RUNTIME:?private runtime directory}:/run/l4:ro"
+      - "${L4_PROBE_SOURCE:?reviewed source}:/run/l4-source:ro"
+    depends_on:
+      pulse-migrate: {condition: service_completed_successfully}
+      pulse-qdrant: {condition: service_started}
+      cp: {condition: service_started}
+  cp-migrate:
+    build:
+      context: ${L4_CP_SOURCE:?pinned CP checkout required}
+      dockerfile: ${L4_CP_DOCKERFILE:?reviewed builder required}
+    image: ${L4_CP_IMAGE:?project-scoped built image}
+    entrypoint: ["/migrate"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://controlplane:${L4_CP_DB_PASSWORD}@cp-db:5432/controlplane?sslmode=disable
+    networks: [lab]
+    depends_on:
+      cp-db: {condition: service_healthy}
+  cp:
+    image: ${L4_CP_IMAGE:?project-scoped built image}
+    restart: "no"
+    environment:
+      BAOBAB_ENVIRONMENT: integration
+      HTTP_ADDRESS: ":8080"
+      DATABASE_URL: postgres://controlplane:${L4_CP_DB_PASSWORD}@cp-db:5432/controlplane?sslmode=disable
+      PLATFORM_CONTEXT_TTL: 5m
+      # CP accepts only an HTTPS issuer (or loopback HTTP): it reaches IAM
+      # through the TLS edge and trusts only this run's throwaway CA.
+      ADMIN_OIDC_ISSUER: https://iam.int02.test/realms/baobab
+      WORKLOAD_OIDC_ISSUER: https://iam.int02.test/realms/baobab
+      SSL_CERT_FILE: /run/l4-tls/ca.pem
+      ADMIN_OIDC_AUDIENCE: baobab-control-plane
+      WORKLOAD_OIDC_AUDIENCE: baobab-control-plane
+      # No nonproduction registry bypass: lifecycle/registered ceilings are
+      # evaluated against the exact materialised Shared source pin.
+      WORKLOAD_REGISTRY_FILE: /run/l4-workload-registry.yaml
+      ADMIN_OIDC_CLIENT_ID: baobab-control-plane-admin
+      TENANT_BOOTSTRAP_REGISTRATION: enabled
+    networks: [lab]
+    depends_on:
+      cp-migrate: {condition: service_completed_successfully}
+      keycloak: {condition: service_started}
+      edge: {condition: service_started}
+    volumes:
+      - "${L4_TLS:?per-run TLS material}:/run/l4-tls:ro"
+      - "${L4_WORKLOAD_REGISTRY:?pinned Shared registry required}:/run/l4-workload-registry.yaml:ro"
+  edge:
+    image: ${L4_EDGE_IMAGE:?digest-pinned TLS edge required}
+    restart: "no"
+    read_only: true
+    tmpfs: ["/tmp"]
+    volumes:
+      - "${L4_EDGE_CONFIG:?reviewed edge configuration}:/etc/nginx/nginx.conf:ro"
+      - "${L4_TLS:?per-run TLS material}:/etc/nginx/tls:ro"
+    networks:
+      lab:
+        aliases: [iam.int02.test, cp.int02.test, human.int02.test, pulse.int02.test]
+  human:
+    build:
+      context: ${L4_HUMAN_SOURCE:?reviewed RP/browser source required}
+    image: ${L4_HUMAN_IMAGE:?project-scoped built image}
+    restart: "no"
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/l4-tls/ca.pem
+      L4_TEST_USER_PASSWORD: ${L4_TEST_USER_PASSWORD:?required}
+      L4_TEST_ADMIN_CLIENT_SECRET: ${L4_TEST_ADMIN_CLIENT_SECRET:?required}
+    volumes:
+      - "${L4_TLS:?per-run TLS material}:/run/l4-tls:ro"
+    networks: [lab]
+    depends_on:
+      keycloak: {condition: service_started}
+      edge: {condition: service_started}
+  probe:
+    image: ${L4_PYTHON_IMAGE:?pinned Python probe required}
+    command: ["sleep","infinity"]
+    environment:
+      L4_ISSUER: https://iam.int02.test/realms/baobab
+      L4_CP: https://cp.int02.test
+      L4_CA_FILE: /run/l4-tls/ca.pem
+      L4_WORKLOAD_SEED: ${L4_WORKLOAD_SEED:?required}
+      L4_TEST_USER_PASSWORD: ${L4_TEST_USER_PASSWORD:?required}
+      L4_TEST_ADMIN_CLIENT_SECRET: ${L4_TEST_ADMIN_CLIENT_SECRET:?required}
+      L4_TEST_OTHER_SECRET_FILE: /run/l4/other-secret
+      L4_KC_ADMIN_PASSWORD: ${L4_KC_ADMIN_PASSWORD:?test-only Keycloak admin password}
+    volumes:
+      - "${L4_PROBE_SOURCE:?test code directory}:/app:ro"
+      - "${L4_RUNTIME:?private runtime directory}:/run/l4:ro"
+      - "${L4_TLS:?per-run TLS material}:/run/l4-tls:ro"
+    working_dir: /app
+    networks: [lab]
+    depends_on:
+      keycloak: {condition: service_started}
+      edge: {condition: service_started}
+networks:
+  lab:
+    internal: true
+volumes:
+  iamdata: {}
+  cpdata: {}
+  pulsedata: {}
+  pulsevectors: {}

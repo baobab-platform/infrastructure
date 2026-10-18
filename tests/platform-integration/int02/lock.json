@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "profile": "iam-cp",
+  "authority": [
+    "ADR-SHARED-036",
+    "EA-v2.2"
+  ],
+  "evidence_class": "REAL_COMPONENT_SYNTHETIC_DATA",
+  "sources": {
+    "infrastructure": "09d3774fbcbcf08b190330429915a6f9393839e6",
+    "baobab-iam": "9b8b0b4a401139ed9055fd5947ca3b1b7e0f3f8e",
+    "baobab-cp": "34fc86a5bf276dfb80760710fe32a34d2431558a",
+    "shared": "33f1dd6aa7c0db43743dbb02cff16d5dc0802610",
+    "baobab-pulse": "6f4271d7b43db8d9c81e04d4f5dcc4cf50b27172"
+  },
+  "services": [
+    "keycloak",
+    "iam-db",
+    "cp",
+    "cp-db",
+    "edge",
+    "probe",
+    "human",
+    "pulse",
+    "pulse-migrate",
+    "pulse-db",
+    "pulse-qdrant"
+  ],
+  "synthetic_fixture": true,
+  "mandatory": [
+    "L4-IAM-01",
+    "L4-IAM-02",
+    "L4-CP-01",
+    "L4-CP-02",
+    "L4-CP-03"
+  ],
+  "requirements": {
+    "min_cpus": 4,
+    "min_ram_gib": 8,
+    "real_iam": true,
+    "real_cp": true,
+    "public_ports": 0
+  },
+  "runtime_images": {
+    "postgres": "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+    "python_probe": "python@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c",
+    "tls_edge": "nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
+    "qdrant": "qdrant/qdrant@sha256:12364fe851b9f17356fc88189fc06d1b521262e04659ec7345975b00c9246a10"
+  },
+  "no_protected_credentials": true,
+  "no_production_tenant_data": true
+}

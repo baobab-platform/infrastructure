@@ -40,6 +40,26 @@
       ],
       "min_memory_gib": 4,
       "min_cpus": 2
+    },
+    "iam-cp": {
+      "services": [
+        "keycloak",
+        "iam-db",
+        "cp",
+        "cp-db",
+        "probe"
+      ],
+      "mandatory": [
+        "L4-IAM-01",
+        "L4-IAM-02",
+        "L4-CP-01",
+        "L4-CP-02",
+        "L4-CP-03"
+      ],
+      "min_memory_gib": 8,
+      "min_cpus": 4,
+      "pins_file": "int02/lock.json",
+      "status": "CANDIDATE_UNVERIFIED"
     }
   },
   "simulators": [],

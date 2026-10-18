@@ -1,0 +1,7 @@
+{
+  "name": "baobab-int02-human-proof",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "node --test protocol.test.mjs"},
+  "dependencies": {"openid-client": "6.8.8", "jose": "6.2.3", "playwright": "1.64.1"}
+}
