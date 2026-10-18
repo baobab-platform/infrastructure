@@ -12,7 +12,7 @@ import probe as p
 
 REQUIRED = ("cp02_release_recorded", "cp02_self_certification_denied",
             "cp02_independent_certification", "cp02_release_approved",
-            "cp02_provider_activated", "cp02_current_scoped_certification")
+            "cp02_provider_activated", "cp02_current_scoped_certification", "cp02_revoked_certification_unqualified")
 
 
 def call(method, path, who, body=None, expected=200, headers=None):
@@ -83,6 +83,18 @@ def prove():
     approved, _ = call("GET", "/v1/engine-releases/"+release_id, "human")
     checks["cp02_release_approved"] &= approved.get("status") == "APPROVED"
     checks["cp02_provider_activated"] = govern({"kind":"PROVIDER_ACTIVATION", "provider_id":source["provider_id"]}, "provider activation")
+    revoked, _ = call("POST", "/v1/provider-capability-certifications/"+cert["certification_id"]+"/revocations",
+        "subsidiary", {"reason":"INT-02 deliberate qualification revocation differential"})
+    checks["cp02_revoked_certification_unqualified"] = revoked.get("status") == "REVOKED" and not scoped_current(revoked, source, release_id)
+    cert, _ = call("POST", "/v1/provider-capability-certifications", "subsidiary", certification, 201)
     current, _ = call("GET", "/v1/provider-capability-certifications/"+cert["certification_id"], "human")
     checks["cp02_current_scoped_certification"] = scoped_current(current, source, release_id)
-    print(json.dumps({"checks":checks}))
+    print(json.dumps({"checks":checks, "certification_id":cert["certification_id"], "release_id":release_id}))
+
+
+def current_proof():
+    source = json.loads((p.RUNTIME / "provider-input.json").read_text())
+    identifiers = json.loads((p.RUNTIME / "provider-current.json").read_text())
+    cert, _ = call("GET", "/v1/provider-capability-certifications/"+identifiers["certification_id"], "human")
+    release, _ = call("GET", "/v1/engine-releases/"+identifiers["release_id"], "human")
+    print(json.dumps({"current":scoped_current(cert, source, identifiers["release_id"]) and release.get("status")=="APPROVED"}))

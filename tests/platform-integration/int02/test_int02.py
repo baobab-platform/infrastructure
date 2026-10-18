@@ -1063,3 +1063,60 @@ class NativePulseBoundaryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProviderQualificationTest(unittest.TestCase):
+    def test_certification_is_current_exact_and_release_bound(self):
+        import sys
+        import types
+        from datetime import datetime, timedelta, timezone
+        spec = importlib.util.spec_from_file_location("provider_api_test", BASE/"provider_api.py")
+        api = importlib.util.module_from_spec(spec)
+        # Pure qualification predicate only; no fake provider/issuer is run.
+        with mock.patch.dict(sys.modules, {"probe":types.ModuleType("probe")}):
+            spec.loader.exec_module(api)
+        source = {"provider_id":"provider_12345678", "evidence":[{"digest":"sha256:"+"a"*64}]}
+        good = {"status":"CERTIFIED", "provider_id":source["provider_id"],
+            "capability_key":"intelligence.evidence.search", "contract_version":1,
+            "release_id":"erl_12345678", "qualification_profile":"int02-synthetic",
+            "valid_until":(datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat(),
+            "evidence":source["evidence"]}
+        self.assertTrue(api.scoped_current(good,source,"erl_12345678"))
+        mutations = {"status":"REVOKED", "provider_id":"provider_other",
+            "capability_key":"intelligence.research-mission.manage", "contract_version":2,
+            "release_id":"erl_other", "qualification_profile":"other", "evidence":[],
+            "valid_until":(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()}
+        for field, value in mutations.items():
+            with self.subTest(field=field):
+                self.assertFalse(api.scoped_current({**good,field:value},source,"erl_12345678"))
+        self.assertFalse(api.scoped_current({**good,"valid_until":None},source,"erl_12345678"))
+
+    def test_cleanup_is_required_before_receipt_acceptance(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            session=root/"session.json"
+            session.write_text("{}")
+            directory=root/"runtime"
+            directory.mkdir()
+            envfile=directory/"runtime.env"
+            envfile.write_text("synthetic")
+            receipt=root/"l4-1111111111111111-int02.json"
+            receipt.write_text(json.dumps({"passed":False,"qualification_checks_passed":True,
+                "teardown_verified":False,"qualification_state":"QUALIFICATION_PENDING_TEARDOWN"}))
+            project={"project":"l4-1111111111111111"}
+            with mock.patch.object(m,"SESSION",session), mock.patch.object(m,"EVIDENCE",root), \
+                 mock.patch.object(m,"current",return_value=(project,directory,envfile)), \
+                 mock.patch.object(m,"compose",side_effect=m.Blocked("cleanup failed")):
+                with self.assertRaises(m.Blocked):
+                    m.down()
+            self.assertFalse(json.loads(receipt.read_text())["passed"])
+            self.assertTrue(envfile.exists())
+            with mock.patch.object(m,"SESSION",session), mock.patch.object(m,"EVIDENCE",root), \
+                 mock.patch.object(m,"current",return_value=(project,directory,envfile)), \
+                 mock.patch.object(m,"compose"):
+                m.down()
+            result=json.loads(receipt.read_text())
+            self.assertTrue(result["passed"])
+            self.assertTrue(result["teardown_verified"])
+            self.assertEqual(result["qualification_state"],"QUALIFIED_SYNTHETIC_RUN")
+            self.assertFalse(directory.exists())

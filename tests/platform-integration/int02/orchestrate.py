@@ -948,7 +948,10 @@ def test(lock):
     apply_human_proof(report, human_report)
     apply_isolation_proof(report, json.loads(run_probe(p, envfile, "isolation-proof")))
     write_evidence(p, lock, report, accepted=False)
-    import provider_fixture
+    if __package__:
+        from . import provider_fixture
+    else:
+        import provider_fixture
     provider_fixture.prove(sys.modules[__name__], p, directory, envfile, report)
     write_evidence(p, lock, report, accepted=False)
     # L4-CP-01 "revoked grant": revoke tenant A's grant (synthetic-fixture
@@ -1132,7 +1135,7 @@ def apply_pulse_http_proof(report, proof):
 PROVIDER_REQUIRED = (
     "cp02_release_recorded", "cp02_self_certification_denied",
     "cp02_independent_certification", "cp02_release_approved",
-    "cp02_provider_activated", "cp02_current_scoped_certification",
+    "cp02_provider_activated", "cp02_current_scoped_certification", "cp02_revoked_certification_unqualified",
     "cp02_actual_provider_resolution", "cp02_missing_grant_denied",
     "cp02_missing_binding_denied", "cp02_wrong_contract_denied", "cp02_wrong_market_denied",
     "cp02_wrong_instance_denied", "cp02_invalid_isolation_denied",

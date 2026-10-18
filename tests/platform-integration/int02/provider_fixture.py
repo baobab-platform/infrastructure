@@ -14,7 +14,7 @@ import uuid
 
 API_REQUIRED = ("cp02_release_recorded", "cp02_self_certification_denied",
     "cp02_independent_certification", "cp02_release_approved",
-    "cp02_provider_activated", "cp02_current_scoped_certification")
+    "cp02_provider_activated", "cp02_current_scoped_certification", "cp02_revoked_certification_unqualified")
 REQUIRED = API_REQUIRED + ("cp02_actual_provider_resolution", "cp02_missing_grant_denied",
     "cp02_missing_binding_denied", "cp02_wrong_contract_denied", "cp02_wrong_market_denied",
     "cp02_wrong_instance_denied", "cp02_invalid_isolation_denied",
@@ -60,7 +60,7 @@ def prove(o, project, directory, envfile, report):
     image = frozen["pulse_image_config_digest"]
     o.must(re.fullmatch(r"sha256:[0-9a-f]{64}", image) is not None, "Actual Pulse image digest missing")
     source = {"provider_id":provider_id,
-        "release":{"engine_id":"baobab-pulse", "release_version":"int02-"+project["project"],
+        "release":{"engine_id":"baobab-pulse", "release_version":"0.0.0-int02-"+project["project"],
             "source_revision":project["sources"]["baobab-pulse"],
             "artifacts":[{"artifact_type":"OCI_IMAGE", "repository":"local.int02.test/baobab-pulse", "digest":image}],
             "provider_support":[{"provider_key":"baobab-pulse.core", "capability_key":key, "contract_versions":[1]}
@@ -83,9 +83,9 @@ def prove(o, project, directory, envfile, report):
             ("provider_id,capability_id", f"'{provider_uuid}'::uuid,(SELECT capability_id FROM capability.capability WHERE code='intelligence.evidence.search')", f"provider_id='{provider_uuid}' AND capability_id IS NOT NULL")):
             sql(f"DELETE FROM topology.health_observation WHERE {predicate}; INSERT INTO topology.health_observation({columns},status,observed_at,expires_at,source,reasons) VALUES ({values},'{status}',{stamp},{expiry},'ACTIVE_PROBE',{reasons});")
 
-    def decide(name, decision, reason="", contract=1, neighbour=False):
+    def decide(name, decision, reason="", contract=1, neighbour=False, current=True):
         expectation = {"decision":decision,"reason":reason,"contract_version":contract,
-            "provider_id":provider_id,"instance_id":"ei_"+instance.replace("-", ""),"neighbour":neighbour}
+            "current_resolution":current,"provider_id":provider_id,"instance_id":"ei_"+instance.replace("-", ""),"neighbour":neighbour}
         o.private(directory/"provider-expect.json",json.dumps(expectation)+"\n")
         result=json.loads(o.run_probe(project, envfile, "provider-resolution"))
         checks[name]=result.get("matched") is True
@@ -96,6 +96,10 @@ def prove(o, project, directory, envfile, report):
     health()
     api = json.loads(o.run_probe(project, envfile, "provider-api"))
     checks.update({n:api.get("checks", {}).get(n) is True for n in API_REQUIRED})
+    identifiers={key:api.get(key, "") for key in ("certification_id", "release_id")}
+    o.must(re.fullmatch(r"cert_[0-9a-f]{32}", identifiers["certification_id"]) is not None and
+           re.fullmatch(r"erl_[a-z0-9]+", identifiers["release_id"]) is not None, "Invalid CP qualification identifiers")
+    o.private(directory/"provider-current.json",json.dumps(identifiers)+"\n")
     decide("cp02_actual_provider_resolution", "RESOLVED")
     decide("cp02_missing_grant_denied", "DENIED", "GRANT_NOT_FOUND", neighbour=True)
     sql(f"UPDATE capability.capability_binding SET status='SUSPENDED' WHERE id='{binding}';")
@@ -123,7 +127,7 @@ def prove(o, project, directory, envfile, report):
     health(expired=True)
     # Shared deliberately permits UNKNOWN for STANDARD capabilities. Observe
     # that exact policy, while rejecting it as current qualification evidence.
-    decide("cp02_stale_health_unqualified", "RESOLVED")
+    decide("cp02_stale_health_unqualified", "RESOLVED", current=False)
     stale = sql(f"SELECT count(*) FROM topology.health_observation WHERE (engine_instance_id='{instance}' OR provider_id='{provider_uuid}') AND expires_at>now();")
     checks["cp02_stale_health_unqualified"] &= stale == "0"
     o.compose(project, envfile, "stop", "pulse", timeout=60)
@@ -141,6 +145,8 @@ def prove(o, project, directory, envfile, report):
         health()
         decide("cp02_recovery_positive", "RESOLVED")
         checks["cp02_current_health"]=sql(f"SELECT count(*) FROM topology.health_observation WHERE (engine_instance_id='{instance}' OR provider_id='{provider_uuid}') AND status='HEALTHY' AND observed_at<=now() AND expires_at>now();") == "3"
+    current=json.loads(o.run_probe(project, envfile, "provider-current"))
+    checks["cp02_current_scoped_certification"] &= current.get("current") is True
     report["checks"].update(checks)
     report["scenarios"]["L4-CP-02"]="PASS" if all(checks.values()) else "FAIL"
     report["provider_evidence_sha256"]=evidence_digest

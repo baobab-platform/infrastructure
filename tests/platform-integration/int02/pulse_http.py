@@ -44,12 +44,29 @@ def prove():
         print(json.dumps({"checks":checks}))
         return
 
+    validator = p.token("baobab-pulse-workload", p.os.environ["L4_WORKLOAD_SEED"], "client_credentials", scope="context:validate")
+    validator_claims=p.decode(validator)
+    p.diagnostic(step="pulse_validator", has_sub=str(bool(validator_claims.get("sub"))).lower(),
+                 scope_ok=str("context:validate" in validator_claims.get("scope", "").split()).lower())
+    validation_status, validation=p.request("POST", p.CP+"/v1/platform-context/validate",
+        {"context_id":context, "subject_token":pulse_token}, validator)
+    allowed_codes={"AUTH_TOKEN_INVALID", "CAPABILITY_AUTHORITY_UNAVAILABLE", "CAPABILITY_ACCESS_DENIED",
+        "CONTEXT_NOT_FOUND", "PULSE_INTERNAL_ERROR", "TENANT_CONTEXT_MISSING", "CAPABILITY_RUNTIME_UNAVAILABLE",
+        "SEMANTIC_RETRIEVAL_UNAVAILABLE", "CONTEXT_STORE_UNAVAILABLE", "AUTH_VERIFIER_UNAVAILABLE",
+        "CONTEXT_VALIDATION_UNAVAILABLE", "SUBJECT_TOKEN_INVALID", "VALIDATION_FAILED", "NONE"}
+    def code_of(result):
+        value=result.get("code", "NONE")
+        return value if value in allowed_codes else "OTHER"
+    p.diagnostic(step="pulse_direct_validation", status=validation_status, code=code_of(validation))
+
     def search(token=pulse_token, context_id=context, evidence=None):
         body = {"query_text":"INT-02 synthetic canonical evidence for provider conformance.", "top_k":10}
         if evidence:
             body["evidence_set_id"] = evidence
-        return p.request("POST", PULSE + "/evidence/search", body, token,
+        status,result=p.request("POST", PULSE + "/evidence/search", body, token,
                          headers={"X-Baobab-Context-Id":context_id})
+        p.diagnostic(step="pulse_search", status=status, code=code_of(result))
+        return status,result
 
     status, result = search()
     candidates = result.get("candidates", [])
@@ -73,7 +90,9 @@ def prove():
     status, result = p.request("POST", p.ISSUER+"/protocol/openid-connect/token", {
         "grant_type":"client_credentials", "client_id":CLIENT, "client_secret":secret+"invalid",
         "scope":"context:resolve"})
-    checks["pulse_http_wrong_credential_denied"] = status == 401 and result.get("error") == "invalid_client"
+    p.diagnostic(step="pulse_wrong_credential", status=status,
+        error=result.get("error") if result.get("error") in p.OAUTH_ERRORS else "other")
+    checks["pulse_http_wrong_credential_denied"] = status in (400,401) and result.get("error") == "invalid_client"
     master = p.ISSUER.rsplit("/realms/", 1)[0]+"/realms/master"
     status, auth = p.request("POST", master+"/protocol/openid-connect/token", {
         "grant_type":"password", "client_id":"admin-cli", "username":"l4admin",

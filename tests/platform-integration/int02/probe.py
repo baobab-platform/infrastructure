@@ -704,6 +704,10 @@ def provider_resolution():
     reason=reason if isinstance(reason,str) and (not reason or REASON.fullmatch(reason)) else "OTHER"
     matched=bool(context_id and status==200 and decision==expected["decision"] and reason==expected["reason"])
     if decision=="RESOLVED":
+        from datetime import datetime, timezone
+        expiry=reply.get("expires_at")
+        current=bool(expiry and datetime.fromisoformat(expiry.replace("Z", "+00:00"))>datetime.now(timezone.utc))
+        matched &= current is expected.get("current_resolution", True)
         invocation=reply.get("invocation", {})
         matched &= (invocation.get("provider_id")==expected["provider_id"] and
             invocation.get("engine_instance_id")==expected["instance_id"] and
@@ -741,6 +745,9 @@ def main():
         provider_resolution()
     elif name=="provider-outage":
         provider_outage()
+    elif name=="provider-current":
+        from provider_api import current_proof
+        current_proof()
     elif name=="provider-api":
         from provider_api import prove
         prove()
