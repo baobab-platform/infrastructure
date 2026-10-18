@@ -86,6 +86,9 @@ else
   STAGE=audience-client-create
   create_client "$L4_FIXTURE_DIR/other-client.json"
 fi
+# This approved named caller is deliberately absent from product bootstrap.
+STAGE=pulse-client-create
+create_client "$L4_FIXTURE_DIR/pulse-client.json"
 STAGE=human-user-lookup
 if exists users username=l4-int02-human username l4-int02-human; then
   :

@@ -57,6 +57,23 @@ async def prove():
         with bind_tenant_context(TenantContext(tenant_id=tenant)):
             stale = await retrieval.search(text, requester_clearance=Classification.CONFIDENTIAL)
             checks["pulse_native_stale_projection_observed"] = len(stale) == 1 and stale[0].is_stale
+        # Restore a current projection for the subsequent real HTTP proof;
+        # the stale observation above remains a distinct native negative.
+        await vectors.upsert_projection(ProjectionCollection.EVIDENCE, ProjectionRecord(
+            canonical_object_id="evd_int02_native", evidence_set_id=document.id,
+            canonical_version=2, tenant_id=tenant, classification=Classification.CONFIDENTIAL,
+            content=text, content_hash=hashlib.sha256(text.encode()).hexdigest(),
+            embedding_model_id="mock:mock-model", embedding_model_version="1"))
+        restricted = document.model_copy(update={"id":"evs_int02_restricted", "version":1,
+            "classification":Classification.RESTRICTED,
+            "entries":(Evidence(id="evd_int02_restricted", referenced_object=Reference(
+                object_type="observation", object_id="obs_int02_restricted"), direction=EvidenceDirection.SUPPORTS),)})
+        await repository.add_with_text(restricted, {"evd_int02_restricted":text})
+        await vectors.upsert_projection(ProjectionCollection.EVIDENCE, ProjectionRecord(
+            canonical_object_id="evd_int02_restricted", evidence_set_id=restricted.id,
+            canonical_version=1, tenant_id=tenant, classification=Classification.RESTRICTED,
+            content=text, content_hash=hashlib.sha256(text.encode()).hexdigest(),
+            embedding_model_id="mock:mock-model", embedding_model_version="1"))
         checks["pulse_native_actual_dependencies"] = await database.is_ready() and await vectors.is_ready()
         print(json.dumps({"checks": checks}, sort_keys=True))
         if not all(value is True for value in checks.values()):

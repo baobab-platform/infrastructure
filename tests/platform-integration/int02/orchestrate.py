@@ -383,6 +383,20 @@ def materialise(lock):
             "basic","openid","actor-type-workload","intelligence:evidence:search"
           ],"optionalClientScopes":[]
         }
+        # Accepted Shared INT-02 named exception: issuance exists only in
+        # this per-run realm. Optional scopes yield independent audience tokens.
+        pulse_client = {
+          "clientId":"baobab-int02-pulse-consumer", "enabled":True,
+          "publicClient":False, "secret":secrets.token_hex(32),
+          "serviceAccountsEnabled":True, "standardFlowEnabled":False,
+          "directAccessGrantsEnabled":False, "implicitFlowEnabled":False,
+          "protocol":"openid-connect", "fullScopeAllowed":False,
+          "attributes":{"access.token.lifespan":"120"},
+          "defaultClientScopes":["basic","actor-type-workload"],
+          "optionalClientScopes":["context:resolve","intelligence:evidence:search"]
+        }
+        private(directory / "pulse-client.json", json.dumps(pulse_client)+"\n")
+        private(directory / "pulse-secret", pulse_client["secret"]+"\n")
         private(directory / "test-client.json",json.dumps(admin_client)+"\n")
         private(directory / "other-client.json",json.dumps(other_client)+"\n")
         private(directory / "test-user.json",json.dumps({"username":"l4-int02-human",
@@ -577,7 +591,7 @@ def seed_keycloak(p, envfile):
         'L4_FIXTURE_DIR=$(mktemp -d)',
         'trap \'rm -rf -- "$L4_FIXTURE_DIR"\' EXIT',
     ]
-    for name in ("test-client.json", "other-client.json", "test-user.json"):
+    for name in ("test-client.json", "other-client.json", "test-user.json", "pulse-client.json"):
         content = (directory / name).read_text()
         must(len(content) < 16384 and isinstance(json.loads(content), dict),
              "Untrusted or oversized Keycloak test fixture")
@@ -925,6 +939,8 @@ def test(lock):
     # before returning; a failed restore aborts rather than tainting evidence.
     workload_report = json.loads(run_probe(p, envfile, "workload-proof"))
     report = json.loads(run_probe(p, envfile, "test"))
+    http_report = json.loads(run_probe(p, envfile, "pulse-http"))
+    apply_pulse_http_proof(report, http_report)
     apply_pulse_native_proof(report, native_report)
     apply_workload_proof(report, workload_report)
     apply_human_proof(report, human_report)
@@ -1090,6 +1106,23 @@ def outcome_summary(cases, checks, observations=None):
 def tls_verified(checks):
     return all(checks.get(name) is True for name in TLS_CHECKS)
 
+PULSE_HTTP_REQUIRED = (
+    "pulse_http_exact_issuer_scopes_audiences", "pulse_http_caller_context",
+    "pulse_http_search_current_canonical", "pulse_http_restricted_denied",
+    "pulse_http_wrong_owner_denied", "pulse_http_neighbour_no_leak",
+    "pulse_http_wrong_audience_denied", "pulse_http_fabricated_context_denied",
+    "pulse_http_wrong_credential_denied", "pulse_http_disabled_issuance_denied",
+    "pulse_http_client_restored",
+)
+
+
+def apply_pulse_http_proof(report, proof):
+    # A strict observation boundary; this never promotes provider qualification.
+    checks = report.setdefault("checks", {})
+    for name in PULSE_HTTP_REQUIRED:
+        checks[name] = proof.get("checks", {}).get(name) is True
+
+
 def qualification_complete(cases, checks):
     """A native provider proof never substitutes for any mandatory scenario."""
     return set(cases) == REQUIRED and all(cases[name] == "PASS" for name in REQUIRED) and \
@@ -1154,6 +1187,8 @@ def write_evidence(p, lock, report, accepted):
        "manifest_sha256":hashlib.sha256(LOCK.read_bytes()).hexdigest(),
        "component_integrity":{"iam":"REAL_KEYCLOAK_PINNED_SOURCE","cp":"REAL_CP_PINNED_SOURCE"},
        "tested_at":datetime.now(timezone.utc).isoformat(),
+       "bootstrap_decision":"shared/docs/architecture/int02-pulse-proof-bootstrap-decision.md",
+       "qualification_state":"QUALIFIED_SYNTHETIC_RUN" if accepted else "BOOTSTRAP_REQUIRED_NOT_EXECUTED",
        "synthetic_only":True,"passed":accepted,
        "protected_staging_accepted":False,"production_authorized":False}
     body = json.dumps(receipt, sort_keys=True, indent=2)

@@ -12,6 +12,17 @@ m=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 class ContractTest(unittest.TestCase):
+    def test_http_observations_are_strict_and_cannot_promote_provider(self):
+        report = {"scenarios":{"L4-CP-02":"BLOCKED"}}
+        m.apply_pulse_http_proof(report, {"checks":{name:True for name in m.PULSE_HTTP_REQUIRED}})
+        self.assertTrue(all(report["checks"].values()))
+        self.assertEqual(report["scenarios"]["L4-CP-02"], "BLOCKED")
+        for bad in ("true", 1, None):
+            m.apply_pulse_http_proof(report, {"checks":{name:bad for name in m.PULSE_HTTP_REQUIRED}})
+            self.assertFalse(any(report["checks"].values()))
+        m.apply_pulse_http_proof(report, {"checks":{"untrusted":"secret"}})
+        self.assertNotIn("untrusted", report["checks"])
+
     def test_pinned_profile(self):
         data=m.load()
         self.assertEqual(data["profile"],"iam-cp")

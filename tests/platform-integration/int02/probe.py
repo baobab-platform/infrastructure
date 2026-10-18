@@ -704,6 +704,9 @@ def main():
         identities()
     elif name=="test":
         exercise()
+    elif name=="pulse-http":
+        from pulse_http import prove
+        prove()
     elif name=="workload-proof":
         workload_proof()
     elif name=="revoked":
