@@ -1037,6 +1037,18 @@ class NativePulseBoundaryTest(unittest.TestCase):
         self.assertNotIn('PULSE_QDRANT_LOCATION:',compose)
         self.assertNotIn('override',docker)
 
+    def test_owner_migration_script_is_not_dropped_by_production_dockerignore(self):
+        ignore=(BASE/"pulse.Dockerfile.dockerignore").read_text().splitlines()
+        self.assertIn("**",ignore)
+        for path in ("!scripts/migrate.py","!migrations/**","!src/**","!uv.lock"):
+            self.assertIn(path,ignore)
+
+    def test_build_diagnostics_never_emit_source_paths_credentials_or_logs(self):
+        for text,expected in (("secret-dsn failed to calculate checksum private/file", "CONTEXT_FILE_MISSING"),
+                              ("Bearer secret unauthorized", "REGISTRY_UNAUTHORIZED"),
+                              ("private-error-payload", "OTHER")):
+            self.assertEqual(m.build_failure_class(text),expected)
+
 
 if __name__ == "__main__":
     unittest.main()

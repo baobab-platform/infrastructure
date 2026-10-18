@@ -1,0 +1,13 @@
+# Dockerfile-specific allowlist: the owner production .dockerignore excludes
+# scripts/, but this disposable image must run the owner's actual migrator.
+# No materialised credential, VCS data, test cache or unrelated file is sent.
+**
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!src/**
+!scripts/
+!scripts/migrate.py
+!migrations/
+!migrations/**

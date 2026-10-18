@@ -46,6 +46,22 @@ CANDIDATE_REPOSITORIES = {"baobab-iam", "baobab-cp"}
 class Blocked(Exception):
     pass
 
+def build_failure_class(output):
+    """Closed diagnostic vocabulary; never expose a Docker build log/argv."""
+    lowered = output.lower()
+    for label, markers in (
+        ("CONTEXT_FILE_MISSING", ("failed to calculate checksum", "not found in build context", "excluded by .dockerignore")),
+        ("REGISTRY_UNAUTHORIZED", ("unauthorized", "authentication required", "denied: requested access")),
+        ("IMAGE_UNAVAILABLE", ("manifest unknown", "not found: manifest", "failed to resolve source metadata")),
+        ("DEPENDENCY_LOCK", ("lockfile needs to be updated", "lockfile is not up-to-date", "failed to parse uv.lock")),
+        ("OUT_OF_SPACE", ("no space left on device",)),
+        ("DEPENDENCY_BUILD", ("failed to build", "no solution found when resolving")),
+        ("NETWORK", ("connection refused", "network is unreachable", "i/o timeout")),
+    ):
+        if any(marker in lowered for marker in markers):
+            return label
+    return "OTHER"
+
 def must(ok, reason):
     if not ok:
         raise Blocked(reason)
@@ -78,6 +94,7 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
     p = subprocess.run(args, input=input_text, text=True, capture_output=True,
                        env=env, timeout=timeout, check=False)
     if p.returncode:
+        build_class = build_failure_class(p.stdout + p.stderr) if "build" in args else ""
         # IAM's product bootstrap can create dozens of clients/scopes and may
         # fail long after successful readiness. Emit ONLY a filtered operation
         # label, never raw stderr, HTTP responses, token material or secrets.
@@ -139,6 +156,7 @@ def execute(args, capture=False, input_text=None, env=None, timeout=300):
                 if code:
                     sqlstate = code.group(1)
         raise Blocked("External command failed: " + Path(args[0]).name +
+                      (f"; Build failure class: {build_class}" if build_class else "") +
                       (f"; CP SQL state: {sqlstate}" if sqlstate else "") +
                       (f"; IAM diagnostics: {' | '.join(diags[-5:])}" if diags else "") +
                       (f"; INT-02 fixture HTTP class: {fixture_http}" if fixture_http else "") +
@@ -202,7 +220,7 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600):
         safe_cause = str(cause) if any(
             marker in str(cause) for marker in
             ("IAM bootstrap class:", "INT-02 fixture class:",
-             "INT-02 fixture HTTP class:", "IAM diagnostics:", "CP SQL state:")) else ""
+             "INT-02 fixture HTTP class:", "IAM diagnostics:", "CP SQL state:", "Build failure class:")) else ""
         raise Blocked(f"Compose {stage}/{target} failed; service states: "
                       + (", ".join(sorted(snapshot)) if snapshot else "unavailable")
                       + (f"; {safe_cause}" if safe_cause else "")) from cause
