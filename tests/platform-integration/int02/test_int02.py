@@ -1025,7 +1025,7 @@ class NativePulseBoundaryTest(unittest.TestCase):
 
     def test_acceptance_needs_all_native_checks_tls_and_all_scenarios(self):
         cases={name:"PASS" for name in m.REQUIRED}
-        checks={name:True for name in (*m.PULSE_NATIVE_REQUIRED,*m.TLS_CHECKS)}
+        checks={name:True for name in (*m.PULSE_NATIVE_REQUIRED,*m.PULSE_HTTP_REQUIRED,*m.PROVIDER_REQUIRED,*m.TLS_CHECKS)}
         self.assertTrue(m.qualification_complete(cases,checks))
         for name in checks:
             with self.subTest(name=name):

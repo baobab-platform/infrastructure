@@ -61,7 +61,7 @@ def prove():
     checks["pulse_http_restricted_denied"] = status == 200 and result.get("candidates") == []
     wrong_owner = p.context_for(p.workload(), context_body)
     status, result = search(context_id=wrong_owner or str(uuid.uuid4()))
-    checks["pulse_http_wrong_owner_denied"] = bool(wrong_owner and status == 403 and result.get("code") == "CAPABILITY_ACCESS_DENIED")
+    checks["pulse_http_wrong_owner_denied"] = bool(wrong_owner and status == 404 and result.get("code") == "CONTEXT_NOT_FOUND")
     neighbour = p.context_for(cp_token, {"tenant_id":fixture["other_tenant"],
                                          "organisation_id":fixture["other_organisation"]})
     status, result = search(context_id=neighbour or str(uuid.uuid4()))

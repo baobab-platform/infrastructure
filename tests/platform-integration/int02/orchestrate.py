@@ -371,7 +371,9 @@ def materialise(lock):
           # Emit the roles already assigned to these synthetic users; an
           # absent roles mapper denies every read before isolation is tested.
           "protocol":"openid-connect", "defaultClientScopes":[
-            "basic","openid","roles","actor-type-human","authority:self","canonical:read"
+            "basic","openid","roles","actor-type-human","authority:self","canonical:read",
+            "topology:read","topology:write","provider:certify","changeset:read",
+            "changeset:write","changeset:approve","engine-release:approve","provider:approve"
           ],"optionalClientScopes":[]
         }
         other_client = {
@@ -610,7 +612,7 @@ def run_probe(p, envfile, mode):
 
 CP_FIXTURE_STEPS = {"tenant_a", "tenant_b", "tenant_no_primary", "market_participation",
                     "capability_binding",
-                    "identity_workload", "identity_human", "revoke_grant", "revoke_workload"}
+                    "identity_workload", "identity_human", "revoke_grant", "revoke_workload", "provider_qualification"}
 
 def cp_sql(p, envfile, step, statement, timeout=30):
     """Run one synthetic-fixture statement in the disposable CP database.
@@ -945,6 +947,10 @@ def test(lock):
     apply_workload_proof(report, workload_report)
     apply_human_proof(report, human_report)
     apply_isolation_proof(report, json.loads(run_probe(p, envfile, "isolation-proof")))
+    write_evidence(p, lock, report, accepted=False)
+    import provider_fixture
+    provider_fixture.prove(sys.modules[__name__], p, directory, envfile, report)
+    write_evidence(p, lock, report, accepted=False)
     # L4-CP-01 "revoked grant": revoke tenant A's grant (synthetic-fixture
     # operation in the throwaway DB) and require CP to refuse the same
     # entitled context for GRANT_REVOKED, while the identity is still valid.
@@ -1123,10 +1129,22 @@ def apply_pulse_http_proof(report, proof):
         checks[name] = proof.get("checks", {}).get(name) is True
 
 
+PROVIDER_REQUIRED = (
+    "cp02_release_recorded", "cp02_self_certification_denied",
+    "cp02_independent_certification", "cp02_release_approved",
+    "cp02_provider_activated", "cp02_current_scoped_certification",
+    "cp02_actual_provider_resolution", "cp02_missing_grant_denied",
+    "cp02_missing_binding_denied", "cp02_wrong_contract_denied", "cp02_wrong_market_denied",
+    "cp02_wrong_instance_denied", "cp02_invalid_isolation_denied",
+    "cp02_stale_health_unqualified", "cp02_outage_observed", "cp02_outage_resolution_denied",
+    "cp02_recovery_positive", "cp02_current_health")
+
+
 def qualification_complete(cases, checks):
     """A native provider proof never substitutes for any mandatory scenario."""
     return set(cases) == REQUIRED and all(cases[name] == "PASS" for name in REQUIRED) and \
-        tls_verified(checks) and all(checks.get(name) is True for name in PULSE_NATIVE_REQUIRED)
+        tls_verified(checks) and all(checks.get(name) is True for name in
+                                   PULSE_NATIVE_REQUIRED + PULSE_HTTP_REQUIRED + PROVIDER_REQUIRED)
 
 def image_id(envfile, variable):
     """The locally built image's content ID (build provenance, EA v2.2 §4.4)."""
@@ -1159,6 +1177,7 @@ def write_evidence(p, lock, report, accepted):
        "scenario_ids":lock["mandatory"],"scenarios":report["scenarios"],
        # Named positive/negative sub-checks (booleans only; no responses).
        "checks":report.get("checks", {}),
+       "provider_evidence_sha256":report.get("provider_evidence_sha256"),
        # CP's fixed-vocabulary decisions and HTTP statuses behind the checks.
        "observations":report.get("observations", {}),
        # EA v2.2 §4.4 (iv)-(vi): build provenance, executing profile and
@@ -1170,8 +1189,8 @@ def write_evidence(p, lock, report, accepted):
        "components":{"real":["keycloak (pinned baobab-iam source)","control plane (pinned baobab-cp source)",
                              "postgresql", "Chromium + confidential OIDC RP (synthetic login)",
                              "Pulse (pinned provider source)", "separate Qdrant server"],
-                     "simulated":["synthetic tenants, organisations, grants and provider binding"],
-                     "provider":"real Pulse native persistence/projection; CP binding still synthetic, qualification blocked",
+                     "simulated":["synthetic tenants, organisations, grants and disposable topology fixtures"],
+                     "provider":"real pinned Pulse; see strict per-run qualification checks",
                      "embedding":"owner deterministic mock reference embeddings; no model-quality claim"},
        "transport":{"tls_verified":tls_verified(report.get("checks", {})),
                     "mode":"tls1.3-edge-verified-per-run-ca",
@@ -1188,8 +1207,9 @@ def write_evidence(p, lock, report, accepted):
        "component_integrity":{"iam":"REAL_KEYCLOAK_PINNED_SOURCE","cp":"REAL_CP_PINNED_SOURCE"},
        "tested_at":datetime.now(timezone.utc).isoformat(),
        "bootstrap_decision":"shared/docs/architecture/int02-pulse-proof-bootstrap-decision.md",
-       "qualification_state":"QUALIFIED_SYNTHETIC_RUN" if accepted else "BOOTSTRAP_REQUIRED_NOT_EXECUTED",
-       "synthetic_only":True,"passed":accepted,
+       "qualification_state":"QUALIFICATION_PENDING_TEARDOWN" if accepted else "BOOTSTRAP_REQUIRED_NOT_EXECUTED",
+       "qualification_checks_passed":accepted,"teardown_verified":False,
+       "synthetic_only":True,"passed":False,
        "protected_staging_accepted":False,"production_authorized":False}
     body = json.dumps(receipt, sort_keys=True, indent=2)
     # (ix) scrubbed evidence digest, computed over the receipt without it.
@@ -1202,11 +1222,23 @@ def down():
         print("No INT-02 project")
         return
     p,d,env=current()
+    # No receipt may claim a qualified run until teardown succeeds. This
+    # checkpoint also keeps a failed cleanup from retaining an earlier PASS.
+    evidence_path=EVIDENCE/(p["project"]+"-int02.json")
+    receipt=json.loads(evidence_path.read_text()) if evidence_path.is_file() else None
     # Do NOT erase recovery credentials when Docker cleanup fails.
     compose(p,env,"down","--volumes","--remove-orphans",timeout=240)
     env.unlink()
     SESSION.unlink()
     shutil.rmtree(d)
+    if receipt is not None:
+        receipt["teardown_verified"]=True
+        receipt["passed"]=receipt.get("qualification_checks_passed") is True
+        if receipt["passed"]:
+            receipt["qualification_state"]="QUALIFIED_SYNTHETIC_RUN"
+        receipt.pop("evidence_sha256",None)
+        receipt["evidence_sha256"]=hashlib.sha256(json.dumps(receipt,sort_keys=True,indent=2).encode()).hexdigest()
+        evidence_path.write_text(json.dumps(receipt,sort_keys=True,indent=2)+"\n")
     print("INT-02 IAM, CP, DBs, network and test credentials destroyed")
 
 def main(argv=None):

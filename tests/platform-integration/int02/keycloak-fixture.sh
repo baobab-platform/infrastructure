@@ -68,6 +68,21 @@ else
     -s 'attributes={"include.in.token.scope":"true","display.on.consent.screen":"false"}' >/dev/null
 fi
 
+# Human governance scopes are already canonical Shared vocabulary; expose
+# them only on the disposable browser fixture, whose privileged MFA is real.
+for scope in topology:read topology:write provider:certify changeset:read changeset:write changeset:approve engine-release:approve provider:approve; do
+  STAGE=human-governance-scope
+  if exists client-scopes "name=$scope" name "$scope"; then
+    :
+  else
+    code=$?
+    [ "$code" -eq 1 ] || exit "$code"
+    "$KCADM" create client-scopes -r baobab --config "$CONFIG" \
+      -s "name=$scope" -s protocol=openid-connect \
+      -s 'attributes={"include.in.token.scope":"true","display.on.consent.screen":"false"}' >/dev/null
+  fi
+done
+
 STAGE=admin-client-lookup
 if exists clients clientId=l4-int02-admin clientId l4-int02-admin; then
   :

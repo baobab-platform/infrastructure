@@ -26,7 +26,7 @@ RUNTIME=Path("/run/l4")
 TLS=ssl.create_default_context(cafile=os.environ["L4_CA_FILE"])
 TLS.minimum_version=ssl.TLSVersion.TLSv1_3
 
-def request(method,url,body=None,token=None,context=None,headers=None):
+def request(method,url,body=None,token=None,context=None,headers=None,return_headers=False):
     data = (urllib.parse.urlencode(body).encode() if body is not None and
             url.endswith(("/token", "/token/introspect")) else
             json.dumps(body).encode() if body is not None else None)
@@ -40,9 +40,11 @@ def request(method,url,body=None,token=None,context=None,headers=None):
     try:
         with urllib.request.urlopen(req,timeout=8,context=context or TLS) as response:
             status=response.status
+            response_headers=dict(response.headers)
             raw=response.read(65537)
     except urllib.error.HTTPError as exc:
         status=exc.code
+        response_headers=dict(exc.headers)
         raw=exc.read(65537)
     if len(raw)>65536:
         raise ValueError("response too large")
@@ -50,7 +52,7 @@ def request(method,url,body=None,token=None,context=None,headers=None):
         result=json.loads(raw) if raw else {}
     except ValueError:
         result={}
-    return status,result
+    return (status,result,response_headers) if return_headers else (status,result)
 
 def token(client,secret,grant,**params):
     status,reply=request("POST",ISSUER+"/protocol/openid-connect/token",
@@ -686,6 +688,37 @@ def tls():
         result["tls_untrusted_refused"]=False
     print(json.dumps(result,sort_keys=True))
 
+def provider_resolution():
+    fixture=json.loads((RUNTIME/"fixtures.json").read_text())
+    expected=json.loads((RUNTIME/"provider-expect.json").read_text())
+    secret=(RUNTIME/"pulse-secret").read_text().strip()
+    caller=token("baobab-int02-pulse-consumer",secret,"client_credentials",scope="context:resolve")
+    neighbour=expected.get("neighbour") is True
+    context_id=context_for(caller,{"tenant_id":fixture["other_tenant" if neighbour else "tenant"],
+                                  "organisation_id":fixture["other_organisation" if neighbour else "organisation"]})
+    status,reply=request("POST",CP+"/v1/capabilities/resolve",{
+        "context_id":context_id,"capability_key":"intelligence.evidence.search",
+        "required_contract_version":expected["contract_version"],"correlation_id":str(uuid.uuid4())},caller)
+    decision=reply.get("decision") if reply.get("decision") in ("RESOLVED","DENIED","UNAVAILABLE","INCOMPATIBLE","AMBIGUOUS") else "OTHER"
+    reason=reply.get("reason_code", "")
+    reason=reason if isinstance(reason,str) and (not reason or REASON.fullmatch(reason)) else "OTHER"
+    matched=bool(context_id and status==200 and decision==expected["decision"] and reason==expected["reason"])
+    if decision=="RESOLVED":
+        invocation=reply.get("invocation", {})
+        matched &= (invocation.get("provider_id")==expected["provider_id"] and
+            invocation.get("engine_instance_id")==expected["instance_id"] and
+            invocation.get("service_reference")=="service://baobab-pulse/capabilities" and
+            invocation.get("protocol")=="http" and invocation.get("contract_version")==1)
+    print(json.dumps({"matched":matched,"decision":decision,"reason":reason or "NONE"}))
+
+
+def provider_outage():
+    status,_=request("GET","https://pulse.int02.test/readyz")
+    cp_status,_=request("GET",CP+"/readyz")
+    iam_status,discovery=request("GET",ISSUER+"/.well-known/openid-configuration")
+    print(json.dumps({"outage":status==502 and cp_status==200 and iam_status==200 and discovery.get("issuer")==ISSUER}))
+
+
 def main():
     name=sys.argv[1] if len(sys.argv)>1 else ""
     if name=="isolation-proof":
@@ -704,6 +737,13 @@ def main():
         identities()
     elif name=="test":
         exercise()
+    elif name=="provider-resolution":
+        provider_resolution()
+    elif name=="provider-outage":
+        provider_outage()
+    elif name=="provider-api":
+        from provider_api import prove
+        prove()
     elif name=="pulse-http":
         from pulse_http import prove
         prove()
