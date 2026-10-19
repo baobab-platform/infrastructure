@@ -133,8 +133,7 @@ def materialise(value, prerequisite, token):
     # clean integration checkout actually executing this runner.
     sha = harness_sha()
     must(engine.SHA40.fullmatch(sha), 'Harness revision unavailable')
-    must(not engine.execute(['git', '-c', 'safe.directory=' + str(engine.ROOT), '-C', str(engine.ROOT), 'status', '--porcelain', '--untracked-files=normal'], capture=True).strip(),
-         'Integration source must be clean')
+    require_clean_harness()
     p['sources']['infrastructure'] = sha
     replace_private(engine.SESSION, json.dumps(p) + '\n')
 
@@ -155,6 +154,25 @@ def replace_private(path, content):
             os.close(fd)
     finally:
         pending.unlink(missing_ok=True)
+
+
+def require_clean_harness():
+    git = ['git', '-c', 'safe.directory=' + str(engine.ROOT), '-C', str(engine.ROOT)]
+    status = engine.execute([*git, 'status', '--porcelain', '--untracked-files=normal'], capture=True).rstrip()
+    if status:
+        # Emit only public HEAD-tracked paths or closed generated categories;
+        # never arbitrary untracked names or private filenames.
+        tracked = set(engine.execute([*git, 'ls-tree', '-r', '--name-only', 'HEAD'], capture=True).splitlines())
+        for line in status.splitlines():
+            path = line[3:]
+            if path in tracked and re.fullmatch(r'[A-Za-z0-9_./-]{1,200}', path):
+                print('INT-03 dirty tracked source: ' + path, flush=True)
+            else:
+                category = ('PYTHON_BYTECODE' if '__pycache__' in path else
+                            'DEVCONTAINER_GENERATED' if path.startswith('.devcontainer/') else
+                            'DEPENDENCY_INSTALL' if 'node_modules' in path else 'UNTRACKED_SOURCE')
+                print('INT-03 dirty category: ' + category, flush=True)
+    must(not status, 'Integration source must be clean')
 
 
 def harness_sha():

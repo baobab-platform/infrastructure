@@ -64,6 +64,9 @@ jobs:
           tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
             --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
             python3 -B tests/platform-integration/int03/run.py down
+      - name: Host recovery if the devcontainer is unavailable
+        if: always()
+        run: sudo --preserve-env=GITHUB_ACTIONS python3 -B tests/platform-integration/int03/host_cleanup.py
       - name: Retain only sanitized identity and prerequisite receipts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -77,6 +77,50 @@ class ProjectionTests(unittest.TestCase):
             m.smoke_projection(' ' * 16385, self.sources)
 
 
+class HostCleanupTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('int03_host_cleanup', BASE / 'host_cleanup.py')
+        self.host = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.host)
+
+    def test_recovery_is_label_scoped_and_never_deletes_container_supplied_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); state = root / '.runtime'; state.mkdir()
+            project = 'l4-' + 'a'*16
+            directory = state / ('int02-' + project); directory.mkdir(mode=0o700)
+            (directory / 'private').write_text('synthetic-secret')
+            outside = root / 'outside'; outside.mkdir(); (outside / 'preserve').write_text('keep')
+            session = state / 'int03-session.json'
+            session.write_text(json.dumps({'project': project, 'directory': '/different/container/.runtime/int02-' + project}))
+            session.chmod(0o600)
+            with patch.dict(os.environ, {'GITHUB_ACTIONS': 'true'}), patch.object(self.host.os, 'geteuid', return_value=0), \
+                 patch.object(self.host, 'STATE', state), patch.object(self.host, 'SESSION', session), \
+                 patch.object(self.host, 'command', return_value=[]) as command:
+                self.host.cleanup()
+                self.assertFalse(directory.exists())
+                self.assertFalse(session.exists())
+                self.assertEqual((outside/'preserve').read_text(), 'keep')
+                for call in command.call_args_list:
+                    args = call.args[0]
+                    if 'ls' in args or 'ps' in args:
+                        self.assertIn('--filter', args)
+                        self.assertTrue(any(project in arg for arg in args))
+
+    def test_failed_recovery_preserves_handles_and_refuses_untrusted_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); project = 'l4-'+'b'*16
+            directory = root/('int02-'+project); directory.mkdir(mode=0o700)
+            session = root/'session.json'; session.write_text(json.dumps({'project':project,
+                'directory':'/container/.runtime/int02-'+project})); session.chmod(0o600)
+            with patch.dict(os.environ, {'GITHUB_ACTIONS':'true'}), patch.object(self.host.os, 'geteuid', return_value=0), \
+                patch.object(self.host,'STATE',root), patch.object(self.host,'SESSION',session), \
+                patch.object(self.host,'command',return_value=['unrelated-container-name']):
+                with self.assertRaises(RuntimeError):
+                    self.host.cleanup()
+                self.assertTrue(session.exists())
+                self.assertTrue(directory.exists())
+
+
 class RuntimeTests(unittest.TestCase):
     def test_overlay_does_not_change_frozen_baseline_and_has_separate_session(self):
         before = (lab.PREVIOUS / 'lock.json').read_bytes()

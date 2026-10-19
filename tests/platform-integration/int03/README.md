@@ -203,7 +203,9 @@ stage/class. No raw Docker/Keycloak/Next/Playwright logs or fixture files are
 uploaded. A smoke PASS requires all four NAB-ID cases, observed runtime pins and
 successful resource/image/private-file cleanup. A failed teardown preserves
 recovery handles and cannot leave `passed=true`. Interrupted runs require the
-independent cleanup step; missing evidence cannot establish a pass.
+independent cleanup step, with label-scoped host recovery if the devcontainer
+is unavailable; host recovery never grants qualification. Missing evidence
+cannot establish a pass.
 
 This smaller identity profile does **not** accept NAB-01–04/full INT-03. CMS
 qualification/binding, published/preview and mutation/denial tests, the remaining
