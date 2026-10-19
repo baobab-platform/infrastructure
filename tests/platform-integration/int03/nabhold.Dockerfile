@@ -18,3 +18,4 @@ RUN node -e 'const [m,n]=process.versions.node.split(".").map(Number);if(m!==24|
  && test "$(pnpm --version)" = 11.24.0 \
  && git diff --exit-code && test -z "$(git status --porcelain --untracked-files=normal)" \
  && chown -R "${LAB_UID}:${LAB_GID}" /app
+USER ${LAB_UID}:${LAB_GID}

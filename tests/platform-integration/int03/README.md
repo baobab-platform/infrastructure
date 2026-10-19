@@ -197,7 +197,7 @@ read only, private stdin and the existing integration devcontainer. Repository
 package/image access still needs to be granted by the owning GitHub package;
 a 403 is a blocker, not authority to broaden permissions automatically.
 
-`*-int03-identity.json` and its digest contain only fixed scenario outcomes,
+`*-int03-identity/completed/receipt.json` and its paired digest contain only fixed scenario outcomes,
 source/image identities, an original consumer-receipt hash and a fixed failure
 stage/class. No raw Docker/Keycloak/Next/Playwright logs or fixture files are
 uploaded. A smoke PASS requires all four NAB-ID cases, observed runtime pins and

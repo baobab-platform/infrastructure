@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import secrets
 import shutil
@@ -112,11 +111,24 @@ def cleanup():
 
 
 def write_receipt(project, receipt):
+    # Publish the receipt and digest together. A write/sync failure must never
+    # expose a standalone PASS file without its completed evidence pair.
     o.EVIDENCE.mkdir(exist_ok=True)
-    body = json.dumps(receipt, sort_keys=True, indent=2) + '\n'
-    path = o.EVIDENCE / (project + '-int03-identity.json')
-    path.write_text(body)
-    path.with_suffix('.sha256').write_text(hashlib.sha256(body.encode()).hexdigest() + '\n')
+    final = o.EVIDENCE / (project + '-int03-identity')
+    final.mkdir(mode=0o700)
+    try:
+        pending = final / '.pending'
+        pending.mkdir(mode=0o700)
+        body = json.dumps(receipt, sort_keys=True, indent=2) + '\n'
+        handoff.write_private(pending / 'receipt.json', body)
+        handoff.write_private(pending / 'receipt.sha256', hashlib.sha256(body.encode()).hexdigest() + '\n')
+        handoff.sync_directory(pending)
+        os.rename(pending, final / 'completed')
+        handoff.sync_directory(final)
+        handoff.sync_directory(o.EVIDENCE)
+    except BaseException:
+        shutil.rmtree(final)
+        raise
 
 
 def run(value, prerequisite, token):
@@ -127,12 +139,16 @@ def run(value, prerequisite, token):
                'passed': False, 'scenarios': {key: 'BLOCKED' for key in IDS}}
     project = None
     stage = 'materialise'
+
+    def checkpoint(name):
+        nonlocal stage
+        stage = name
+        print('INT-03 stage: ' + name, flush=True)
     try:
         lab.materialise(value, prerequisite, token)
-        token = None
         p, directory, envfile = o.current()
         project = p['project']
-        stage = 'consumer-build'
+        checkpoint('consumer-build')
         docker_config = directory / 'build-docker-config'
         docker_config.mkdir(mode=0o700)
         build_env = {**os.environ, 'DOCKER_CONFIG': str(docker_config)}
@@ -147,21 +163,21 @@ def run(value, prerequisite, token):
             # path during later commands. No package credential reaches up().
             (directory / 'npm-token').write_text('')
             shutil.rmtree(docker_config)
-        stage = 'prerequisite-up'
+        checkpoint('prerequisite-up')
         o.up(prerequisite)
-        stage = 'prerequisite-requalification'
+        checkpoint('prerequisite-requalification')
         o.test(prerequisite)
-        stage = 'identity-fixture'
+        checkpoint('identity-fixture')
         provision(p, directory, envfile)
-        stage = 'consumer-up'
+        checkpoint('consumer-up')
         lab.compose(p, envfile, 'up', '-d', 'redis-int03', 'nabhold', timeout=180)
         lab.compose(p, envfile, 'exec', '-T', 'probe', 'python', '-',
                     stdin=(lab.BASE / 'wait.py').read_text(), timeout=260)
-        stage = 'runtime-provenance'
+        checkpoint('runtime-provenance')
         receipt['runtime'] = lab.source_manifest(p, directory, value)
         actual = lab.compose(p, envfile, 'exec', '-T', 'nabhold', 'git', 'rev-parse', 'HEAD', capture=True).strip()
         o.must(actual == value['sources']['nabhold'], 'Running estate source mismatch')
-        stage = 'browser-smoke'
+        checkpoint('browser-smoke')
         raw = lab.compose(p, envfile, 'run', '--rm', '--no-deps', 'nabhold', 'test', capture=True, timeout=400)
         receipt.update(smoke_projection(raw, p['sources']))
         receipt['smoke_checks_passed'] = True
@@ -172,6 +188,14 @@ def run(value, prerequisite, token):
         # No exception message, URL, command argv, Principal or credential is
         # exported. The fixed stage is enough to request private diagnostics.
         receipt['failed_stage'] = stage
+        receipt['failure_type'] = type(error).__name__ if type(error).__name__ in {'Blocked', 'OSError', 'PermissionError', 'FileNotFoundError', 'KeyError', 'ValueError', 'TypeError'} else 'OTHER'
+        if isinstance(error, o.Blocked):
+            reasons = {'Integration source must be clean': 'DIRTY_HARNESS',
+                       'Harness revision unavailable': 'HARNESS_REVISION_UNAVAILABLE',
+                       'Runtime source checkout is dirty': 'DIRTY_SOURCE',
+                       'Runtime source checkout mismatch': 'SOURCE_HEAD_MISMATCH'}
+            if str(error) in reasons:
+                receipt['failure_class'] = reasons[str(error)]
         raise
     finally:
         # If materialisation failed after writing its session, still clean it.

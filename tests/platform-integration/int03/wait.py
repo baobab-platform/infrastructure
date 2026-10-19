@@ -10,6 +10,7 @@ for _ in range(40):
             if response.status == 200:
                 raise SystemExit(0)
     except (OSError, ValueError):
+        # A starting upstream may refuse or time out; retry after the bounded delay.
         pass
     time.sleep(2)
 raise SystemExit(2)

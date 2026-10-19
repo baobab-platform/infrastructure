@@ -4,7 +4,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import ssl
 import subprocess
 import sys
 import tempfile
@@ -182,6 +181,22 @@ class RuntimeTests(unittest.TestCase):
             lab.replace_private(path, 'new secret')
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(path.read_text(), 'new secret')
+
+    def test_receipt_pair_is_atomic_and_failed_digest_never_publishes_pass(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(o, 'EVIDENCE', Path(tmp)):
+            project = 'l4-' + 'a'*16
+            actual = m.handoff.write_private
+            def fail(path, content):
+                if path.name == 'receipt.sha256':
+                    raise OSError('injected')
+                return actual(path, content)
+            with patch.object(m.handoff, 'write_private', side_effect=fail):
+                with self.assertRaises(OSError):
+                    m.write_receipt(project, {'passed': True})
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+            m.write_receipt(project, {'passed': True})
+            completed = Path(tmp) / (project + '-int03-identity') / 'completed'
+            self.assertEqual({p.name for p in completed.iterdir()}, {'receipt.json', 'receipt.sha256'})
 
     def test_build_failure_classes_never_echo_supplied_output(self):
         self.assertEqual(lab.build_class('ERR_PNPM_FETCH_403 private-token'), 'PACKAGE_READ_FORBIDDEN')

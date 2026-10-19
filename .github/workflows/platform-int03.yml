@@ -71,8 +71,8 @@ jobs:
           name: int03-identity-synthetic-observations
           if-no-files-found: warn
           path: |
-            tests/platform-integration/evidence/*-int03-identity.json
-            tests/platform-integration/evidence/*-int03-identity.sha256
+            tests/platform-integration/evidence/*-int03-identity/completed/receipt.json
+            tests/platform-integration/evidence/*-int03-identity/completed/receipt.sha256
             tests/platform-integration/evidence/*-int02.json
             tests/platform-integration/evidence/*-provider-proof.json
             tests/platform-integration/evidence/*-image-manifest.json

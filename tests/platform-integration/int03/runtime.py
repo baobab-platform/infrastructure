@@ -103,6 +103,7 @@ engine.throwaway_tls = tls
 
 
 def materialise(value, prerequisite, token):
+    must(os.getuid() != 0, 'Run the connected profile as the non-root laboratory user')
     must(type(token) is str and 16 <= len(token) <= 4096 and
          not re.search(r'[\x00-\x20\x7f]', token), 'Package-read credential unavailable')
     engine.materialise(prerequisite)
@@ -130,9 +131,9 @@ def materialise(value, prerequisite, token):
     p['sources']['nabhold'] = value['sources']['nabhold']
     # Unlike the frozen baseline field, this is the independently observed
     # clean integration checkout actually executing this runner.
-    sha = engine.harness_sha()
+    sha = harness_sha()
     must(engine.SHA40.fullmatch(sha), 'Harness revision unavailable')
-    must(not engine.execute(['git', '-C', str(engine.ROOT), 'status', '--porcelain', '--untracked-files=normal'], capture=True).strip(),
+    must(not engine.execute(['git', '-c', 'safe.directory=' + str(engine.ROOT), '-C', str(engine.ROOT), 'status', '--porcelain', '--untracked-files=normal'], capture=True).strip(),
          'Integration source must be clean')
     p['sources']['infrastructure'] = sha
     replace_private(engine.SESSION, json.dumps(p) + '\n')
@@ -156,10 +157,21 @@ def replace_private(path, content):
         pending.unlink(missing_ok=True)
 
 
+def harness_sha():
+    # Actions' bind-mounted checkout may belong to a different host UID.
+    # Trust only this exact reviewed workspace for these read-only Git calls;
+    # never disable safe.directory globally or use a wildcard.
+    return engine.execute(['git', '-c', 'safe.directory=' + str(engine.ROOT),
+                           '-C', str(engine.ROOT), 'rev-parse', 'HEAD'], capture=True).strip()
+
+
+engine.harness_sha = harness_sha
+
+
 def verify_checkout(path, sha):
-    must(engine.execute(['git', '-C', str(path), 'rev-parse', 'HEAD'], capture=True).strip() == sha,
+    must(engine.execute(['git', '-c', 'safe.directory=' + str(path), '-C', str(path), 'rev-parse', 'HEAD'], capture=True).strip() == sha,
          'Runtime source checkout mismatch')
-    must(not engine.execute(['git', '-C', str(path), 'status', '--porcelain', '--untracked-files=normal'], capture=True).strip(),
+    must(not engine.execute(['git', '-c', 'safe.directory=' + str(path), '-C', str(path), 'status', '--porcelain', '--untracked-files=normal'], capture=True).strip(),
          'Runtime source checkout is dirty')
 
 
