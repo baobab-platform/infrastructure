@@ -1,6 +1,8 @@
 # INT-03A — private Nabhold identity-smoke handoff
 
-**State: source preparation only. No connected INT-03 run is claimed.**
+**State: INT-03A is merged source preparation. The INT-03B connected identity
+runner is a new source increment pending actual CI/review. No connected PASS
+or full INT-03 acceptance is claimed by this document.**
 Authority: Accepted ADR-SHARED-036, EA v2.2 INT-02 → INT-03, Nabhold Go-Live
 v2.0 P0-04/P0-06/P0-07, ADR-NAB-0004/0014 and IAM ADR-IAM-0033.
 
@@ -143,3 +145,68 @@ the existing mandatory INT-02 source job. The existing live job still proves
 only its original IAM/CP/Pulse profile. Rollback: revert this preparer, stop any
 separately provisioned disposable lab under its owning lifecycle, and destroy
 unneeded private bundles; retain sanitized evidence under its original scope.
+
+
+## INT-03B connected identity runner
+
+`run.py` now owns an actual disposable lifecycle, unlike `handoff.py`. It loads
+its separate `lock.json`, imports the unchanged INT-02 implementation in an
+isolated module/session, and overlays `compose.yaml`/`edge.conf`. The frozen
+INT-02 lock is never edited. Selected current IAM/CP/Shared pins are requalified
+through the complete existing IAM/CP/Pulse suite before Nabhold is tested.
+That requalification is a new run, not inheritance of prior acceptance.
+
+The profile builds the exact Nabhold checkout on its approved immutable Node
+24/pnpm 11.24.0 browser image. Git metadata is retained so the existing consumer
+independently checks its clean source revision. Package-read authentication
+arrives through private stdin, is consumed by a BuildKit secret/tmpfs npmrc,
+and is blanked before services start. Temporary GHCR Docker authentication is
+removed after build. No registry credential becomes a runtime environment
+variable, application mount, image layer or artifact. A package ACL/registry
+failure blocks the run; it never substitutes local Shared packages or mocks.
+
+A new non-admin synthetic `l4-int03-human` and `nabhold-int03` client are created
+through real Keycloak administration. The product client stays disabled. The
+issuer-generated subject is explicitly mapped to a new ACTIVE CP human in this
+throwaway DB; no administrative/business grant or Tenant membership is added.
+This SQL is a synthetic fixture boundary, never a protected registration recipe.
+
+The edge and TLS-only Redis have distinct per-run leaf keys under one temporary
+CA; the signer is destroyed before launch. Nabhold mounts only its prepared
+handoff, Redis only its leaf material and namespace ACL. Chromium gets NSS trust
+and Node gets the verified CA file; no certificate-ignore settings are used.
+Actual running image configuration IDs are checked against built images and
+recorded explicitly as **config IDs, not OCI manifest digests**. Source checkouts,
+the running estate Git revision and consumer-declared pins are checked separately.
+
+Run the same entrypoint inside the integration devcontainer or an equivalent
+Docker-capable local runner, from a clean reviewed Infrastructure checkout:
+
+```bash
+python3 -B tests/platform-integration/int03/run.py preflight
+printf '%s\n' "$BAOBAB_PACKAGES_READ_TOKEN" | \
+  INT03_REGISTRY_USERNAME="$GITHUB_USER" \
+  python3 -B tests/platform-integration/int03/run.py run --package-token-stdin
+# Retry an interrupted cleanup without supplying a registry token:
+python3 -B tests/platform-integration/int03/run.py down
+```
+
+Use the existing approved read-only package token/user; do not create a broader
+credential. The Actions workflow uses its repository token with contents/package
+read only, private stdin and the existing integration devcontainer. Repository
+package/image access still needs to be granted by the owning GitHub package;
+a 403 is a blocker, not authority to broaden permissions automatically.
+
+`*-int03-identity.json` and its digest contain only fixed scenario outcomes,
+source/image identities, an original consumer-receipt hash and a fixed failure
+stage/class. No raw Docker/Keycloak/Next/Playwright logs or fixture files are
+uploaded. A smoke PASS requires all four NAB-ID cases, observed runtime pins and
+successful resource/image/private-file cleanup. A failed teardown preserves
+recovery handles and cannot leave `passed=true`. Interrupted runs require the
+independent cleanup step; missing evidence cannot establish a pass.
+
+This smaller identity profile does **not** accept NAB-01–04/full INT-03. CMS
+qualification/binding, published/preview and mutation/denial tests, the remaining
+revocation/Principal-deactivation/session-negative cases, protected native C4,
+legal onboarding, staging and production retain their own gates. Nabhold remains
+non-trading; human `authority:self` is never promoted into executive authority.

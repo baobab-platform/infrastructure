@@ -1,0 +1,78 @@
+name: INT-03 connected Nabhold identity smoke
+# Source qualification only; does not implement/accept CMS or full NAB-01–04.
+on:
+  pull_request:
+    paths:
+      - tests/platform-integration/int03/**
+      - tests/platform-integration/int02/**
+      - .github/workflows/platform-int03.yml
+      - .devcontainer/platform-integration/**
+  push:
+    branches: [main]
+    paths:
+      - tests/platform-integration/int03/**
+      - .github/workflows/platform-int03.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+jobs:
+  source:
+    name: INT-03 source/security contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
+      - run: python3 tests/platform-integration/int03/run.py preflight
+      - run: python3 -B -m unittest discover -s tests/platform-integration/int03 -p 'test_*.py' -v
+      - run: node --check tests/platform-integration/int03/consumer.mjs
+      - run: bash -n tests/platform-integration/int03/fixture.sh
+  connected:
+    name: Real Nabhold BFF, IAM, CP and TLS Redis smoke
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install locked Dev Containers CLI
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Start the same integration devcontainer used in Codespaces
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: Run connected profile with private stdin package authentication
+        env:
+          PACKAGE_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          set +x
+          printf '%s\n' "$PACKAGE_READ_TOKEN" | \
+            tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+              --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+              --remote-env "INT03_REGISTRY_USERNAME=$GITHUB_ACTOR" \
+              python3 -B tests/platform-integration/int03/run.py run --package-token-stdin
+      - name: Retry cleanup if a process was interrupted
+        if: always()
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            python3 -B tests/platform-integration/int03/run.py down
+      - name: Retain only sanitized identity and prerequisite receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: int03-identity-synthetic-observations
+          if-no-files-found: warn
+          path: |
+            tests/platform-integration/evidence/*-int03-identity.json
+            tests/platform-integration/evidence/*-int03-identity.sha256
+            tests/platform-integration/evidence/*-int02.json
+            tests/platform-integration/evidence/*-provider-proof.json
+            tests/platform-integration/evidence/*-image-manifest.json

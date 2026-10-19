@@ -1,0 +1,64 @@
+# Overlay only. The frozen INT-02 compose and lock are never modified.
+services:
+  edge:
+    networks:
+      lab:
+        aliases: [nabhold.int03.test]
+  redis-int03:
+    image: ${INT03_REDIS_IMAGE:?digest required}
+    user: ${INT03_UID:?owner required}:${INT03_GID:?owner required}
+    entrypoint: [redis-server]
+    command:
+      - --port
+      - "0"
+      - --tls-port
+      - "6379"
+      - --tls-cert-file
+      - /run/int03-tls/redis.pem
+      - --tls-key-file
+      - /run/int03-tls/redis.key
+      - --tls-ca-cert-file
+      - /run/int03-tls/ca.pem
+      - --tls-auth-clients
+      - "no"
+      - --tls-protocols
+      - TLSv1.3
+      - --aclfile
+      - /run/int03/users.acl
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ${INT03_RUNTIME_HOST}/redis-tls:/run/int03-tls:ro
+      - ${INT03_RUNTIME_HOST}/int03-bundle/prepared/users.acl:/run/int03/users.acl:ro
+    networks:
+      lab:
+        aliases: [redis.int03.test]
+  nabhold:
+    build:
+      context: ${INT03_NABHOLD_SOURCE:?exact checkout required}
+      dockerfile: ${INT03_NABHOLD_DOCKERFILE:?reviewed builder required}
+      args:
+        LAB_UID: ${INT03_UID}
+        LAB_GID: ${INT03_GID}
+      secrets: [int03_npm_token]
+    image: ${INT03_NABHOLD_IMAGE:?run-scoped image required}
+    user: ${INT03_UID}:${INT03_GID}
+    entrypoint: [node, /lab/consumer.mjs]
+    command: [dev]
+    environment:
+      HOME: /tmp/int03-home
+      NABHOLD_INTEGRATION_ENV_FILE: ${INT03_RUNTIME_PATH}/int03-bundle/prepared/integration.env
+    volumes:
+      - ${INT03_RUNTIME_HOST}/int03-bundle/prepared:${INT03_RUNTIME_PATH}/int03-bundle/prepared:ro
+      - ${INT03_LAB_SOURCE}:/lab:ro
+    networks: [lab]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+secrets:
+  int03_npm_token:
+    file: ${INT03_TOKEN_FILE:?build-only private file required}

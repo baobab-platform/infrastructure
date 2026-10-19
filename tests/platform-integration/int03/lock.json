@@ -1,0 +1,14 @@
+{
+  "schema": "infrastructure.int03.identity.v1",
+  "profile": "keycloak-identity-smoke",
+  "sources": {
+    "baobab-iam": "63db55c87fda13762fc438a6d32a885a63ddb353",
+    "baobab-cp": "3810b8222fa6df09b829e7c725d534af10b1155c",
+    "shared": "5b34b15b18361d43a9da9bec088771912c2b89c6",
+    "nabhold": "bc672d37e0e301d30090937f103710a82898df26"
+  },
+  "redis_image": "redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+  "nabhold_base_image": "ghcr.io/baobab-platform/baobab-dev:1.4.4-frontend-e2e@sha256:eb9c401cea16c4f333c28b250dd455e505752dfc6d11e9779a182a02bc207213",
+  "synthetic_only": true,
+  "full_int03_acceptance": false
+}
