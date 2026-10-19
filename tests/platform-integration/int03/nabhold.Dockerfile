@@ -3,10 +3,8 @@
 FROM ghcr.io/baobab-platform/baobab-dev:1.4.4-frontend-e2e@sha256:eb9c401cea16c4f333c28b250dd455e505752dfc6d11e9779a182a02bc207213
 USER root
 WORKDIR /app
-# Runtime has no external network: prepare the pinned manager in a readable
-# shared cache rather than a build-user HOME that the service UID cannot use.
-ENV COREPACK_HOME=/opt/int03-corepack
-RUN corepack prepare pnpm@11.24.0 --activate && chmod -R a+rX /opt/int03-corepack
+# The approved image owns a shared, readable offline Corepack cache. Preserve
+# its COREPACK_HOME and disabled-network policy; verify the exact pin below.
 ARG LAB_UID
 ARG LAB_GID
 RUN apt-get update && apt-get install -y --no-install-recommends libnss3-tools \

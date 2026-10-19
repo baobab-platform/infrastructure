@@ -142,6 +142,9 @@ class RuntimeTests(unittest.TestCase):
         workflow = (o.ROOT / '.github/workflows/platform-int03.yml').read_text()
         self.assertIn('--remote-env GITHUB_ACTIONS=true', workflow)
         self.assertIn('--remote-env "GITHUB_RUN_ID=$GITHUB_RUN_ID"', workflow)
+        dockerfile = (BASE / 'nabhold.Dockerfile').read_text()
+        self.assertNotIn('ENV COREPACK_HOME=', dockerfile)
+        self.assertNotIn('RUN corepack prepare', dockerfile)
 
     def test_dirty_harness_diagnostics_never_print_unknown_filenames(self):
         import io
