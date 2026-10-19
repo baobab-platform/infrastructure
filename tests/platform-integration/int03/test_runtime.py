@@ -39,7 +39,8 @@ class ProjectionTests(unittest.TestCase):
     def test_fixed_success_projection_never_copies_supplied_ids_or_text(self):
         result = m.smoke_projection(json.dumps(self.good), self.sources)
         self.assertEqual(result['scenarios'], {key: 'PASS' for key in m.IDS})
-        self.assertEqual(set(result), {'scenarios', 'consumer_receipt_sha256'})
+        self.assertEqual(set(result), {'scenarios', 'consumer_receipt_sha256', 'consumer_reported_process_succeeded',
+                                      'consumer_observations_complete', 'consumer_observations_invalid'})
         self.assertNotIn('test', json.dumps(result))
 
     def test_each_missing_failed_and_nonboolean_observation_denies(self):
@@ -58,6 +59,16 @@ class ProjectionTests(unittest.TestCase):
                 bad = copy.deepcopy(self.good); bad[key] = value
                 with self.assertRaises(o.Blocked):
                     m.smoke_projection(json.dumps(bad), self.sources)
+
+    def test_partial_failures_are_retained_but_never_pass_the_gate(self):
+        bad = copy.deepcopy(self.good)
+        bad.update(processSucceeded=False, outcome='INCOMPLETE_OR_FAILED')
+        bad['observations']['results'].update({'NAB-ID-02': 'failed', 'NAB-ID-03': 'notRun'})
+        result = m.smoke_projection(json.dumps(bad), self.sources, require_pass=False)
+        self.assertEqual(result['scenarios'], {'NAB-ID-01':'PASS','NAB-ID-02':'FAIL',
+                                              'NAB-ID-03':'BLOCKED','NAB-ID-04':'PASS'})
+        with self.assertRaises(o.Blocked):
+            m.smoke_projection(json.dumps(bad), self.sources)
 
     def test_extra_fields_duplicate_json_pin_drift_and_acceptance_claims_deny(self):
         for transform in [lambda r: r.update(secret='must-not-copy'),
@@ -239,6 +250,7 @@ class RuntimeTests(unittest.TestCase):
                 patch.dict(os.environ, {'INT03_REGISTRY_USERNAME': 'fixture-owner'}), patch.object(o, 'execute', return_value=''), \
                 patch.object(o, 'up'), patch.object(o, 'test'), patch.object(m, 'provision'), \
                 patch.object(lab, 'source_manifest', return_value={}), patch.object(m, 'cleanup', side_effect=o.Blocked('failed')), \
+                patch.object(lab, 'consume', return_value=(0, good)), \
                 patch.object(m, 'write_receipt') as write:
                 with self.assertRaises(o.Blocked):
                     m.run(value, prerequisite, 'synthetic-read-token')

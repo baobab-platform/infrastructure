@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import subprocess
 import sys
 
 BASE = Path(__file__).resolve().parent
@@ -26,11 +27,26 @@ engine.LOCK = BASE / 'prerequisite-lock.json'
 base_compose = engine.compose
 
 
+def compose_arguments(p, envfile):
+    return ['docker', 'compose', '--env-file', str(envfile),
+        '-f', str(PREVIOUS / 'compose.yaml'), '-f', str(BASE / 'compose.yaml'),
+        '-p', p['project']]
+
+
 def compose(p, envfile, *args, capture=False, stdin=None, timeout=600, command_env=None):
     # Docker receives secrets over private files/stdin, never a printed argv.
-    return engine.execute(['docker', 'compose', '--env-file', str(envfile),
-        '-f', str(PREVIOUS / 'compose.yaml'), '-f', str(BASE / 'compose.yaml'),
-        '-p', p['project'], *args], capture=capture, input_text=stdin, timeout=timeout, env=command_env)
+    return engine.execute([*compose_arguments(p, envfile), *args], capture=capture,
+                          input_text=stdin, timeout=timeout, env=command_env)
+
+
+def consume(p, envfile):
+    # Preserve the real nonzero exit AND the sanitized consumer receipt so a
+    # failed browser case is recorded as FAIL, rather than relabelled BLOCKED.
+    result = subprocess.run([*compose_arguments(p, envfile), 'run', '--rm', '--no-deps',
+                             'nabhold', 'test'], capture_output=True, text=True,
+                            timeout=400, check=False)
+    must(len(result.stdout.encode()) <= 16384, 'Consumer receipt exceeds bound')
+    return result.returncode, result.stdout
 
 
 engine.compose = compose

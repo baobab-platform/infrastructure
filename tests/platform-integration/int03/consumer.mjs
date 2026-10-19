@@ -32,7 +32,7 @@ try {
   child.once('error', () => { process.exitCode = 2; });
   child.once('exit', code => {
     process.exitCode = code === 0 ? 0 : 2;
-    if (mode === 'test' && code === 0) {
+    if (mode === 'test') {
       // Output only the consumer's sanitized receipt; never browser diagnostics.
       try {
         const runs = readdirSync('/app/.integration').filter(n => /^identity-smoke-/.test(n));

@@ -212,6 +212,8 @@ recovery handles and cannot leave `passed=true`. Interrupted runs require the
 independent cleanup step, with label-scoped host recovery if the devcontainer
 is unavailable; host recovery never grants qualification. Missing evidence
 cannot establish a pass.
+When browser execution fails, its actual nonzero exit and closed per-case
+PASS/FAIL/BLOCKED projection are retained; raw browser errors remain suppressed.
 
 This smaller identity profile does **not** accept NAB-01–04/full INT-03. CMS
 qualification/binding, published/preview and mutation/denial tests, the remaining

@@ -16,6 +16,9 @@ on:
 permissions:
   contents: read
   packages: read
+concurrency:
+  group: int03-identity-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   source:
     name: INT-03 source/security contracts

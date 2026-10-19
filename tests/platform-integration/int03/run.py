@@ -58,7 +58,7 @@ def provision(p, directory, envfile):
     o.must(result.strip().splitlines()[-1] == '1', 'Current synthetic CP mapping not established')
 
 
-def smoke_projection(raw, sources):
+def smoke_projection(raw, sources, require_pass=True):
     """Only closed booleans and fixed IDs cross the component boundary."""
     o.must(type(raw) is str and 0 < len(raw.encode()) <= 16384, 'Consumer receipt unavailable')
     r = json.loads(raw, object_pairs_hook=handoff.unique)
@@ -75,11 +75,21 @@ def smoke_projection(raw, sources):
     observation = r['observations']
     o.must(type(observation) is dict and set(observation) == {'complete', 'invalid', 'results'} and
            type(observation['results']) is dict and set(observation['results']) == set(IDS), 'Incomplete consumer coverage')
-    o.must(r['processSucceeded'] is True and r['outcome'] == 'PASS' and
-           observation['complete'] is True and observation['invalid'] is False and
-           all(observation['results'][key] == 'passed' for key in IDS), 'Consumer smoke did not pass')
+    statuses = {'passed': 'PASS', 'failed': 'FAIL', 'timedOut': 'FAIL',
+                'interrupted': 'FAIL', 'skipped': 'BLOCKED', 'notRun': 'BLOCKED'}
+    o.must(type(r['processSucceeded']) is bool and r['outcome'] in {'PASS', 'INCOMPLETE_OR_FAILED'} and
+           type(observation['complete']) is bool and type(observation['invalid']) is bool and
+           all(type(status) is str and status in statuses for status in observation['results'].values()),
+           'Invalid consumer outcomes')
+    if require_pass:
+        o.must(r['processSucceeded'] is True and r['outcome'] == 'PASS' and
+               observation['complete'] is True and observation['invalid'] is False and
+               all(observation['results'][key] == 'passed' for key in IDS), 'Consumer smoke did not pass')
     return {'consumer_receipt_sha256': hashlib.sha256(raw.encode()).hexdigest(),
-            'scenarios': {key: 'PASS' for key in IDS}}
+            'consumer_reported_process_succeeded': r['processSucceeded'],
+            'consumer_observations_complete': observation['complete'],
+            'consumer_observations_invalid': observation['invalid'],
+            'scenarios': {key: statuses[observation['results'][key]] for key in IDS}}
 
 
 def cleanup():
@@ -181,8 +191,11 @@ def run(value, prerequisite, token):
         dirty = lab.compose(p, envfile, 'exec', '-T', 'nabhold', 'git', 'status', '--porcelain', '--untracked-files=normal', capture=True)
         o.must(not dirty.strip(), 'Running estate source is dirty')
         checkpoint('browser-smoke')
-        raw = lab.compose(p, envfile, 'run', '--rm', '--no-deps', 'nabhold', 'test', capture=True, timeout=400)
-        receipt.update(smoke_projection(raw, p['sources']))
+        code, raw = lab.consume(p, envfile)
+        receipt['consumer_transport_succeeded'] = code == 0
+        receipt.update(smoke_projection(raw, p['sources'], require_pass=False))
+        o.must(code == 0, 'Consumer process failed')
+        smoke_projection(raw, p['sources'])
         receipt['smoke_checks_passed'] = True
     except Exception as error:
         match = re.search(r"Build failure class: ([A-Z_]{1,32})", str(error)) if isinstance(error, o.Blocked) else None
