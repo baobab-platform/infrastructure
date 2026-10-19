@@ -133,6 +133,23 @@ class RuntimeTests(unittest.TestCase):
             with self.assertRaises(o.Blocked):
                 lab.load()
 
+    def test_generated_feature_lock_is_reviewed_and_ci_refuses_drift(self):
+        lock = json.loads((o.ROOT / '.devcontainer/platform-integration/devcontainer-lock.json').read_text())
+        feature = lock['features']['ghcr.io/devcontainers/features/docker-outside-of-docker:1']
+        self.assertEqual(feature['resolved'].split('@')[1], feature['integrity'])
+        self.assertRegex(feature['integrity'], r'^sha256:[0-9a-f]{64}$')
+        self.assertIn('--frozen-lockfile', (o.ROOT / '.github/workflows/platform-int03.yml').read_text())
+
+    def test_dirty_harness_diagnostics_never_print_unknown_filenames(self):
+        import io
+        from contextlib import redirect_stdout
+        stream = io.StringIO()
+        with patch.object(o, 'execute', side_effect=['?? private-human-password.secret\n', 'README.md\n']), redirect_stdout(stream):
+            with self.assertRaises(o.Blocked):
+                lab.require_clean_harness()
+        self.assertNotIn('private-human-password', stream.getvalue())
+        self.assertIn('UNTRACKED_SOURCE', stream.getvalue())
+
     def test_compose_includes_both_files_and_uses_private_stdin(self):
         with patch.object(o, 'execute', return_value='safe') as execute:
             result = lab.compose({'project': 'l4-' + 'a' * 16}, Path('/private/env'),

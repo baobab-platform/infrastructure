@@ -155,6 +155,10 @@ isolated module/session, and overlays `compose.yaml`/`edge.conf`. The frozen
 INT-02 lock is never edited. Selected current IAM/CP/Shared pins are requalified
 through the complete existing IAM/CP/Pulse suite before Nabhold is tested.
 That requalification is a new run, not inheritance of prior acceptance.
+The integration devcontainer feature lock is now committed (Docker-outside-of-
+Docker 1.10.1, resolved OCI digest from the pinned CLI's actual registry query);
+CI uses `--frozen-lockfile`. Earlier attempts stopped because the CLI generated
+an untracked lockfile. The clean-source requirement remains strict.
 
 The profile builds the exact Nabhold checkout on its approved immutable Node
 24/pnpm 11.24.0 browser image. Git metadata is retained so the existing consumer

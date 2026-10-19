@@ -52,6 +52,7 @@ services:
     command: [dev]
     environment:
       HOME: /tmp/int03-home
+      NEXT_TELEMETRY_DISABLED: "1"
       NABHOLD_INTEGRATION_ENV_FILE: ${INT03_RUNTIME_PATH}/int03-bundle/prepared/integration.env
     volumes:
       - ${INT03_RUNTIME_HOST}/int03-bundle/prepared:${INT03_RUNTIME_PATH}/int03-bundle/prepared:ro

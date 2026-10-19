@@ -177,6 +177,8 @@ def run(value, prerequisite, token):
         receipt['runtime'] = lab.source_manifest(p, directory, value)
         actual = lab.compose(p, envfile, 'exec', '-T', 'nabhold', 'git', 'rev-parse', 'HEAD', capture=True).strip()
         o.must(actual == value['sources']['nabhold'], 'Running estate source mismatch')
+        dirty = lab.compose(p, envfile, 'exec', '-T', 'nabhold', 'git', 'status', '--porcelain', '--untracked-files=normal', capture=True)
+        o.must(not dirty.strip(), 'Running estate source is dirty')
         checkpoint('browser-smoke')
         raw = lab.compose(p, envfile, 'run', '--rm', '--no-deps', 'nabhold', 'test', capture=True, timeout=400)
         receipt.update(smoke_projection(raw, p['sources']))

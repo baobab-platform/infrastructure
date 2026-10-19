@@ -45,7 +45,7 @@ jobs:
         run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
       - name: Start the same integration devcontainer used in Codespaces
         run: |
-          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up \
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up --frozen-lockfile \
             --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
       - name: Run connected profile with private stdin package authentication
         env:
