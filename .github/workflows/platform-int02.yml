@@ -71,6 +71,13 @@ jobs:
           fi
           if [ -n "$HARNESS_SHA" ] && [ "$(git rev-parse HEAD)" != "$HARNESS_SHA" ]; then echo "harness checkout does not match harness_sha" >&2; exit 2; fi
       - run: python3 tests/platform-integration/l4.py preflight iam-cp --static
+      # INT-03A prepares private inputs only. These checks do not relabel the
+      # INT-02 live job as a Nabhold/CMS integration or protected acceptance.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+      - name: INT-03 private handoff and real Node dotenv interoperability
+        run: python3 -m unittest discover -s tests/platform-integration/int03 -p test_handoff.py -v
       - run: python3 -m unittest discover -s tests/platform-integration/int02 -p test_int02.py -v
       - run: python3 -m py_compile tests/platform-integration/int02/*.py
       - name: Confidential callback validator checks
