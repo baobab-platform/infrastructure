@@ -20,6 +20,9 @@ engine = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = engine
 spec.loader.exec_module(engine)
 engine.SESSION = engine.STATE / 'int03-session.json'
+# The reused qualifier hashes this separately reviewed prerequisite manifest;
+# never pair rewritten pins with the frozen INT-02 manifest's digest.
+engine.LOCK = BASE / 'prerequisite-lock.json'
 base_compose = engine.compose
 
 
@@ -84,7 +87,8 @@ def load():
     must('FROM ' + value['nabhold_base_image'] in (BASE / 'nabhold.Dockerfile').read_text().splitlines(),
          'Nabhold builder differs from reviewed base image')
     prerequisite = engine.load()
-    prerequisite['sources'].update({k: v for k, v in value['sources'].items() if k != 'nabhold'})
+    must(all(prerequisite['sources'][k] == v for k, v in value['sources'].items() if k != 'nabhold'),
+         'Identity and prerequisite source locks disagree')
     return value, prerequisite
 
 
@@ -131,6 +135,7 @@ def materialise(value, prerequisite, token):
                     'https://github.com/baobab-platform/nabhold.git', str(checkout)], timeout=300)
     engine.execute(['git', '-C', str(checkout), 'checkout', '--quiet', '--detach', value['sources']['nabhold']], timeout=60)
     verify_checkout(checkout, value['sources']['nabhold'])
+    prepare_templates(checkout, directory / 'tracked-templates')
     # This path is never mounted into a service as a dedicated secret, and is
     # blanked immediately after BuildKit consumes it. The run directory is
     # private; none of it is an evidence artifact.
@@ -139,6 +144,7 @@ def materialise(value, prerequisite, token):
         'INT03_RUNTIME_HOST': engine.host_path(directory), 'INT03_RUNTIME_PATH': str(directory),
         'INT03_UID': str(os.getuid()), 'INT03_GID': str(os.getgid()),
         'INT03_NABHOLD_SOURCE': str(checkout), 'INT03_NABHOLD_DOCKERFILE': str(BASE / 'nabhold.Dockerfile'),
+        'INT03_TRACKED_TEMPLATES': str(directory / 'tracked-templates'),
         'INT03_BASE_IMAGE': value['nabhold_base_image'], 'INT03_REDIS_IMAGE': value['redis_image'],
         'INT03_NABHOLD_IMAGE': 'l4-nabhold-' + p['project'],
         'INT03_TOKEN_FILE': str(directory / 'npm-token'), 'INT03_LAB_SOURCE': engine.host_path(BASE),
@@ -155,6 +161,16 @@ def materialise(value, prerequisite, token):
     p['sources']['infrastructure'] = sha
     replace_private(engine.SESSION, json.dumps(p) + '\n')
 
+
+
+def prepare_templates(checkout, destination):
+    # Product Docker ignore rules exclude .env*. Preserve only the two public,
+    # committed examples for the image's full Git worktree verification. No
+    # operator dotenv, generated handoff or build credential is copied here.
+    import handoff
+    destination.mkdir(mode=0o700)
+    for name in ('.env.example', '.env.integration.example'):
+        engine.private(destination / name, handoff.read_file(checkout / name, private=False))
 
 
 def replace_private(path, content):
@@ -235,4 +251,5 @@ def source_manifest(p, directory, value):
     return {'sources': p['sources'], 'built_image_config_ids': built,
             'locked_runtime_images': {**engine.load()['runtime_images'], 'redis': value['redis_image'],
                                       'nabhold_base': value['nabhold_base_image']},
-            'lock_sha256': hashlib.sha256((BASE / 'lock.json').read_bytes()).hexdigest()}
+            'lock_sha256': hashlib.sha256((BASE / 'lock.json').read_bytes()).hexdigest(),
+            'prerequisite_lock_sha256': hashlib.sha256(engine.LOCK.read_bytes()).hexdigest()}

@@ -150,11 +150,13 @@ unneeded private bundles; retain sanitized evidence under its original scope.
 ## INT-03B connected identity runner
 
 `run.py` now owns an actual disposable lifecycle, unlike `handoff.py`. It loads
-its separate `lock.json`, imports the unchanged INT-02 implementation in an
+its separate `lock.json` and `prerequisite-lock.json`, imports the unchanged INT-02 implementation in an
 isolated module/session, and overlays `compose.yaml`/`edge.conf`. The frozen
 INT-02 lock is never edited. Selected current IAM/CP/Shared pins are requalified
 through the complete existing IAM/CP/Pulse suite before Nabhold is tested.
 That requalification is a new run, not inheritance of prior acceptance.
+The qualifier hashes its own prerequisite file so that the recorded source
+pins and manifest digest agree, rather than hashing the old frozen lock.
 The integration devcontainer feature lock is now committed (Docker-outside-of-
 Docker 1.10.1, resolved OCI digest from the pinned CLI's actual registry query);
 CI uses `--frozen-lockfile`. Earlier attempts stopped because the CLI generated

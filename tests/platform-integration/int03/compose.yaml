@@ -44,6 +44,7 @@ services:
       dockerfile: ${INT03_NABHOLD_DOCKERFILE:?reviewed builder required}
       additional_contexts:
         nabhold_git: ${INT03_NABHOLD_SOURCE}/.git
+        nabhold_templates: ${INT03_TRACKED_TEMPLATES:?public tracked examples required}
       args:
         LAB_UID: ${INT03_UID}
         LAB_GID: ${INT03_GID}

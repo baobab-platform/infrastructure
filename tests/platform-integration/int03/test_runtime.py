@@ -128,6 +128,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual((lab.PREVIOUS / 'lock.json').read_bytes(), before)
         self.assertEqual(prerequisite['sources']['baobab-iam'], value['sources']['baobab-iam'])
         self.assertEqual(o.SESSION.name, 'int03-session.json')
+        self.assertEqual(o.LOCK, BASE / 'prerequisite-lock.json')
+        self.assertEqual(json.loads(o.LOCK.read_text())['sources'], prerequisite['sources'])
         self.assertFalse(value['full_int03_acceptance'])
         with patch.dict(os.environ, {'INT02_CANDIDATE_SHA': 'f' * 40}):
             with self.assertRaises(o.Blocked):
@@ -145,6 +147,16 @@ class RuntimeTests(unittest.TestCase):
         dockerfile = (BASE / 'nabhold.Dockerfile').read_text()
         self.assertNotIn('ENV COREPACK_HOME=', dockerfile)
         self.assertNotIn('RUN corepack prepare', dockerfile)
+
+    def test_only_reviewed_public_templates_enter_the_metadata_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); source = root/'source'; source.mkdir()
+            for name in ('.env.example', '.env.integration.example'):
+                (source/name).write_text('PUBLIC_EXAMPLE=\n')
+            (source/'.env.local').write_text('PRIVATE_SYNTHETIC_SECRET=must-not-copy')
+            lab.prepare_templates(source, root/'metadata')
+            self.assertEqual({p.name for p in (root/'metadata').iterdir()}, {'.env.example', '.env.integration.example'})
+            self.assertNotIn('must-not-copy', ''.join(p.read_text() for p in (root/'metadata').iterdir()))
 
     def test_dirty_harness_diagnostics_never_print_unknown_filenames(self):
         import io

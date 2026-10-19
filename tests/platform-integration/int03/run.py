@@ -167,6 +167,7 @@ def run(value, prerequisite, token):
         o.up(prerequisite)
         checkpoint('prerequisite-requalification')
         o.test(prerequisite)
+        receipt['prerequisite_checks_passed'] = True
         checkpoint('identity-fixture')
         provision(p, directory, envfile)
         checkpoint('consumer-up')
