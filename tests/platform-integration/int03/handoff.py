@@ -199,8 +199,8 @@ def prepare(value, template, ca, destination):
     # directory first and publish the bundle beneath it. Existing destinations
     # always fail, including an empty directory or dangling symlink.
     destination.mkdir(mode=0o700)
-    pending = Path(tempfile.mkdtemp(prefix=".preparing-", dir=destination))
     try:
+        pending = Path(tempfile.mkdtemp(prefix=".preparing-", dir=destination))
         write_private(pending / "ca.pem", ca)
         write_private(pending / "integration.env", "".join(f"{k}='{v}'\n" for k, v in env.items()))
         write_private(pending / "client.json", json.dumps(client, indent=2) + "\n")

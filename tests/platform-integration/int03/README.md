@@ -136,7 +136,7 @@ their own authority and acceptance gates. Nabhold remains non-trading.
 python3 -m unittest discover -s tests/platform-integration/int03 -p test_handoff.py -v
 ```
 
-Eleven source/security tests exercise private-file refusal, atomic publication,
+Twelve source/security tests exercise private-file refusal, atomic publication,
 fresh secrets/ACL epochs, exact dormant-template cloning, source pin checks,
 secret-free errors and actual Node dotenv/CA/key interoperability. They run in
 the existing mandatory INT-02 source job. The existing live job still proves

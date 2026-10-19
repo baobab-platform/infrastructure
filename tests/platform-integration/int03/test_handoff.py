@@ -181,6 +181,15 @@ class HandoffTests(unittest.TestCase):
                     self.prepare()
                 self.assertFalse((self.root / "bundle").exists())
 
+    def test_exhausted_staging_creation_removes_the_reserved_destination(self):
+        # The destination has already been reserved when mkdtemp can fail.
+        # ENOSPC/inode exhaustion must still leave the same path retryable.
+        with patch.object(m.tempfile, "mkdtemp", side_effect=OSError("no inodes")):
+            with self.assertRaises(OSError):
+                self.prepare()
+        self.assertFalse((self.root / "bundle").exists())
+        self.assertTrue(self.prepare().is_dir())
+
     def test_public_trust_bundle_never_contains_a_private_key(self):
         for ca in ("not a PEM", self.ca + "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----",
                    self.ca + "\n'INJECTED=true"):
