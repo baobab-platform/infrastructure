@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends libnss3-tools \
  && rm -rf /var/lib/apt/lists/* \
  && if [ -d /root/.cache/ms-playwright ]; then mv /root/.cache/ms-playwright /opt/int03-playwright; chmod -R a+rX /opt/int03-playwright; fi
 COPY . .
+# Explicit named context preserves product .dockerignore rules even when the
+# reviewed Dockerfile is outside the application build context.
+COPY --from=nabhold_git . /app/.git
 # Source includes .git: the estate's receipt independently requires a clean
 # actual checkout. Credentials are a BuildKit secret, never COPY/ARG/ENV.
 RUN --mount=type=secret,id=int03_npm_token,required=true \

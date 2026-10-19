@@ -139,6 +139,9 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(feature['resolved'].split('@')[1], feature['integrity'])
         self.assertRegex(feature['integrity'], r'^sha256:[0-9a-f]{64}$')
         self.assertIn('--frozen-lockfile', (o.ROOT / '.github/workflows/platform-int03.yml').read_text())
+        workflow = (o.ROOT / '.github/workflows/platform-int03.yml').read_text()
+        self.assertIn('--remote-env GITHUB_ACTIONS=true', workflow)
+        self.assertIn('--remote-env "GITHUB_RUN_ID=$GITHUB_RUN_ID"', workflow)
 
     def test_dirty_harness_diagnostics_never_print_unknown_filenames(self):
         import io
@@ -261,6 +264,8 @@ class RuntimeTests(unittest.TestCase):
 
     def test_build_failure_classes_never_echo_supplied_output(self):
         self.assertEqual(lab.build_class('ERR_PNPM_FETCH_403 private-token'), 'PACKAGE_READ_FORBIDDEN')
+        self.assertEqual(lab.build_class('fatal: not a git repository'), 'SOURCE_METADATA_MISSING')
+        self.assertEqual(lab.build_class('ERR_PNPM_FETCH_404 private-package'), 'PACKAGE_NOT_VISIBLE')
         self.assertEqual(lab.build_class('unrecognized private-token'), 'OTHER')
 
 

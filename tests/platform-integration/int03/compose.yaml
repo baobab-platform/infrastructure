@@ -42,6 +42,8 @@ services:
     build:
       context: ${INT03_NABHOLD_SOURCE:?exact checkout required}
       dockerfile: ${INT03_NABHOLD_DOCKERFILE:?reviewed builder required}
+      additional_contexts:
+        nabhold_git: ${INT03_NABHOLD_SOURCE}/.git
       args:
         LAB_UID: ${INT03_UID}
         LAB_GID: ${INT03_GID}

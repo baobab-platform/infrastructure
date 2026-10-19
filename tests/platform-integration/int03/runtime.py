@@ -38,11 +38,29 @@ original_build_class = engine.build_failure_class
 def build_class(output):
     for marker, code in [('ERR_PNPM_FETCH_403', 'PACKAGE_READ_FORBIDDEN'),
                          ('ERR_PNPM_FETCH_401', 'PACKAGE_READ_UNAUTHORIZED'),
+                         ('ERR_PNPM_FETCH_404', 'PACKAGE_NOT_VISIBLE'),
                          ('ERR_PNPM_OUTDATED_LOCKFILE', 'DEPENDENCY_LOCK'),
-                         ('ERR_PNPM_BAD_PM_VERSION', 'PACKAGE_MANAGER_VERSION')]:
+                         ('ERR_PNPM_BAD_PM_VERSION', 'PACKAGE_MANAGER_VERSION'),
+                         ('not a git repository', 'SOURCE_METADATA_MISSING'),
+                         ('detected dubious ownership', 'SOURCE_OWNER_REFUSED'),
+                         ('corepack: not found', 'PACKAGE_MANAGER_MISSING'),
+                         ('Cannot find matching keyid', 'PACKAGE_MANAGER_SIGNATURE')]:
         if marker in output:
             return code
-    return original_build_class(output)
+    known = original_build_class(output)
+    if known != 'OTHER':
+        return known
+    # The last failing BuildKit instruction, mapped to a closed vocabulary.
+    # Never expose its command text or registry responses to a receipt/log.
+    failures = [line for line in output.splitlines() if 'ERROR: process' in line]
+    failed = failures[-1] if failures else ''
+    for marker, code in [('pnpm install', 'PACKAGE_INSTALL_FAILED'),
+                         ('corepack prepare', 'PACKAGE_MANAGER_PREPARE_FAILED'),
+                         ('apt-get', 'SYSTEM_PACKAGES_FAILED'),
+                         ('git diff', 'SOURCE_VERIFICATION_FAILED')]:
+        if marker in failed:
+            return code
+    return 'OTHER'
 
 
 engine.build_failure_class = build_class
