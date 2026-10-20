@@ -239,6 +239,32 @@ class RuntimeTests(unittest.TestCase):
             with self.assertRaises(o.Blocked):
                 lab.load()
 
+    def test_synthetic_client_self_audience_for_strict_keycloak_introspection(self):
+        # Strict Keycloak introspection checks the requester in aud. The
+        # disposable confidential BFF needs a self-audience in addition to
+        # CP's existing authority:self audience; neither creates a role/grant.
+        # Parse the actual shell heredoc so a changed mapper fails source CI.
+        fixture = (BASE / 'fixture.sh').read_text()
+        marker = "<<'INT03_SELF_AUDIENCE'\\n"
+        self.assertEqual(fixture.count(marker), 1)
+        text = fixture.split(marker, 1)[1].split('\\nINT03_SELF_AUDIENCE', 1)[0]
+        mapper = json.loads(text)
+        self.assertEqual(mapper, {
+            'name': 'int03-confidential-self-audience',
+            'protocol': 'openid-connect',
+            'protocolMapper': 'oidc-audience-mapper',
+            'consentRequired': False,
+            'config': {'included.custom.audience': 'nabhold-int03',
+                       'id.token.claim': 'false',
+                       'access.token.claim': 'true',
+                       'introspection.token.claim': 'true'},
+        })
+        self.assertIn('length == 1 and .[0].name', fixture)
+        self.assertIn('clients/$cid/protocol-mappers/models', fixture)
+        self.assertIn('.[0].enabled == false', fixture)
+        self.assertNotIn('serviceAccountsEnabled": true', fixture)
+        self.assertNotIn('"included.custom.audience": "baobab-control-plane"', fixture)
+
     def test_generated_feature_lock_is_reviewed_and_ci_refuses_drift(self):
         lock = json.loads((o.ROOT / '.devcontainer/platform-integration/devcontainer-lock.json').read_text())
         feature = lock['features']['ghcr.io/devcontainers/features/docker-outside-of-docker:1']
