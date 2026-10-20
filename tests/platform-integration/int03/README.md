@@ -257,3 +257,11 @@ execution does not establish merged-source or release acceptance. Before this
 Infrastructure PR merges, verify the pinned Nabhold commit is reachable from
 its reviewed main history and the exact pinned connected run passes; preserve
 that commit with a normal reviewed merge rather than changing a qualified pin.
+
+
+Nabhold #81 additionally uses a same-origin account referrer policy so native
+logout submits the exact Origin required by the existing handler. Protocol
+routes retain no-referrer. Missing/null/foreign Origin and invalid CSRF remain
+denied. The actual browser must observe exact Origin and logout 303, then prove
+server custody revocation with the prior opaque handle. These assertions cannot
+be replaced by callback/account/session success or a source unit result.
