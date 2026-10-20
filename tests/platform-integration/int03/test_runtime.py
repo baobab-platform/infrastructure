@@ -89,12 +89,12 @@ class ProjectionTests(unittest.TestCase):
 
     def test_consumer_failure_class_is_closed_and_prefers_missing_receipt(self):
         self.assertEqual(lab.consumer_failure_class(
-            'PRIVATE cookie=secret\\nINT03_CONSUMER_FAILURE=CONFIG\\n'), 'CONFIG')
+            'PRIVATE cookie=secret\nINT03_CONSUMER_FAILURE=CONFIG\n'), 'CONFIG')
         self.assertEqual(lab.consumer_failure_class(
-            'INT03_CONSUMER_FAILURE=RECEIPT_UNAVAILABLE\\n'
-            'INT03_CONSUMER_FAILURE=CHILD_NONZERO\\n'), 'RECEIPT_UNAVAILABLE')
+            'INT03_CONSUMER_FAILURE=RECEIPT_UNAVAILABLE\n'
+            'INT03_CONSUMER_FAILURE=CHILD_NONZERO\n'), 'RECEIPT_UNAVAILABLE')
         self.assertEqual(lab.consumer_failure_class(
-            'INT03_CONSUMER_FAILURE=SECRET_TOKEN\\n'), 'UNKNOWN')
+            'INT03_CONSUMER_FAILURE=SECRET_TOKEN\n'), 'UNKNOWN')
         self.assertEqual(lab.consumer_failure_class(None), 'UNKNOWN')
 
     def test_http_diagnostics_exclude_raw_callbacks_and_unknown_values(self):
