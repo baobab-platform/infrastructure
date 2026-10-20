@@ -108,6 +108,17 @@ class ProjectionTests(unittest.TestCase):
         self.assertNotIn('PRIVATE', json.dumps(result))
         self.assertEqual(len(m.diagnostics.project('INT03_HTTP NAB_LOGIN POST 303\n'*100)), 32)
 
+    def test_prerequisite_diagnostics_retain_only_known_classifications(self):
+        raw = ('Compose exec/probe failed; IAM diagnostics: step=iam_readiness '
+               'discovery=tls_unverified; Keycloak log classes: HTTP_LISTENING,'
+               'SERVER_STARTED,PRIVATE_TOKEN')
+        result = m.diagnostics.prerequisite(raw)
+        self.assertEqual(result, {'operation': 'exec', 'target': 'probe',
+            'iam_discovery': 'tls_unverified',
+            'iam_log_classes': ['HTTP_LISTENING', 'SERVER_STARTED']})
+        self.assertNotIn('PRIVATE', json.dumps(result))
+        self.assertEqual(m.diagnostics.prerequisite('password=secret token=private'), {})
+
     def test_edge_log_format_contains_only_mapped_route_method_status(self):
         text = (BASE/'edge.conf').read_text()
         self.assertIn("log_format int03_safe 'INT03_HTTP $int03_route $int03_method $status';", text)
