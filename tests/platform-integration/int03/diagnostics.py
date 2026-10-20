@@ -70,10 +70,10 @@ def prerequisite(raw):
     if type(raw) is not str:
         return {}
     result = {}
-    m = re.search(r'\bCompose (up|exec|wait|build|config|down)/(probe|keycloak|cp-db|service) failed\\b', raw)
+    m = re.search(r'\bCompose (up|exec|wait|build|config|down)/(probe|keycloak|cp-db|service) failed\b', raw)
     if m and m[1] in PREREQUISITE_OPS and m[2] in PREREQUISITE_TARGETS:
         result['operation'], result['target'] = m[1], m[2]
-    m = re.search(r'\bstep=iam_readiness discovery=([a-z_0-9]{1,32})\\b', raw)
+    m = re.search(r'\bstep=iam_readiness discovery=([a-z_0-9]{1,32})\b', raw)
     if m and m[1] in IAM_READINESS:
         result['iam_discovery'] = m[1]
     m = re.search(r'\bKeycloak log classes: ([A-Z_,]{1,500})', raw)
