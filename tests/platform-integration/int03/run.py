@@ -192,8 +192,12 @@ def run(value, prerequisite, token):
         dirty = lab.compose(p, envfile, 'exec', '-T', 'nabhold', 'git', 'status', '--porcelain', '--untracked-files=normal', capture=True)
         o.must(not dirty.strip(), 'Running estate source is dirty')
         checkpoint('browser-smoke')
-        code, raw = lab.consume(p, envfile)
+        code, raw, consumer_class = lab.consume(p, envfile)
         receipt['consumer_transport_succeeded'] = code == 0
+        if code != 0:
+            # Class originates only from a closed consumer-side stage marker.
+            # It can diagnose launch/reporting failures, never waive a case.
+            receipt['consumer_failure_class'] = consumer_class
         receipt.update(smoke_projection(raw, p['sources'], require_pass=False))
         o.must(code == 0, 'Consumer process failed')
         smoke_projection(raw, p['sources'])
