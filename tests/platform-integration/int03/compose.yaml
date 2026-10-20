@@ -3,7 +3,10 @@ services:
   edge:
     networks:
       lab:
-        aliases: [nabhold.int03.test]
+        # Preserve the exact INT-02 IAM/CP/human/Pulse DNS identities when
+        # overlay-merging networks, then add the Nabhold estate hostname.
+        # Some Compose implementations replace nested alias arrays.
+        aliases: [iam.int02.test, cp.int02.test, human.int02.test, pulse.int02.test, nabhold.int03.test]
   redis-int03:
     image: ${INT03_REDIS_IMAGE:?digest required}
     user: ${INT03_UID:?owner required}:${INT03_GID:?owner required}
