@@ -243,6 +243,26 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(args.kwargs['input_text'], 'private fixture')
         self.assertEqual(result, 'safe')
 
+    def test_overlay_compose_failure_retains_only_fixed_operation_metadata(self):
+        with patch.object(o, 'execute', side_effect=o.Blocked(
+                'External command failed: docker; IAM diagnostics: step=iam_readiness '
+                'discovery=tls_unverified; private_token=SECRET')):
+            with self.assertRaises(o.Blocked) as captured:
+                lab.compose({'project': 'l4-' + 'a' * 16}, Path('/private/env'),
+                            'exec', '-T', 'probe', 'python', 'wait-iam')
+        text = str(captured.exception)
+        self.assertIn('Compose exec/probe failed', text)
+        self.assertIn('step=iam_readiness discovery=tls_unverified', text)
+        self.assertNotIn('SECRET', text)
+        self.assertEqual(m.diagnostics.prerequisite(text),
+                         {'operation': 'exec', 'target': 'probe',
+                          'iam_discovery': 'tls_unverified'})
+        with patch.object(o, 'execute', side_effect=o.Blocked('credentials=SECRET')):
+            with self.assertRaises(o.Blocked) as captured:
+                lab.compose({'project': 'l4-' + 'a' * 16}, Path('/private/env'),
+                            'up', '-d', 'keycloak')
+        self.assertEqual(str(captured.exception), 'Compose up/service failed')
+
     def test_tls_has_distinct_valid_hostname_leaves_and_no_retained_signer(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); lab.tls(root / 'tls')
