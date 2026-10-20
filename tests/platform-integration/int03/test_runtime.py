@@ -245,9 +245,9 @@ class RuntimeTests(unittest.TestCase):
         # CP's existing authority:self audience; neither creates a role/grant.
         # Parse the actual shell heredoc so a changed mapper fails source CI.
         fixture = (BASE / 'fixture.sh').read_text()
-        marker = "<<'INT03_SELF_AUDIENCE'\\n"
+        marker = "<<'INT03_SELF_AUDIENCE'\n"
         self.assertEqual(fixture.count(marker), 1)
-        text = fixture.split(marker, 1)[1].split('\\nINT03_SELF_AUDIENCE', 1)[0]
+        text = fixture.split(marker, 1)[1].split('\nINT03_SELF_AUDIENCE', 1)[0]
         mapper = json.loads(text)
         self.assertEqual(mapper, {
             'name': 'int03-confidential-self-audience',
