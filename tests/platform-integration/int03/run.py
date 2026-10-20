@@ -113,7 +113,9 @@ def observe_iam_edge(p, envfile):
                 type(v) is str and v in allowed for v in values.values()):
             return values
     except Exception:
-        pass
+        # The optional diagnostic must never mask a prerequisite failure or
+        # copy exceptions containing routes, paths or runtime credentials.
+        return {'diagnostic': 'UNAVAILABLE'}
     return {'diagnostic': 'UNAVAILABLE'}
 
 
@@ -183,6 +185,13 @@ def run(value, prerequisite, token):
         lab.materialise(value, prerequisite, token)
         p, directory, envfile = o.current()
         project = p['project']
+        checkpoint('edge-config')
+        # Test the real pinned Nginx binary with the actual Compose-mounted
+        # per-run certificate and privacy-safe route map BEFORE long builds.
+        # No host port, credential injection, listener or acceptance shortcut.
+        # This would have caught Nginx's default map-hash failure immediately.
+        lab.compose(p, envfile, 'run', '--rm', '--no-deps', 'edge', 'nginx', '-t',
+                    timeout=60)
         checkpoint('consumer-build')
         docker_config = directory / 'build-docker-config'
         docker_config.mkdir(mode=0o700)
@@ -239,10 +248,13 @@ def run(value, prerequisite, token):
             if stage in {'prerequisite-up', 'prerequisite-requalification'}:
                 receipt['prerequisite_failure'] = diagnostics.prerequisite(str(error))
                 if project and o.SESSION.exists():
-                    # A failed probe is not proof of a healthy or unhealthy
-                    # issuer; retain only finite observations, never URLs.
-                    p, _, envfile = o.current()
-                    receipt['iam_edge_observation'] = observe_iam_edge(p, envfile)
+                    # Optional diagnostics cannot replace the original failure
+                    # or cause a misleading success if the session is damaged.
+                    try:
+                        p, _, envfile = o.current()
+                        receipt['iam_edge_observation'] = observe_iam_edge(p, envfile)
+                    except Exception:
+                        receipt['iam_edge_observation'] = {'diagnostic': 'UNAVAILABLE'}
             reasons = {'Integration source must be clean': 'DIRTY_HARNESS',
                        'Harness revision unavailable': 'HARNESS_REVISION_UNAVAILABLE',
                        'Runtime source checkout is dirty': 'DIRTY_SOURCE',
