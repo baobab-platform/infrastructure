@@ -34,9 +34,26 @@ def compose_arguments(p, envfile):
 
 
 def compose(p, envfile, *args, capture=False, stdin=None, timeout=600, command_env=None):
-    # Docker receives secrets over private files/stdin, never a printed argv.
-    return engine.execute([*compose_arguments(p, envfile), *args], capture=capture,
-                          input_text=stdin, timeout=timeout, env=command_env)
+    """Preserve bounded Compose operation identity without leaking stderr.
+
+    The INT-02 runner wraps its Compose errors. This overlay uses a second
+    Compose file and must retain that fail-closed diagnostic contract. Only
+    fixed operation/target names and explicitly allowlisted readiness codes
+    may leave this layer; arbitrary subprocess errors stay private.
+    """
+    try:
+        return engine.execute([*compose_arguments(p, envfile), *args], capture=capture,
+                              input_text=stdin, timeout=timeout, env=command_env)
+    except engine.Blocked as cause:
+        operation = args[0] if args and args[0] in {'up', 'exec', 'wait', 'build', 'config', 'down'} else 'unknown'
+        target = (args[2] if len(args) > 2 and args[0] == 'exec' and args[1] == '-T'
+                  and args[2] in {'keycloak', 'probe', 'cp-db'} else 'service')
+        # The inherited INT-02 execute() already removes raw command output.
+        # Forward only a recognized closed IAM readiness token, not cause text.
+        match = re.search(r'\\bstep=iam_readiness discovery=(unavailable|tls_unverified|issuer_mismatch|[1-5][0-9]{2})\\b',
+                          str(cause))
+        diagnostic = '; IAM diagnostics: step=iam_readiness discovery=' + match[1] if match else ''
+        raise engine.Blocked(f'Compose {operation}/{target} failed' + diagnostic) from cause
 
 
 CONSUMER_FAILURES = frozenset({'ENTRY', 'CONFIG', 'CA_TRUST', 'BROWSER_DISCOVERY',
