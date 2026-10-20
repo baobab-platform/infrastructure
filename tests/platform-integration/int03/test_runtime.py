@@ -322,6 +322,9 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn('int03-bundle/prepared/users.acl:/run/int03/users.acl:ro', text)
         self.assertIn('--tls-port', text)
         self.assertIn('--port\n      - "0"', text)
+        edge = (BASE / 'edge.conf').read_text().split('server_name nabhold.int03.test;', 1)[1]
+        for header in ['Host $host', 'X-Forwarded-Host $host', 'X-Forwarded-Proto https']:
+            self.assertIn('proxy_set_header ' + header + ';', edge)
 
     def test_cleanup_keeps_state_when_any_resource_remains(self):
         with tempfile.TemporaryDirectory() as tmp:

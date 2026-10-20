@@ -78,6 +78,7 @@ class HandoffTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
         for path in bundle.iterdir():
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        self.assertIn("NABHOLD_OIDC_TRUST_PROXY='true'\n", (bundle / "integration.env").read_text())
         manifest = json.loads((bundle / "manifest.json").read_text())
         self.assertEqual(manifest["state"], "PREPARED_NOT_PROVISIONED")
         self.assertEqual(manifest["declared_sources"], self.value["sources"])

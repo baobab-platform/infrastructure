@@ -3,7 +3,7 @@
 **State: INT-03A is merged source preparation. The INT-03B connected identity
 runner is a new source increment pending actual CI/review. No connected PASS
 or full INT-03 acceptance is claimed by this document.**
-Authority: Accepted ADR-SHARED-036, EA v2.2 INT-02 → INT-03, Nabhold Go-Live
+Authority: Accepted ADR-SHARED-036, EA v2.3 P0-A (retaining the v2.2 L4 matrix), Nabhold Go-Live
 v2.0 P0-04/P0-06/P0-07, ADR-NAB-0004/0014 and IAM ADR-IAM-0033.
 
 INT-02's merged Keycloak/CP/Pulse proof is recorded in Shared's
@@ -222,3 +222,11 @@ qualification/binding, published/preview and mutation/denial tests, the remainin
 revocation/Principal-deactivation/session-negative cases, protected native C4,
 legal onboarding, staging and production retain their own gates. Nabhold remains
 non-trading; human `authority:self` is never promoted into executive authority.
+
+The connected handoff enables Nabhold's explicit trusted-proxy setting. Its
+private TLS edge overwrites Host, X-Forwarded-Host and X-Forwarded-Proto; Nabhold
+has no published host port. The app validates both authorities and exact HTTPS
+against its configured public origin before reconstructing the callback URL,
+including removal of the private listen port. This is an ingress transport
+contract, not permission to trust arbitrary forwarded headers or bypass Origin,
+PKCE, IAM introspection, CP identity or session custody checks.
