@@ -46,3 +46,38 @@ def component(raw):
                  re.fullmatch(r'(FORM_U[0-9]P[0-9]T[0-9]O[0-9]|AUTHORIZATION_HTTP_[1-5][0-9]{2})', code[1])):
         result['failure_code'] = code[1]
     return result
+
+
+# Prerequisite errors are constructed by the pinned INT-02 orchestrator after
+# suppressing service logs. Re-parse them through this smaller finite allowlist
+# instead of retaining an exception, service name, issuer URL or private path.
+# This never downgrades a missing live prerequisite or claims qualification.
+PREREQUISITE_OPS = {'up', 'exec', 'wait', 'build', 'config', 'down'}
+PREREQUISITE_TARGETS = {'probe', 'keycloak', 'cp-db', 'service'}
+IAM_LOG_CLASSES = {'DB_AUTH_FAILED', 'DB_OR_PEER_REFUSED', 'DB_OBJECT_MISSING',
+    'SERVER_START_FAILED', 'CLI_EXECUTION_ERROR', 'HTTP_LISTENING',
+    'MANAGEMENT_LISTENING', 'SERVER_STARTED', 'TEMP_ADMIN_CREATED',
+    'LOGIN_USER_NOT_FOUND', 'LOGIN_INVALID_USER_CREDENTIALS',
+    'LOGIN_INVALID_CLIENT_CREDENTIALS', 'LOGIN_REQUIRED_ACTIONS',
+    'LOGIN_NOT_ALLOWED', 'FLOW_MIXED_LEVELS', 'FLOW_EXCEPTION',
+    'TEMPLATE_FAILED', 'NULL_POINTER', 'ILLEGAL_STATE', 'AUTHENTICATION_FAILED'}
+IAM_READINESS = {'unavailable', 'tls_unverified', 'issuer_mismatch'}
+IAM_READINESS.update(str(code) for code in range(100, 600))
+
+
+def prerequisite(raw):
+    """Reduce inherited qualification failures to trusted closed vocabulary."""
+    if type(raw) is not str:
+        return {}
+    result = {}
+    m = re.search(r'\\bCompose (up|exec|wait|build|config|down)/(probe|keycloak|cp-db|service) failed\\b', raw)
+    if m and m[1] in PREREQUISITE_OPS and m[2] in PREREQUISITE_TARGETS:
+        result['operation'], result['target'] = m[1], m[2]
+    m = re.search(r'\\bstep=iam_readiness discovery=([a-z_0-9]{1,32})\\b', raw)
+    if m and m[1] in IAM_READINESS:
+        result['iam_discovery'] = m[1]
+    m = re.search(r'\\bKeycloak log classes: ([A-Z_,]{1,500})', raw)
+    if m:
+        found = m[1].split(',')
+        result['iam_log_classes'] = sorted(set(code for code in found if code in IAM_LOG_CLASSES))
+    return result
