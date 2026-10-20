@@ -141,6 +141,9 @@ def environment(value, destination, client_secret, redis_password, key, epoch, c
            for alias, repo in (("INFRASTRUCTURE", "infrastructure"), ("IAM", "baobab-iam"),
                                ("CP", "baobab-cp"), ("SHARED", "shared"))},
         "NEXT_PUBLIC_SITE_URL": ORIGIN, "NABHOLD_OIDC_ENABLED": "true",
+        # This private profile always terminates verified TLS at its edge.
+        # The edge overwrites forwarding headers; the app has no host port.
+        "NABHOLD_OIDC_TRUST_PROXY": "true",
         "NABHOLD_OIDC_ENVIRONMENT": "integration", "NABHOLD_OIDC_ORIGIN": ORIGIN,
         "NABHOLD_OIDC_ISSUER": ISSUER, "NABHOLD_OIDC_CLIENT_ID": CLIENT,
         "NABHOLD_OIDC_CLIENT_SECRET": client_secret, "NABHOLD_OIDC_ID_TOKEN_ALGORITHM": "RS256",

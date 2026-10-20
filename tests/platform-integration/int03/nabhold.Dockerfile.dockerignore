@@ -1,0 +1,7 @@
+# Retain .git for the consumer's independent clean-source check.
+.next
+node_modules
+playwright-report
+test-results
+.env*
+.integration

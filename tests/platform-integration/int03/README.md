@@ -1,7 +1,10 @@
 # INT-03A — private Nabhold identity-smoke handoff
 
-**State: source preparation only. No connected INT-03 run is claimed.**
-Authority: Accepted ADR-SHARED-036, EA v2.2 INT-02 → INT-03, Nabhold Go-Live
+**State: INT-03A prepares private inputs; INT-03B implements their connected
+identity lifecycle. Only verified per-run receipts at reviewed exact pins can
+establish a scoped identity-smoke result. Full INT-03 remains OPEN until the
+complete mandatory matrix and independent acceptance requirements are met.**
+Authority: Accepted ADR-SHARED-036, EA v2.3 P0-A (retaining the v2.2 L4 matrix), Nabhold Go-Live
 v2.0 P0-04/P0-06/P0-07, ADR-NAB-0004/0014 and IAM ADR-IAM-0033.
 
 INT-02's merged Keycloak/CP/Pulse proof is recorded in Shared's
@@ -27,6 +30,16 @@ repository's profile. The product `nabhold-executive` client remains disabled.
 The separate generated `nabhold-int03` fixture has no role mapper, optional
 scope, service account, password grant or authentication-flow override. It
 has only code/S256, the exact lab callback and CP human self-read defaults.
+During disposable Keycloak provisioning only, the runner adds and independently
+reads back one exact client-dedicated audience mapper for `nabhold-int03`.
+Keycloak 26.7 checks that the confidential introspecting client is included
+in the access token's `aud` claim; the existing `authority:self` scope retains
+`aud=baobab-control-plane` for CP. This additional self-audience does **not**
+add a role, Tenant membership, business entitlement, new optional scope, or
+permission to use a token at another resource. The dormant product client
+remains disabled and unchanged. **Product IAM client-audience convergence and
+protected-provider approval remain outstanding**; a synthetic fixture alone
+does not prove them.
 
 Create an **owner-private 0700 parent directory**, then a 0600 JSON input with
 exactly these keys (placeholders intentionally cannot pass):
@@ -82,9 +95,10 @@ Never upload these files to Actions artifacts or commit them. Keep generated
 bundles under ignored `.runtime` if inside this repository. The preparer owns
 no active services; its cleanup never tears down an external environment.
 
-## Remaining connected execution — INT-03B
+## Connected execution responsibilities — INT-03B
 
-The generated bundle is **not runnable by itself**. Infrastructure still owns:
+The generated bundle is **not runnable by itself**. The Infrastructure-owned
+connected lifecycle must provide and verify:
 
 1. An actual pinned private lab and independently observed source/image
    identities. Keep the existing qualified INT-02 lock/evidence unchanged.
@@ -143,3 +157,111 @@ the existing mandatory INT-02 source job. The existing live job still proves
 only its original IAM/CP/Pulse profile. Rollback: revert this preparer, stop any
 separately provisioned disposable lab under its owning lifecycle, and destroy
 unneeded private bundles; retain sanitized evidence under its original scope.
+
+
+## INT-03B connected identity runner
+
+`run.py` now owns an actual disposable lifecycle, unlike `handoff.py`. It loads
+its separate `lock.json` and `prerequisite-lock.json`, imports the unchanged INT-02 implementation in an
+isolated module/session, and overlays `compose.yaml`/`edge.conf`. The frozen
+INT-02 lock is never edited. Selected current IAM/CP/Shared pins are requalified
+through the complete existing IAM/CP/Pulse suite before Nabhold is tested.
+That requalification is a new run, not inheritance of prior acceptance.
+The qualifier hashes its own prerequisite file so that the recorded source
+pins and manifest digest agree, rather than hashing the old frozen lock.
+The integration devcontainer feature lock is now committed (Docker-outside-of-
+Docker 1.10.1, resolved OCI digest from the pinned CLI's actual registry query);
+CI uses `--frozen-lockfile`. Earlier attempts stopped because the CLI generated
+an untracked lockfile. The clean-source requirement remains strict.
+
+The profile builds the exact Nabhold checkout on its approved immutable Node
+24/pnpm 11.24.0 browser image. Git metadata is retained so the existing consumer
+independently checks its clean source revision. Package-read authentication
+arrives through private stdin, is consumed by a BuildKit secret/tmpfs npmrc,
+and is blanked before services start. Temporary GHCR Docker authentication is
+removed after build. No registry credential becomes a runtime environment
+variable, application mount, image layer or artifact. A package ACL/registry
+failure blocks the run; it never substitutes local Shared packages or mocks.
+
+A new non-admin synthetic `l4-int03-human` and `nabhold-int03` client are created
+through real Keycloak administration. The product client stays disabled. The
+issuer-generated subject is explicitly mapped to a new ACTIVE CP human in this
+throwaway DB; no administrative/business grant or Tenant membership is added.
+This SQL is a synthetic fixture boundary, never a protected registration recipe.
+The private issuer additionally verifies the exact self-audience mapper on
+the disposable `nabhold-int03` client. Failure to observe it blocks the run
+before browser assertions. It is the minimum Keycloak 26.7 introspection
+compatibility requirement, and is deliberately not a production IAM template
+change or an acceptance assertion about native protected C4.
+
+The edge and TLS-only Redis have distinct per-run leaf keys under one temporary
+CA; the signer is destroyed before launch. Nabhold mounts only its prepared
+handoff, Redis only its leaf material and namespace ACL. Chromium gets NSS trust
+and Node gets the verified CA file; no certificate-ignore settings are used.
+Actual running image configuration IDs are checked against built images and
+recorded explicitly as **config IDs, not OCI manifest digests**. Source checkouts,
+the running estate Git revision and consumer-declared pins are checked separately.
+
+Run the same entrypoint inside the integration devcontainer or an equivalent
+Docker-capable local runner, from a clean reviewed Infrastructure checkout:
+
+```bash
+python3 -B tests/platform-integration/int03/run.py preflight
+printf '%s\n' "$BAOBAB_PACKAGES_READ_TOKEN" | \
+  INT03_REGISTRY_USERNAME="$GITHUB_USER" \
+  python3 -B tests/platform-integration/int03/run.py run --package-token-stdin
+# Retry an interrupted cleanup without supplying a registry token:
+python3 -B tests/platform-integration/int03/run.py down
+```
+
+Use the existing approved read-only package token/user; do not create a broader
+credential. The Actions workflow uses its repository token with contents/package
+read only, private stdin and the existing integration devcontainer. Repository
+package/image access still needs to be granted by the owning GitHub package;
+a 403 is a blocker, not authority to broaden permissions automatically.
+
+`*-int03-identity/completed/receipt.json` and its paired digest contain only fixed scenario outcomes,
+source/image identities, an original consumer-receipt hash and a fixed failure
+stage/class, finite prerequisite browser failure facts, and fixed HTTP route/method/status
+observations. Query strings, headers, cookies, bodies and raw URLs are excluded.
+No raw Docker/Keycloak/Next/Playwright logs or fixture files are
+uploaded. A smoke PASS requires all four NAB-ID cases, observed runtime pins and
+successful resource/image/private-file cleanup. A failed teardown preserves
+recovery handles and cannot leave `passed=true`. Interrupted runs require the
+independent cleanup step, with label-scoped host recovery if the devcontainer
+is unavailable; host recovery never grants qualification. Missing evidence
+cannot establish a pass.
+When browser execution fails, its actual nonzero exit and closed per-case
+PASS/FAIL/BLOCKED projection are retained; raw browser errors remain suppressed.
+
+This smaller identity profile does **not** accept NAB-01–04/full INT-03. CMS
+qualification/binding, published/preview and mutation/denial tests, the remaining
+revocation/Principal-deactivation/session-negative cases, protected native C4,
+legal onboarding, staging and production retain their own gates. Nabhold remains
+non-trading; human `authority:self` is never promoted into executive authority.
+
+The connected handoff enables Nabhold's explicit trusted-proxy setting. Its
+private TLS edge overwrites Host, X-Forwarded-Host and X-Forwarded-Proto; Nabhold
+has no published host port. The app validates both authorities and exact HTTPS
+against its configured public origin before reconstructing the callback URL,
+including removal of the private listen port. This is an ingress transport
+contract, not permission to trust arbitrary forwarded headers or bypass Origin,
+PKCE, IAM introspection, CP identity or session custody checks.
+
+
+The current Nabhold pin includes the callback completion-document correction
+under Nabhold #80. Its real browser case requires an HTML 200 completion
+document before account/session/logout assertions, ending the cross-site
+redirect chain without relaxing Strict session cookies. Candidate source
+execution does not establish merged-source or release acceptance. Before this
+Infrastructure PR merges, verify the pinned Nabhold commit is reachable from
+its reviewed main history and the exact pinned connected run passes; preserve
+that commit with a normal reviewed merge rather than changing a qualified pin.
+
+
+Nabhold #81 additionally uses a same-origin account referrer policy so native
+logout submits the exact Origin required by the existing handler. Protocol
+routes retain no-referrer. Missing/null/foreign Origin and invalid CSRF remain
+denied. The actual browser must observe exact Origin and logout 303, then prove
+server custody revocation with the prior opaque handle. These assertions cannot
+be replaced by callback/account/session success or a source unit result.
