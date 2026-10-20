@@ -1,13 +1,17 @@
 """Boundary/fault tests. Mocks here never count as a connected qualification."""
 import copy
 import importlib.util
+import io
 import json
 import os
+import ssl
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.error
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 BASE = Path(__file__).resolve().parent
@@ -31,6 +35,22 @@ def consumer(sources):
 
 
 class ProjectionTests(unittest.TestCase):
+    def test_edge_diagnostic_distinguishes_wrapped_tls_without_exporting_reason(self):
+        source = compile((BASE / 'edge_probe.py').read_text(), 'edge_probe.py', 'exec')
+        for error, expected in [
+            (ssl.SSLError('PRIVATE'), 'TLS_ERROR'),
+            (urllib.error.URLError(ssl.SSLCertVerificationError('PRIVATE')), 'TLS_ERROR'),
+            (urllib.error.URLError(TimeoutError('PRIVATE')), 'CONNECT_ERROR'),
+        ]:
+            output = io.StringIO()
+            with patch.dict(os.environ, {'L4_CA_FILE': 'unused-private-path'}), \
+                    patch('ssl.create_default_context'), patch('socket.getaddrinfo', return_value=[]), \
+                    patch('urllib.request.urlopen', side_effect=error), redirect_stdout(output):
+                exec(source, {'__name__': '__test__'})
+            self.assertEqual(json.loads(output.getvalue()), {
+                'iam_tls_edge': expected, 'iam_private_upstream': expected})
+            self.assertNotIn('PRIVATE', output.getvalue())
+
     def setUp(self):
         self.sources = {name: str(n) * 40 for n, name in enumerate(
             ['infrastructure', 'baobab-iam', 'baobab-cp', 'shared', 'nabhold'], 1)}

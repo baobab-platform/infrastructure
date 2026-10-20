@@ -37,6 +37,10 @@ def check(host, url, verified):
     except urllib.error.HTTPError as error:
         status = error.code
         raw = b''
+    except urllib.error.URLError as error:
+        # urllib wraps handshake/verification errors in URLError (an OSError).
+        # Inspect only the exception type; reason text can contain private URLs.
+        return 'TLS_ERROR' if isinstance(error.reason, ssl.SSLError) else 'CONNECT_ERROR'
     except (OSError, ValueError):
         return 'CONNECT_ERROR'
     if status != 200:
