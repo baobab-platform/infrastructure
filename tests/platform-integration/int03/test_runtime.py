@@ -119,6 +119,26 @@ class ProjectionTests(unittest.TestCase):
         self.assertNotIn('PRIVATE', json.dumps(result))
         self.assertEqual(m.diagnostics.prerequisite('password=secret token=private'), {})
 
+    def test_private_issuer_observation_is_finite_and_never_qualifies(self):
+        # Source remains syntax-checked even if Docker is unavailable in CI.
+        compile((BASE / 'edge_probe.py').read_text(), 'edge_probe.py', 'exec')
+        expected = {'iam_tls_edge': 'DNS_ERROR',
+                    'iam_private_upstream': 'HTTP_200'}
+        with patch.object(lab, 'compose', return_value=json.dumps(expected)):
+            self.assertEqual(m.observe_iam_edge({'project': 'l4-' + 'a' * 16},
+                                                Path('/private/env')), expected)
+        with patch.object(lab, 'compose', return_value=json.dumps({
+                **expected, 'secret': 'untrusted'})):
+            self.assertEqual(m.observe_iam_edge({}, Path('/private/env')),
+                             {'diagnostic': 'UNAVAILABLE'})
+        with patch.object(lab, 'compose', side_effect=o.Blocked('private-secret')):
+            self.assertEqual(m.observe_iam_edge({}, Path('/private/env')),
+                             {'diagnostic': 'UNAVAILABLE'})
+        overlay = (BASE / 'compose.yaml').read_text()
+        for name in ('iam.int02.test', 'cp.int02.test', 'human.int02.test',
+                     'pulse.int02.test', 'nabhold.int03.test'):
+            self.assertIn(name, overlay)
+
     def test_edge_log_format_contains_only_mapped_route_method_status(self):
         text = (BASE/'edge.conf').read_text()
         self.assertIn("log_format int03_safe 'INT03_HTTP $int03_route $int03_method $status';", text)
