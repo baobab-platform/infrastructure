@@ -30,6 +30,16 @@ repository's profile. The product `nabhold-executive` client remains disabled.
 The separate generated `nabhold-int03` fixture has no role mapper, optional
 scope, service account, password grant or authentication-flow override. It
 has only code/S256, the exact lab callback and CP human self-read defaults.
+During disposable Keycloak provisioning only, the runner adds and independently
+reads back one exact client-dedicated audience mapper for `nabhold-int03`.
+Keycloak 26.7 checks that the confidential introspecting client is included
+in the access token's `aud` claim; the existing `authority:self` scope retains
+`aud=baobab-control-plane` for CP. This additional self-audience does **not**
+add a role, Tenant membership, business entitlement, new optional scope, or
+permission to use a token at another resource. The dormant product client
+remains disabled and unchanged. **Product IAM client-audience convergence and
+protected-provider approval remain outstanding**; a synthetic fixture alone
+does not prove them.
 
 Create an **owner-private 0700 parent directory**, then a 0600 JSON input with
 exactly these keys (placeholders intentionally cannot pass):
@@ -178,6 +188,11 @@ through real Keycloak administration. The product client stays disabled. The
 issuer-generated subject is explicitly mapped to a new ACTIVE CP human in this
 throwaway DB; no administrative/business grant or Tenant membership is added.
 This SQL is a synthetic fixture boundary, never a protected registration recipe.
+The private issuer additionally verifies the exact self-audience mapper on
+the disposable `nabhold-int03` client. Failure to observe it blocks the run
+before browser assertions. It is the minimum Keycloak 26.7 introspection
+compatibility requirement, and is deliberately not a production IAM template
+change or an acceptance assertion about native protected C4.
 
 The edge and TLS-only Redis have distinct per-run leaf keys under one temporary
 CA; the signer is destroyed before launch. Nabhold mounts only its prepared
