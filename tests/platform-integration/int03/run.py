@@ -93,6 +93,30 @@ def smoke_projection(raw, sources, require_pass=True):
             'scenarios': {key: statuses[observation['results'][key]] for key in IDS}}
 
 
+def observe_iam_edge(p, envfile):
+    """Retain strictly finite failure classes, never HTTP contents or addresses.
+
+    Called only after a failed prerequisite startup, not as an acceptance
+    shortcut. Direct upstream HTTP is an isolated diagnostic; the mandatory
+    qualification still requires the independently verified HTTPS issuer.
+    """
+    try:
+        raw = lab.compose(p, envfile, 'exec', '-T', 'probe', 'python', '-',
+                          stdin=(lab.BASE / 'edge_probe.py').read_text(),
+                          capture=True, timeout=25).strip()
+        values = json.loads(raw, object_pairs_hook=handoff.unique)
+        allowed = {'DNS_ERROR', 'CONNECT_ERROR', 'TLS_ERROR', 'HTTP_200',
+                   'HTTP_301', 'HTTP_302', 'HTTP_400', 'HTTP_401', 'HTTP_403',
+                   'HTTP_404', 'HTTP_421', 'HTTP_502', 'HTTP_503', 'HTTP_504',
+                   'INVALID_RESPONSE', 'ISSUER_MISMATCH', 'UNKNOWN'}
+        if type(values) is dict and set(values) == {'iam_tls_edge', 'iam_private_upstream'} and all(
+                type(v) is str and v in allowed for v in values.values()):
+            return values
+    except Exception:
+        pass
+    return {'diagnostic': 'UNAVAILABLE'}
+
+
 def cleanup():
     """Keep recovery state on failure; no acceptance before ALL cleanup."""
     if not o.SESSION.exists():
@@ -214,6 +238,11 @@ def run(value, prerequisite, token):
             receipt['component_failure'] = diagnostics.component(str(error))
             if stage in {'prerequisite-up', 'prerequisite-requalification'}:
                 receipt['prerequisite_failure'] = diagnostics.prerequisite(str(error))
+                if project and o.SESSION.exists():
+                    # A failed probe is not proof of a healthy or unhealthy
+                    # issuer; retain only finite observations, never URLs.
+                    p, _, envfile = o.current()
+                    receipt['iam_edge_observation'] = observe_iam_edge(p, envfile)
             reasons = {'Integration source must be clean': 'DIRTY_HARNESS',
                        'Harness revision unavailable': 'HARNESS_REVISION_UNAVAILABLE',
                        'Runtime source checkout is dirty': 'DIRTY_SOURCE',
