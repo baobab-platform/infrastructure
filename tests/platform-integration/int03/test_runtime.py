@@ -87,6 +87,16 @@ class ProjectionTests(unittest.TestCase):
         with self.assertRaises(o.Blocked):
             m.smoke_projection(' ' * 16385, self.sources)
 
+    def test_consumer_failure_class_is_closed_and_prefers_missing_receipt(self):
+        self.assertEqual(lab.consumer_failure_class(
+            'PRIVATE cookie=secret\\nINT03_CONSUMER_FAILURE=CONFIG\\n'), 'CONFIG')
+        self.assertEqual(lab.consumer_failure_class(
+            'INT03_CONSUMER_FAILURE=RECEIPT_UNAVAILABLE\\n'
+            'INT03_CONSUMER_FAILURE=CHILD_NONZERO\\n'), 'RECEIPT_UNAVAILABLE')
+        self.assertEqual(lab.consumer_failure_class(
+            'INT03_CONSUMER_FAILURE=SECRET_TOKEN\\n'), 'UNKNOWN')
+        self.assertEqual(lab.consumer_failure_class(None), 'UNKNOWN')
+
     def test_http_diagnostics_exclude_raw_callbacks_and_unknown_values(self):
         raw = ('edge-1  | INT03_HTTP NAB_CALLBACK GET 401\n'
                'edge-1  | request: GET /callback?code=PRIVATE-CODE Cookie=PRIVATE-COOKIE\n'
@@ -282,7 +292,7 @@ class RuntimeTests(unittest.TestCase):
                 patch.dict(os.environ, {'INT03_REGISTRY_USERNAME': 'fixture-owner'}), patch.object(o, 'execute', return_value=''), \
                 patch.object(o, 'up'), patch.object(o, 'test'), patch.object(m, 'provision'), \
                 patch.object(lab, 'source_manifest', return_value={}), patch.object(m, 'cleanup', side_effect=o.Blocked('failed')), \
-                patch.object(lab, 'consume', return_value=(0, good)), \
+                patch.object(lab, 'consume', return_value=(0, good, 'UNKNOWN')), \
                 patch.object(m, 'write_receipt') as write:
                 with self.assertRaises(o.Blocked):
                     m.run(value, prerequisite, 'synthetic-read-token')
