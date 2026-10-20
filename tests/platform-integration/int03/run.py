@@ -212,6 +212,8 @@ def run(value, prerequisite, token):
         receipt['failure_type'] = type(error).__name__ if type(error).__name__ in {'Blocked', 'OSError', 'PermissionError', 'FileNotFoundError', 'KeyError', 'ValueError', 'TypeError'} else 'OTHER'
         if isinstance(error, o.Blocked):
             receipt['component_failure'] = diagnostics.component(str(error))
+            if stage in {'prerequisite-up', 'prerequisite-requalification'}:
+                receipt['prerequisite_failure'] = diagnostics.prerequisite(str(error))
             reasons = {'Integration source must be clean': 'DIRTY_HARNESS',
                        'Harness revision unavailable': 'HARNESS_REVISION_UNAVAILABLE',
                        'Runtime source checkout is dirty': 'DIRTY_SOURCE',
