@@ -50,7 +50,7 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600, command_e
                   and args[2] in {'keycloak', 'probe', 'cp-db'} else 'service')
         # The inherited INT-02 execute() already removes raw command output.
         # Forward only a recognized closed IAM readiness token, not cause text.
-        match = re.search(r'\\bstep=iam_readiness discovery=(unavailable|tls_unverified|issuer_mismatch|[1-5][0-9]{2})\\b',
+        match = re.search(r'\bstep=iam_readiness discovery=(unavailable|tls_unverified|issuer_mismatch|[1-5][0-9]{2})\b',
                           str(cause))
         diagnostic = '; IAM diagnostics: step=iam_readiness discovery=' + match[1] if match else ''
         raise engine.Blocked(f'Compose {operation}/{target} failed' + diagnostic) from cause
