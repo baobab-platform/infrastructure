@@ -247,3 +247,13 @@ against its configured public origin before reconstructing the callback URL,
 including removal of the private listen port. This is an ingress transport
 contract, not permission to trust arbitrary forwarded headers or bypass Origin,
 PKCE, IAM introspection, CP identity or session custody checks.
+
+
+The current Nabhold pin includes the callback completion-document correction
+under Nabhold #80. Its real browser case requires an HTML 200 completion
+document before account/session/logout assertions, ending the cross-site
+redirect chain without relaxing Strict session cookies. Candidate source
+execution does not establish merged-source or release acceptance. Before this
+Infrastructure PR merges, verify the pinned Nabhold commit is reachable from
+its reviewed main history and the exact pinned connected run passes; preserve
+that commit with a normal reviewed merge rather than changing a qualified pin.
