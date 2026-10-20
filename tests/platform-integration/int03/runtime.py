@@ -39,14 +39,33 @@ def compose(p, envfile, *args, capture=False, stdin=None, timeout=600, command_e
                           input_text=stdin, timeout=timeout, env=command_env)
 
 
+CONSUMER_FAILURES = frozenset({'ENTRY', 'CONFIG', 'CA_TRUST', 'BROWSER_DISCOVERY',
+                               'CHILD_LAUNCH', 'RECEIPT_UNAVAILABLE', 'CHILD_NONZERO'})
+
+
+def consumer_failure_class(raw):
+    """Parse only our own complete, fixed-code stderr lines; discard all else."""
+    if type(raw) is not str:
+        return 'UNKNOWN'
+    found = []
+    for line in raw.splitlines()[-100:]:
+        match = re.fullmatch(r'INT03_CONSUMER_FAILURE=([A-Z_]{1,32})', line)
+        if match and match[1] in CONSUMER_FAILURES:
+            found.append(match[1])
+    # A missing receipt is more diagnostic than the child process exit code.
+    if 'RECEIPT_UNAVAILABLE' in found:
+        return 'RECEIPT_UNAVAILABLE'
+    return found[-1] if found else 'UNKNOWN'
+
+
 def consume(p, envfile):
-    # Preserve the real nonzero exit AND the sanitized consumer receipt so a
-    # failed browser case is recorded as FAIL, rather than relabelled BLOCKED.
+    # Keep the actual nonzero process result and sanitized receipt separate.
+    # Browser stderr/stdout, callback codes and Node errors are never exported.
     result = subprocess.run([*compose_arguments(p, envfile), 'run', '--rm', '--no-deps',
                              'nabhold', 'test'], capture_output=True, text=True,
                             timeout=400, check=False)
     must(len(result.stdout.encode()) <= 16384, 'Consumer receipt exceeds bound')
-    return result.returncode, result.stdout
+    return result.returncode, result.stdout, consumer_failure_class(result.stderr)
 
 
 engine.compose = compose
