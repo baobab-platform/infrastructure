@@ -1,8 +1,9 @@
 # INT-03A — private Nabhold identity-smoke handoff
 
-**State: INT-03A is merged source preparation. The INT-03B connected identity
-runner is a new source increment pending actual CI/review. No connected PASS
-or full INT-03 acceptance is claimed by this document.**
+**State: INT-03A prepares private inputs; INT-03B implements their connected
+identity lifecycle. Only verified per-run receipts at reviewed exact pins can
+establish a scoped identity-smoke result. Full INT-03 remains OPEN until the
+complete mandatory matrix and independent acceptance requirements are met.**
 Authority: Accepted ADR-SHARED-036, EA v2.3 P0-A (retaining the v2.2 L4 matrix), Nabhold Go-Live
 v2.0 P0-04/P0-06/P0-07, ADR-NAB-0004/0014 and IAM ADR-IAM-0033.
 
@@ -84,9 +85,10 @@ Never upload these files to Actions artifacts or commit them. Keep generated
 bundles under ignored `.runtime` if inside this repository. The preparer owns
 no active services; its cleanup never tears down an external environment.
 
-## Remaining connected execution — INT-03B
+## Connected execution responsibilities — INT-03B
 
-The generated bundle is **not runnable by itself**. Infrastructure still owns:
+The generated bundle is **not runnable by itself**. The Infrastructure-owned
+connected lifecycle must provide and verify:
 
 1. An actual pinned private lab and independently observed source/image
    identities. Keep the existing qualified INT-02 lock/evidence unchanged.
