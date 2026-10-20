@@ -205,7 +205,9 @@ a 403 is a blocker, not authority to broaden permissions automatically.
 
 `*-int03-identity/completed/receipt.json` and its paired digest contain only fixed scenario outcomes,
 source/image identities, an original consumer-receipt hash and a fixed failure
-stage/class. No raw Docker/Keycloak/Next/Playwright logs or fixture files are
+stage/class, finite prerequisite browser failure facts, and fixed HTTP route/method/status
+observations. Query strings, headers, cookies, bodies and raw URLs are excluded.
+No raw Docker/Keycloak/Next/Playwright logs or fixture files are
 uploaded. A smoke PASS requires all four NAB-ID cases, observed runtime pins and
 successful resource/image/private-file cleanup. A failed teardown preserves
 recovery handles and cannot leave `passed=true`. Interrupted runs require the

@@ -87,6 +87,33 @@ class ProjectionTests(unittest.TestCase):
         with self.assertRaises(o.Blocked):
             m.smoke_projection(' ' * 16385, self.sources)
 
+    def test_http_diagnostics_exclude_raw_callbacks_and_unknown_values(self):
+        raw = ('edge-1  | INT03_HTTP NAB_CALLBACK GET 401\n'
+               'edge-1  | request: GET /callback?code=PRIVATE-CODE Cookie=PRIVATE-COOKIE\n'
+               'edge-1  | INT03_HTTP PRIVATE_ROUTE GET 200\n'
+               'edge-1  | INT03_HTTP NAB_LOGIN PRIVATE-METHOD 200\n'
+               'edge-1  | INT03_HTTP CP_SELF GET 200 extra-private-data\n')
+        result = m.diagnostics.project(raw)
+        self.assertEqual(result, [{'route':'NAB_CALLBACK','method':'GET','status':401}])
+        self.assertNotIn('PRIVATE', json.dumps(result))
+        self.assertEqual(len(m.diagnostics.project('INT03_HTTP NAB_LOGIN POST 303\n'*100)), 32)
+
+    def test_edge_log_format_contains_only_mapped_route_method_status(self):
+        text = (BASE/'edge.conf').read_text()
+        self.assertIn("log_format int03_safe 'INT03_HTTP $int03_route $int03_method $status';", text)
+        self.assertIn('error_log /dev/null;', text)
+        self.assertNotIn('$request_uri', text)
+        self.assertNotIn('$args', text)
+
+    def test_component_failure_facts_have_a_second_finite_privacy_boundary(self):
+        result = m.diagnostics.component('IAM diagnostics: step=human_proof stage=login_normal_mfa status=500 | '
+            'step=human_protocol failure_class=TimeoutError failure_code=FORM_U1P1T0O1 | '
+            'step=human_page host=IAM path=ACTION marker=NONE type=HTML body=TEXT PRIVATE-CREDENTIAL')
+        self.assertEqual(result['browser_stage'], 'login_normal_mfa')
+        self.assertEqual(result['failure_class'], 'TimeoutError')
+        self.assertNotIn('PRIVATE', json.dumps(result))
+        self.assertEqual(m.diagnostics.component('stage=PRIVATE failure_class=PRIVATE failure_code=PRIVATE host=PRIVATE'), {})
+
 
 class HostCleanupTests(unittest.TestCase):
     def setUp(self):
@@ -155,6 +182,11 @@ class RuntimeTests(unittest.TestCase):
         workflow = (o.ROOT / '.github/workflows/platform-int03.yml').read_text()
         self.assertIn('--remote-env GITHUB_ACTIONS=true', workflow)
         self.assertIn('--remote-env "GITHUB_RUN_ID=$GITHUB_RUN_ID"', workflow)
+        triggers = workflow.split('permissions:', 1)[0]
+        for path in ('tests/platform-integration/int02/**', 'tests/platform-integration/devcontainer-cli/**',
+                     '.devcontainer/platform-integration/**', 'tests/platform-integration/l4.py',
+                     'tests/platform-integration/manifest.lock.json', 'tests/platform-integration/schema/**'):
+            self.assertEqual(triggers.count('- ' + path + '\n'), 2)
         dockerfile = (BASE / 'nabhold.Dockerfile').read_text()
         self.assertNotIn('ENV COREPACK_HOME=', dockerfile)
         self.assertNotIn('RUN corepack prepare', dockerfile)

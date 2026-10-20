@@ -14,6 +14,7 @@ import uuid
 sys.dont_write_bytecode = True
 
 import handoff
+import diagnostics
 import runtime as lab
 
 o = lab.engine
@@ -206,6 +207,7 @@ def run(value, prerequisite, token):
         receipt['failed_stage'] = stage
         receipt['failure_type'] = type(error).__name__ if type(error).__name__ in {'Blocked', 'OSError', 'PermissionError', 'FileNotFoundError', 'KeyError', 'ValueError', 'TypeError'} else 'OTHER'
         if isinstance(error, o.Blocked):
+            receipt['component_failure'] = diagnostics.component(str(error))
             reasons = {'Integration source must be clean': 'DIRTY_HARNESS',
                        'Harness revision unavailable': 'HARNESS_REVISION_UNAVAILABLE',
                        'Runtime source checkout is dirty': 'DIRTY_SOURCE',
@@ -217,6 +219,15 @@ def run(value, prerequisite, token):
         # If materialisation failed after writing its session, still clean it.
         if o.SESSION.exists() and project is None:
             project = o.current()[0]['project']
+        if project and stage in {'consumer-up', 'runtime-provenance', 'browser-smoke'}:
+            try:
+                p, _, envfile = o.current()
+                raw = lab.compose(p, envfile, 'logs', '--no-color', 'edge', capture=True, timeout=20)
+                receipt['http_observations'] = diagnostics.project(raw)
+            except Exception:
+                # Optional diagnostics must neither suppress the original
+                # failure nor promote an otherwise failing/missing scenario.
+                receipt['http_observations_unavailable'] = True
         try:
             cleanup()
             receipt['teardown_verified'] = True

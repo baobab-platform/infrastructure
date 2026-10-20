@@ -5,13 +5,23 @@ on:
     paths:
       - tests/platform-integration/int03/**
       - tests/platform-integration/int02/**
+      - tests/platform-integration/devcontainer-cli/**
+      - tests/platform-integration/l4.py
+      - tests/platform-integration/manifest.lock.json
+      - tests/platform-integration/schema/**
       - .github/workflows/platform-int03.yml
       - .devcontainer/platform-integration/**
   push:
     branches: [main]
     paths:
       - tests/platform-integration/int03/**
+      - tests/platform-integration/int02/**
+      - tests/platform-integration/devcontainer-cli/**
+      - tests/platform-integration/l4.py
+      - tests/platform-integration/manifest.lock.json
+      - tests/platform-integration/schema/**
       - .github/workflows/platform-int03.yml
+      - .devcontainer/platform-integration/**
   workflow_dispatch:
 permissions:
   contents: read
