@@ -142,6 +142,11 @@ class ProjectionTests(unittest.TestCase):
     def test_edge_log_format_contains_only_mapped_route_method_status(self):
         text = (BASE/'edge.conf').read_text()
         self.assertIn("log_format int03_safe 'INT03_HTTP $int03_route $int03_method $status';", text)
+        self.assertIn("map_hash_bucket_size 128;", text)
+        runner = (BASE / 'run.py').read_text()
+        self.assertLess(runner.index("checkpoint('edge-config')"),
+                        runner.index("checkpoint('consumer-build')"))
+        self.assertIn("'edge', 'nginx', '-t'", runner)
         self.assertIn('error_log /dev/null;', text)
         self.assertNotIn('$request_uri', text)
         self.assertNotIn('$args', text)
