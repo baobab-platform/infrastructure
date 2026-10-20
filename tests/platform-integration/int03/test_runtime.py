@@ -51,6 +51,29 @@ class ProjectionTests(unittest.TestCase):
                 'iam_tls_edge': expected, 'iam_private_upstream': expected})
             self.assertNotIn('PRIVATE', output.getvalue())
 
+    def test_ci_http_report_rejects_private_and_unrecognised_metadata(self):
+        raw = '\n'.join([
+            'edge-1 | INT03_HTTP IAM_INTROSPECT POST 200',
+            'edge-1 | INT03_HTTP NAB_CALLBACK GET 303',
+            'edge-1 | INT03_HTTP CP_SELF GET 200',
+            'edge-1 | INT03_HTTP PRIVATE GET 200',
+            'INT03_HTTP NAB_CALLBACK GET 303 https://private.invalid?code=SECRET',
+            'INT03_HTTP NAB_CALLBACK GET 303\\nPRIVATE',
+            'INT03_HTTP CP_SELF DELETE 200',
+            'Cookie: PRIVATE',
+        ])
+        lines = m.diagnostics.report_http(raw)
+        self.assertEqual(lines, [
+            'INT-03 HTTP: IAM_INTROSPECT POST 200',
+            'INT-03 HTTP: NAB_CALLBACK GET 303',
+            'INT-03 HTTP: CP_SELF GET 200',
+        ])
+        self.assertNotIn('PRIVATE', '\n'.join(lines))
+        self.assertNotIn('SECRET', '\n'.join(lines))
+        self.assertEqual(m.diagnostics.report_http(None), [])
+        self.assertEqual(len(m.diagnostics.report_http(
+            '\n'.join(['INT03_HTTP CP_SELF GET 200'] * 300))), 32)
+
     def setUp(self):
         self.sources = {name: str(n) * 40 for n, name in enumerate(
             ['infrastructure', 'baobab-iam', 'baobab-cp', 'shared', 'nabhold'], 1)}

@@ -271,6 +271,8 @@ def run(value, prerequisite, token):
                 p, _, envfile = o.current()
                 raw = lab.compose(p, envfile, 'logs', '--no-color', 'edge', capture=True, timeout=20)
                 receipt['http_observations'] = diagnostics.project(raw)
+                for line in diagnostics.report_http(raw):
+                    print(line, flush=True)
             except Exception:
                 # Optional diagnostics must neither suppress the original
                 # failure nor promote an otherwise failing/missing scenario.

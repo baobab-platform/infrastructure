@@ -81,3 +81,13 @@ def prerequisite(raw):
         found = m[1].split(',')
         result['iam_log_classes'] = sorted(set(code for code in found if code in IAM_LOG_CLASSES))
     return result
+
+
+def report_http(raw):
+    """Render only revalidated fixed HTTP metadata for CI triage.
+
+    Reuse the receipt projection at the final output boundary; never print
+    caller-controlled logs, exception messages, URLs, headers or bodies.
+    """
+    return ['INT-03 HTTP: {route} {method} {status}'.format(**item)
+            for item in project(raw)]
