@@ -301,3 +301,5 @@ python3 tests/platform-integration/int03/cms_gate.py \
 
 CI runs it as the `cms-gate` job, which needs `source` and retains the receipt
 as `int03-cms-gate-receipt`.
+
+Registry parsing uses pinned PyYAML 6.0.3 with duplicate-key and alias refusal. Quoted keys and block/flow syntax cannot hide a named identity; duplicate top-level workload sections refuse. Registry and decision evidence bytes are read from immutable committed blobs, with working-tree changes separately refused. These checks still grant no identity and leave every connected case BLOCKED.

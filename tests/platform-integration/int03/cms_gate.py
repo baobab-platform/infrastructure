@@ -32,6 +32,8 @@ import re
 import subprocess
 import sys
 
+import yaml
+
 BASE = Path(__file__).resolve().parent
 LOCK = BASE / 'cms-lock.json'
 REGISTRY = 'contracts/identity/v1/workload-registry.yaml'
@@ -93,60 +95,50 @@ CASES = [
     'teardown',
 ]
 
-ROW = re.compile(r'  ([a-z0-9][a-z0-9-]*):')
-FIELD = re.compile(r'    ([a-z_]+): (.+)')
-WORD = re.compile(r'[A-Za-z0-9_./:-]+')
-QUOTED = re.compile(r'"([^"\\]*)"')
-LIST = re.compile(r'\[\s*("[^"\\]*"(?:\s*,\s*"[^"\\]*")*)?\s*\]')
+class RegistryLoader(yaml.SafeLoader):
+    """Use maintained YAML parsing, but refuse duplicate/aliased authority."""
 
 
-def value(text):
-    """One field value in the registry's grammar, or None if unrecognised.
-    The whole text is tried first, so a quoted '#' is never cut as a comment."""
-    for candidate in (text.strip(), text.split(' #', 1)[0].strip()):
-        if QUOTED.fullmatch(candidate):
-            return QUOTED.fullmatch(candidate).group(1)
-        if LIST.fullmatch(candidate):
-            return QUOTED.findall(candidate)
-        if WORD.fullmatch(candidate):
-            return candidate
-    return None
+def registry_mapping(loader, node, deep=False):
+    result = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if not isinstance(key, str) or key in result:
+            raise yaml.YAMLError('duplicate or non-string registry key')
+        result[key] = loader.construct_object(value_node, deep=deep)
+    return result
+
+
+RegistryLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, registry_mapping)
 
 
 def rows(text):
-    """Rows under `workloads:` as {name: {field: value}}, and names that could
-    not be read exactly (a duplicate row or field, or an unrecognised value)."""
-    found, broken, current, inside = {}, set(), None, False
-    for line in text.splitlines():
-        if not line.strip() or line.lstrip().startswith('#'):
-            continue
-        if not line.startswith(' '):
-            inside, current = line.rstrip() == 'workloads:', None
-            continue
-        if not inside:
-            continue
-        head = ROW.fullmatch(line.rstrip())
-        if head:
-            current = head.group(1)
-            if current in found:
-                broken.add(current)
-            found[current] = {}
-            continue
-        field = FIELD.fullmatch(line.rstrip())
-        if current is None or field is None:
-            if current:
-                broken.add(current)
-            continue
-        key, parsed = field.group(1), value(field.group(2))
-        if parsed is None or key in found[current]:
-            broken.add(current)
-        found[current][key] = parsed
-    return found, broken
+    """Parse the actual YAML document, including quoted/flow/block syntax.
+
+    Duplicate top-level workloads sections must never be merged into a view
+    that disagrees with the canonical YAML consumer. Anchors/aliases are not
+    needed by this pinned registry and are refused before object construction.
+    """
+    if not isinstance(text, str) or len(text.encode()) > 1024 * 1024:
+        raise yaml.YAMLError('registry size')
+    if any(isinstance(token, (yaml.tokens.AliasToken, yaml.tokens.AnchorToken)) for token in yaml.scan(text)):
+        raise yaml.YAMLError('registry aliases')
+    doc = yaml.load(text, Loader=RegistryLoader)
+    if not isinstance(doc, dict) or not isinstance(doc.get('workloads'), dict):
+        raise yaml.YAMLError('registry shape')
+    found = doc['workloads']
+    if any(not re.fullmatch(r'[a-z0-9][a-z0-9-]*', name) for name in found):
+        raise yaml.YAMLError('registry workload key')
+    broken = {name for name, row in found.items() if not isinstance(row, dict)}
+    return {name: {} if name in broken else row for name, row in found.items()}, broken
 
 
 def judge(text):
     """The gate verdict and its fixed reason codes for one registry text."""
-    found, broken = rows(text)
+    try:
+        found, broken = rows(text)
+    except (yaml.YAMLError, TypeError, ValueError, RecursionError):
+        return 'REFUSED', ['REGISTRY_UNPARSEABLE']
     reasons = []
     for name in sorted(EXPECTED):
         if name not in found:
@@ -206,8 +198,8 @@ def evaluate(shared, lock=None):
                            capture_output=True, text=True, check=True).stdout
     if dirty.strip():
         raise SystemExit('Shared registry or decision differs from the pinned commit')
-    registry = (Path(shared) / REGISTRY).read_bytes()
-    decision = (Path(shared) / DECISION).read_bytes()
+    registry = subprocess.check_output(['git', '-C', str(shared), 'show', head + ':' + REGISTRY])
+    decision = subprocess.check_output(['git', '-C', str(shared), 'show', head + ':' + DECISION])
     verdict, reasons = judge(registry.decode())
     return receipt(verdict, reasons, head, hashlib.sha256(registry).hexdigest(),
                    hashlib.sha256(decision).hexdigest())

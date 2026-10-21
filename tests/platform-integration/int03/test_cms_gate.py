@@ -115,9 +115,17 @@ class Gate(unittest.TestCase):
             OPEN + VALIDATOR,  # duplicate row
             OPEN.replace('    status: ACTIVE\n', '    status: ACTIVE\n    status: ACTIVE\n', 1),
             OPEN.replace('allowed_scopes: ["context:validate"]', 'allowed_scopes: &scopes ["context:validate"]'),
-            OPEN.replace('allowed_scopes: ["context:validate"]', 'allowed_scopes:\n      - context:validate'),
+            OPEN.replace('allowed_scopes: ["context:validate"]', 'allowed_scopes: [broken'),
+            OPEN + '\nworkloads: {}\n',
         ]:
             self.assertEqual(gate.judge(text)[0], 'REFUSED', text[-200:])
+
+    def test_canonical_yaml_syntax_does_not_hide_named_rows(self):
+        quoted = OPEN.replace('  baobab-int03-cms-consumer:', '  "baobab-int03-cms-consumer":')
+        block = OPEN.replace('allowed_scopes: ["context:validate"]', 'allowed_scopes:\n      - context:validate')
+        for text in (quoted, block):
+            self.assertEqual(gate.judge(text)[0], 'OPEN')
+        self.assertEqual(gate.judge(OPEN + '\nworkloads: {}\n')[0], 'REFUSED')
 
     def test_no_other_cms_proof_identity_may_appear(self):
         extra = CONSUMER.replace(gate.CONSUMER, 'baobab-int03-cms-editor')

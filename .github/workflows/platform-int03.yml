@@ -42,6 +42,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24.21.0'
+      - run: python3 -m pip install PyYAML==6.0.3
       - run: python3 tests/platform-integration/int03/run.py preflight
       - run: python3 -B -m unittest discover -s tests/platform-integration/int03 -p 'test_*.py' -v
       - run: node --check tests/platform-integration/int03/consumer.mjs
@@ -71,6 +72,7 @@ jobs:
           ref: ${{ steps.pin.outputs.shared }}
           path: .int03-cms/shared
           persist-credentials: false
+      - run: python3 -m pip install PyYAML==6.0.3
       - name: Registry gate and NAB-03 receipt
         run: python3 -B tests/platform-integration/int03/cms_gate.py --shared .int03-cms/shared --out "$RUNNER_TEMP/int03-cms-gate"
       - name: Retain the gate receipt
