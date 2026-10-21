@@ -303,3 +303,44 @@ CI runs it as the `cms-gate` job, which needs `source` and retains the receipt
 as `int03-cms-gate-receipt`.
 
 Registry parsing uses pinned PyYAML 6.0.3 with duplicate-key and alias refusal. Quoted keys and block/flow syntax cannot hide a named identity; duplicate top-level workload sections refuse. Registry and decision evidence bytes are read from immutable committed blobs, with working-tree changes separately refused. These checks still grant no identity and leave every connected case BLOCKED.
+
+
+## Actual CMS/PG17 component preparation while the registry is held
+
+`python3 -B tests/platform-integration/int03/cms_provider.py run` source-builds
+CMS using its reviewed production Dockerfile and locked Node 24 base. The build
+stage supplies explicit committed migrations and the bounded CMS fixture CLI;
+the standalone unprivileged runtime serves actual HTTP. PostgreSQL 17 uses a
+locked image and isolated project-owned disposable volume; no service publishes
+host ports. The network is private, and no IAM caller, validator, token or CP
+identity is fabricated. The named registry identities remain held.
+
+The job verifies exact clean CMS/Shared checkouts, source and package-lock hashes,
+built tool/migration file hashes, actual migration-table readback, runtime image
+content IDs/source labels, Node/npm and PostgreSQL versions. It runs idempotent
+seeding, restart verification and CMS-owned fixture publication, withdrawal and
+draft restoration. HTTP proves liveness, actual DB readiness, anonymous/malformed
+authentication denial and the unconfigured identity path's fail-closed 503. It
+also proves actual database outage/readiness failure and recovery. Those component
+observations do not prove IAM/CP authorisation, human editorial approval or any
+connected acceptance case.
+
+A private recovery handle is created before resource allocation. Success, failure
+and SIGINT/SIGTERM use the existing INT-03 ownership-label destruction strategy,
+which also works if the Compose environment/source or database is unavailable.
+The workflow always retries `cms_provider.py down`. It verifies no owned container,
+network or volume remains, removes the two per-run image tags and private files,
+and publishes receipt plus independently hashable SHA256 file atomically only
+after teardown. A failed cleanup never yields component PASS. Shared base images
+and build cache contain only public source/dependencies and are not per-run trust
+or data. No credential is supplied during image builds.
+
+The receipt is `ACTUAL_CMS_PG17_COMPONENT_SYNTHETIC_DATA`, qualified=false. **All
+fourteen NAB-03 connected cases remain BLOCKED**, including the connected teardown
+case; this component's own teardown result is recorded separately. The source,
+health and fixture checks cannot replace actual IAM-issued independently scoped
+caller/validator tokens, current same-principal CP authority, independent current
+provider certification/health/binding, Nabhold consumption or the full matrix.
+The canonical activation hold, native protected IAM–CP, executive authority,
+staging, production and R0–R3 remain open. Do not change the frozen identity or
+INT-02 locks to make this component pass.

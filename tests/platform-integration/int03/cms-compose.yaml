@@ -1,0 +1,73 @@
+# Dedicated provider component; reusable by the later connected CMS overlay.
+# Private disposable storage only. No host ports, IAM principal or CP authority.
+name: ${CMS_PROJECT:?explicit isolated project required}
+x-cms-environment: &cms-environment
+  DATABASE_URL: postgresql://payload:${CMS_DB_PASSWORD:?per-run secret required}@cms-db:5432/cms_int03_${CMS_RUN_ID:?run id required}
+  PAYLOAD_SECRET: ${CMS_PAYLOAD_SECRET:?independent per-run secret required}
+  BAOBAB_ENVIRONMENT: ci
+  CI: "true"
+  NODE_ENV: production
+  NEXT_TELEMETRY_DISABLED: "1"
+  CMS_INT03_FIXTURE: synthetic-disposable
+  CMS_INT03_RUN_ID: ${CMS_RUN_ID}
+services:
+  cms-db:
+    image: ${CMS_POSTGRES_IMAGE:?locked PostgreSQL 17 required}
+    environment:
+      POSTGRES_USER: payload
+      POSTGRES_PASSWORD: ${CMS_DB_PASSWORD}
+      POSTGRES_DB: cms_int03_${CMS_RUN_ID}
+    volumes: [cmsdata:/var/lib/postgresql/data]
+    networks: [lab]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U payload -d cms_int03_${CMS_RUN_ID}"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+  cms-tool:
+    profiles: [tools]
+    build:
+      context: ${CMS_SOURCE:?exact clean CMS checkout required}
+      target: build
+    image: ${CMS_TOOL_IMAGE:?run-scoped tool image required}
+    environment: *cms-environment
+    networks: [lab]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  cms:
+    build:
+      context: ${CMS_SOURCE}
+      target: runtime
+      args:
+        REVISION: ${CMS_SOURCE_SHA:?exact source required}
+    image: ${CMS_RUNTIME_IMAGE:?run-scoped runtime image required}
+    environment:
+      <<: *cms-environment
+      HOSTNAME: 0.0.0.0
+      CORS_ORIGIN: http://cms:3000
+      CSRF_ORIGIN: http://cms:3000
+    read_only: true
+    tmpfs: ["/tmp:mode=1777", "/app/.next/cache:uid=1001,gid=1001"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [lab]
+    depends_on:
+      cms-db: {condition: service_healthy}
+  cms-probe:
+    profiles: [tools]
+    image: ${CMS_RUNTIME_IMAGE}
+    entrypoint: [node, /lab/cms_probe.mjs]
+    environment:
+      CMS_PROBE_BASE: http://cms:3000
+    volumes:
+      - ${CMS_LAB_SOURCE:?reviewed probe source required}:/lab:ro
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [lab]
+volumes:
+  cmsdata:
+networks:
+  lab:
+    internal: true
