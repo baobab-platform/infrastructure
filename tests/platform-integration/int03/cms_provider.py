@@ -15,7 +15,6 @@ import re
 import secrets
 import shutil
 import signal
-import subprocess
 import sys
 import time
 
@@ -269,14 +268,14 @@ def run():
         must(time.time() < p['deadline'], 'CMS component deadline exceeded')
         receipt['component_outcome'] = 'PASS'
         receipt['phase'] = 'COMPONENT_COMPLETE'
-    except BaseException as cause:
+    except Exception as cause:
         # Never export exception strings, build logs, DB/HTTP contents or secrets.
         error = cause
     finally:
         try:
             cleanup(p)
             receipt['teardown'] = 'PASS'
-        except BaseException:
+        except Exception:
             receipt['teardown'] = 'FAIL'
             receipt['component_outcome'] = 'FAIL'
     if error:
