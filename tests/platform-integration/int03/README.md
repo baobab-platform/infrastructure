@@ -314,6 +314,9 @@ the standalone unprivileged runtime serves actual HTTP. PostgreSQL 17 uses a
 locked image and isolated project-owned disposable volume; no service publishes
 host ports. The network is private, and no IAM caller, validator, token or CP
 identity is fabricated. The named registry identities remain held.
+This standalone pre-gate command requires `HELD`; `OPEN` or `REFUSED` refuses
+before any container is built or started. A later connected command can reuse
+the composition without treating this held-only component as qualification.
 
 The job verifies exact clean CMS/Shared checkouts, source and package-lock hashes,
 built tool/migration file hashes, actual migration-table readback, runtime image
@@ -331,8 +334,12 @@ which also works if the Compose environment/source or database is unavailable.
 The workflow always retries `cms_provider.py down`. It verifies no owned container,
 network or volume remains, removes the two per-run image tags and private files,
 and publishes receipt plus independently hashable SHA256 file atomically only
-after teardown. A failed cleanup never yields component PASS. Shared base images
-and build cache contain only public source/dependencies and are not per-run trust
+after teardown. A failed cleanup never yields component PASS.
+
+Cleanup attempts all validated owned resources even if one removal fails, then
+retains the private recovery handle and fails; the next `down` can retry. A lost
+handle is restored from the running process's known owner before recovery.
+Shared base images and build cache contain only public source/dependencies and are not per-run trust
 or data. No credential is supplied during image builds.
 
 The receipt is `ACTUAL_CMS_PG17_COMPONENT_SYNTHETIC_DATA`, qualified=false. **All

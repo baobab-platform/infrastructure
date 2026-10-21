@@ -140,6 +140,49 @@ class CMSProvider(unittest.TestCase):
             self.assertEqual(list(Path(temporary).glob('*/completed/*')), [])
             self.assertEqual(list(Path(temporary).glob('*/.pending/*')), [])
 
+    def test_open_or_refused_registry_cannot_start_held_component(self):
+        for verdict in ['OPEN', 'REFUSED']:
+            with tempfile.TemporaryDirectory() as temporary, patch.object(provider.o, 'STATE', Path(temporary)), \
+                    patch.object(provider, 'SESSION', Path(temporary) / 'session.json'), \
+                    patch.object(provider, 'pinned_checkout'), \
+                    patch.object(provider.cms_gate, 'evaluate', return_value={'gate': {'verdict': verdict}}), \
+                    patch.object(provider.o, 'execute') as execute:
+                with self.assertRaises(Exception):
+                    provider.materialise(provider.load())
+                execute.assert_not_called()
+                self.assertTrue(provider.SESSION.exists(), 'failed preparation retains its private recovery handle')
+
+    def test_stuck_owned_container_does_not_prevent_other_resource_removals(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / 'cms-int03-0123456789abcdef'
+            directory.mkdir(mode=0o700)
+            p = {'project': directory.name, 'run_id': '0123456789abcdef', 'deadline': 1, 'source_sha': 'a' * 40}
+            resources = {'container': ['a' * 12, 'b' * 12], 'network': ['c' * 12], 'volume': [directory.name + '_cmsdata']}
+            def execute(args, **_kwargs):
+                if args[:3] == ['docker', 'ps', '-aq']:
+                    return '\n'.join(resources['container'])
+                for kind in ['network', 'volume']:
+                    if args[:4] == ['docker', kind, 'ls', '-q']:
+                        return '\n'.join(resources[kind])
+                    if args[:3] == ['docker', kind, 'rm']:
+                        resources[kind].remove(args[-1])
+                if args[:3] == ['docker', 'rm', '-f']:
+                    if args[-1] == 'a' * 12:
+                        raise RuntimeError('synthetic stuck resource')
+                    resources['container'].remove(args[-1])
+                if args[:3] == ['docker', 'image', 'ls']:
+                    return 'owned-image'
+                return ''
+            with patch.object(provider, 'SESSION', root / 'lost.json'), patch.object(provider.o, 'STATE', root), \
+                    patch.object(provider.o, 'execute', side_effect=execute) as calls:
+                with self.assertRaises(Exception):
+                    provider.cleanup(p)
+                self.assertEqual(resources, {'container': ['a' * 12], 'network': [], 'volume': []})
+                self.assertEqual(len([c for c in calls.call_args_list if c.args[0][:3] == ['docker', 'image', 'rm']]), 2)
+                self.assertEqual(json.loads(provider.SESSION.read_text()), p)
+                self.assertTrue(directory.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

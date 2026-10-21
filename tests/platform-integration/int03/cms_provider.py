@@ -80,6 +80,7 @@ def compose(p, envfile, *args, capture=False, timeout=300, stdin=None):
 
 
 def cleanup(expected=None):
+    failed = False
     if not SESSION.exists():
         if expected is None:
             return
@@ -91,6 +92,12 @@ def cleanup(expected=None):
         must(not directory.is_symlink() and directory.resolve().parent == o.STATE.resolve() and
              (not directory.exists() or directory.is_dir() and directory.stat().st_uid == os.getuid() and
               not directory.stat().st_mode & 0o077), 'CMS directory escaped')
+        # Restore the known private handle so a failed removal can be retried
+        # by the workflow's independent down step after this process exits.
+        try:
+            o.private(SESSION, json.dumps(p) + '\n')
+        except Exception:
+            failed = True
     else:
         p, directory, _envfile = current()
         must(expected is None or p == expected, 'CMS recovery owner changed')
@@ -102,15 +109,35 @@ def cleanup(expected=None):
         ('volume', ['docker', 'volume', 'ls', '-q'], ['docker', 'volume', 'rm']),
     ]:
         query = [*listing, '--filter', 'label=com.docker.compose.project=' + p['project']]
-        for identifier in o.execute(query, capture=True).strip().splitlines():
+        try:
+            identifiers = o.execute(query, capture=True).strip().splitlines()
+        except Exception:
+            failed = True
+            continue
+        for identifier in identifiers:
             valid = re.fullmatch('[0-9a-f]{12,64}', identifier) or kind == 'volume' and re.fullmatch(re.escape(p['project']) + r'_[a-z0-9_-]+', identifier)
-            must(valid, 'Untrusted CMS resource identifier')
-            o.execute([*remove, identifier], timeout=120)
-        must(not o.execute(query, capture=True).strip(), 'CMS teardown incomplete')
+            if not valid:
+                failed = True
+                continue
+            try:
+                o.execute([*remove, identifier], timeout=120)
+            except Exception:
+                failed = True
+        try:
+            if o.execute(query, capture=True).strip():
+                failed = True
+        except Exception:
+            failed = True
     for kind in ['runtime', 'tool']:
         tag = 'int03-cms-' + kind + ':' + p['run_id']
-        if o.execute(['docker', 'image', 'ls', '-q', '--filter', 'reference=' + tag], capture=True).strip():
-            o.execute(['docker', 'image', 'rm', tag], timeout=120)
+        try:
+            if o.execute(['docker', 'image', 'ls', '-q', '--filter', 'reference=' + tag], capture=True).strip():
+                o.execute(['docker', 'image', 'rm', tag], timeout=120)
+        except Exception:
+            failed = True
+    # A stuck container cannot prevent destruction of other owned resources.
+    # Keep the recovery handle/private inputs until every category succeeded.
+    must(not failed, 'CMS teardown incomplete; private recovery retained')
     if directory.exists():
         shutil.rmtree(directory)
     SESSION.unlink(missing_ok=True)
@@ -140,7 +167,7 @@ def materialise(lock):
     pinned_checkout(directory / 'shared', 'shared', lock['sources']['shared'])
     pinned_checkout(directory / 'baobab-cms', 'baobab-cms', p['source_sha'])
     gate = cms_gate.evaluate(directory / 'shared', lock)
-    must(gate['gate']['verdict'] != 'REFUSED', 'CMS canonical registry refused')
+    must(gate['gate']['verdict'] == 'HELD', 'Held-only CMS component requires registry activation hold')
     source = directory / 'baobab-cms'
     must('FROM ' + lock['runtime_images']['node'] + ' AS base' in (source / 'Dockerfile').read_text().splitlines(),
          'CMS builder differs from locked Node image')
