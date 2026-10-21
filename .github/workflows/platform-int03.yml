@@ -1,5 +1,6 @@
 name: INT-03 connected Nabhold identity smoke
 # Source qualification only; does not implement/accept CMS or full NAB-01–04.
+# cms-gate records NAB-03 BLOCKED at the registry gate; it is not CMS acceptance.
 on:
   pull_request:
     paths:
@@ -45,6 +46,40 @@ jobs:
       - run: python3 -B -m unittest discover -s tests/platform-integration/int03 -p 'test_*.py' -v
       - run: node --check tests/platform-integration/int03/consumer.mjs
       - run: bash -n tests/platform-integration/int03/fixture.sh
+  cms-gate:
+    name: INT-03 CMS registry gate (NAB-03 BLOCKED while the activation hold stands)
+    # Accepted Shared #354: the CMS lane needs two named development identities
+    # in the canonical registry; the owner's no-registry-activation hold keeps
+    # them out. This reads the unmodified registry at the locked Shared commit
+    # and records every NAB-03 case BLOCKED. It never provisions an identity,
+    # contacts a service or reports qualification. HELD passes; REFUSED (a
+    # registry defect) and OPEN (the connected CMS lane is now owed) fail.
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the locked Shared commit
+        id: pin
+        run: echo "shared=$(python3 -c 'import json;print(json.load(open("tests/platform-integration/int03/cms-lock.json"))["sources"]["shared"])')" >> "$GITHUB_OUTPUT"
+      - name: Check out Shared at the locked commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/shared
+          ref: ${{ steps.pin.outputs.shared }}
+          path: .int03-cms/shared
+          persist-credentials: false
+      - name: Registry gate and NAB-03 receipt
+        run: python3 -B tests/platform-integration/int03/cms_gate.py --shared .int03-cms/shared --out "$RUNNER_TEMP/int03-cms-gate"
+      - name: Retain the gate receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: int03-cms-gate-receipt
+          if-no-files-found: warn
+          path: ${{ runner.temp }}/int03-cms-gate
   connected:
     name: Real Nabhold BFF, IAM, CP and TLS Redis smoke
     needs: source

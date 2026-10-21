@@ -1,0 +1,14 @@
+{
+  "schema": "infrastructure.int03.cms.v1",
+  "profile": "cms-capability-proof",
+  "decision": "shared:docs/architecture/int03-cms-proof-bootstrap-proposal.md",
+  "sources": {
+    "shared": "409d780d05f7825ab1228649541032d42a7b0b13",
+    "baobab-cms": "7122b220d4dde83cb87884ea7a40c0535f8feff5",
+    "nabhold": "9d96bd6c4ae6894c7c24a8d9bbd9cf467b2ce583",
+    "baobab-iam": "11ab6941c338c34593283d137048988f398c9c74",
+    "baobab-cp": "3810b8222fa6df09b829e7c725d534af10b1155c"
+  },
+  "synthetic_only": true,
+  "full_int03_acceptance": false
+}
