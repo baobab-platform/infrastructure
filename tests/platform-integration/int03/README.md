@@ -265,3 +265,41 @@ routes retain no-referrer. Missing/null/foreign Origin and invalid CSRF remain
 denied. The actual browser must observe exact Origin and logout 303, then prove
 server custody revocation with the prior opaque handle. These assertions cannot
 be replaced by callback/account/session success or a source unit result.
+
+## INT-03 CMS — registry gate (NAB-03 BLOCKED)
+
+Accepted Shared #354 ([decision](https://github.com/baobab-platform/shared/blob/main/docs/architecture/int03-cms-proof-bootstrap-proposal.md))
+lets exactly two named development identities produce synthetic CMS evidence:
+`baobab-int03-cms-consumer` (owner Infrastructure) and
+`baobab-int03-cms-validator` (owner CMS). They can authenticate only after a
+reviewed change adds them to the canonical workload registry. The platform
+owner's no-registry-activation hold keeps them out, and Shared #356, which
+proposed them, was closed unmerged. **Every connected NAB-03 case is therefore
+BLOCKED.** Nothing here provisions, borrows or synthesises either identity.
+
+`cms_gate.py` reads the unmodified registry at the Shared commit locked in
+`cms-lock.json`, refusing any other commit or a modified file, and writes
+`cms-gate-receipt.json` with its SHA-256:
+
+| Verdict | Meaning | Job |
+| --- | --- | --- |
+| `HELD` | Neither named row is present; the hold is in force | passes |
+| `REFUSED` | A named row differs from #354 field for field (any extra or widened field included), only one of the two is present, a row is duplicated or unparseable, another `baobab-int03-cms-*` row appears, or `nabhold-backend` / `baobab-cms-workload` changed | fails: registry defect |
+| `OPEN` | Both rows match #354 exactly | fails: the connected CMS lane is now owed |
+
+In every verdict all 14 NAB-03 cases are `BLOCKED`, `identities_created` is
+false and `qualified` is false. The case keys refine the normative NAB-03
+scenario (Shared `ea-v2.2-integration-acceptance-matrix.md`) and are not new
+normative IDs. Only a connected run's own scenario-complete receipt, under
+#354's lifecycle, deadline and teardown rules, can report
+`QUALIFIED_SYNTHETIC_RUN`.
+
+```bash
+python3 tests/platform-integration/int03/cms_gate.py \
+  --shared /absolute/shared/checkout/at/locked/commit --out /absolute/output
+```
+
+CI runs it as the `cms-gate` job, which needs `source` and retains the receipt
+as `int03-cms-gate-receipt`.
+
+Registry parsing uses pinned PyYAML 6.0.3 with duplicate-key and alias refusal. Quoted keys and block/flow syntax cannot hide a named identity; duplicate top-level workload sections refuse. Registry and decision evidence bytes are read from immutable committed blobs, with working-tree changes separately refused. These checks still grant no identity and leave every connected case BLOCKED.
