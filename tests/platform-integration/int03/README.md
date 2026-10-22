@@ -366,3 +366,57 @@ Shared authority pins are unchanged. Both named CMS identities remain absent;
 CMS component execution still requires HELD and every connected case remains
 BLOCKED/qualified=false. No source refresh activates authority, upgrades CMS
 PARTIAL support or accepts native protected C4, staging, production or R0–R3.
+
+## Supervised native-CMS lifecycle pre-gate foundation
+
+`cms_lifecycle.py` introduces a separate, fail-closed lifecycle guard with an
+immutable UTC and monotonic maximum of 90 minutes from creation, a 60-second
+maximum token lease bounded by the original deadline, operation-level timeouts
+and an independent watchdog. It requires an authentic OPEN-shaped canonical
+gate receipt **before** executing an adapter operation; HELD and REFUSED cannot
+provision. The Infrastructure runner must independently verify the receipt
+against the pinned clean Shared checkout, never handcraft an OPEN document.
+`test_cms_lifecycle.py` exercises guard/cleanup behaviour using fake callbacks
+and cannot establish actual provider compatibility.
+
+For an eventual real run the owner MUST register all four bounded, separately
+verifiable closure callbacks *before* any POST: stop every accepting CMS/CP
+runtime and invalidate trust; revoke/destroy issuer clients and token trust;
+remove CP-owned disposable topology/grants; remove private files, volumes and
+secrets. Closure attempts all owners even if one fails. A callback returns
+`True` only after separate observation confirms destruction. No callback may
+log secret material. Use an external process supervisor and host recovery as
+well: in-process watchdogs cannot survive SIGKILL, runner crash or host loss.
+
+This new primitive intentionally never emits `qualified=true`, even when a
+unit test marks 14 local labels observed. Only a separately reviewed live
+executor can prove real issuer/CP/CMS operations, independently certified
+current CP topology, all negative scenarios, original source/image provenance,
+verified teardown, durable evidence and an independent acceptance decision.
+The present Shared #354 activation hold means the gate still returns HELD and
+all NAB-03 cases remain BLOCKED. Do not run named fixtures or edit the registry
+to exercise this code.
+
+
+### Current CP-owned topology adapter
+
+`cms_cp_context.py` uses CP's current, actually mounted
+`POST /v1/platform-context/resolve` and `/validate` routes, rather than
+inventing a registry or inserting CP UUIDs through the SQL fixture. The
+Infrastructure runner must supply real independent IAM consumer and validator
+tokens, approved synthetic Tenant/Organisation/market participation and the
+disposable trusted CA. It demands that CP return a fresh, bounded context for
+the exact Tenant, Organisation, Organisation kind, country and active market,
+then confirms the context using the separate registered validator's subject
+token path. Redirects, unsafe TLS, unbounded/mismatched/expired results and
+TENANT_PROVISIONING authority are denied. Tokens and response bodies are
+never written to the source receipt. A unit-test transport is *not* live proof.
+
+This verifies only CP's current context authority **after** the CP-owned
+topology, grants, independent maker/checker provider certification and binding
+have actually been established through their governed APIs. The adapter does
+not create, approve or certify them. It must never be wired to a held registry
+or treated as authority merely because a synthetic test supplied matching
+JSON. The remaining connected CMS executor must verify deployment/health and
+capability binding, exercise every normative NAB-03 positive/negative against
+the live providers, and retain independent runtime provenance and destruction.
