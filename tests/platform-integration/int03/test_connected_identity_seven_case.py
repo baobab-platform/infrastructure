@@ -1,6 +1,5 @@
 """Independent original-byte structure checks; never accepted live proof."""
 import hashlib
-import json
 import os
 from pathlib import Path
 import tempfile
@@ -8,7 +7,7 @@ import unittest
 
 import cms_evidence as custody
 import connected_identity_seven_case as seven
-from connected_identity_evidence import (AUTHORITY, CASES, PROOFS,
+from connected_identity_evidence import (AUTHORITY, CASES,
                                           EvidenceRefused, blocked_receipt)
 
 PINS=dict.fromkeys(["infrastructure","shared","baobab-iam","baobab-cp",
