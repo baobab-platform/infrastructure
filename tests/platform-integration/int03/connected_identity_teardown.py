@@ -39,10 +39,13 @@ class Owner:
         if (not isinstance(raw["run_id"],str) or not RUN.fullmatch(raw["run_id"]) or
             raw["docker_project"]!="l4-"+raw["run_id"][:16] or
             not isinstance(raw["clients"],list) or
-            len(raw["clients"])!=2 or\n            not all(isinstance(x,str) for x in raw["clients"]) or\n            len(set(raw["clients"]))!=2 or
+            len(raw["clients"])!=2 or
+            not all(isinstance(x,str) for x in raw["clients"]) or
+            len(set(raw["clients"]))!=2 or
             any(not isinstance(x,str) or not CLIENT.fullmatch(x) or x in FORBIDDEN
                 for x in raw["clients"]) or
-            not all(isinstance(raw[k],str) and SHA.fullmatch(raw[k])\n                    for k in ("shared_sha","iam_sha","cp_sha")) or
+            not all(isinstance(raw[k],str) and SHA.fullmatch(raw[k])
+                    for k in ("shared_sha","iam_sha","cp_sha")) or
             not isinstance(raw["cp_resources"],list) or
             not raw["cp_resources"] or len(raw["cp_resources"])>24 or
             not all(isinstance(x,str) and
