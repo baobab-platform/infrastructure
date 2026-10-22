@@ -70,7 +70,11 @@ def witness(owner, *, issuer_lookup, cp_lookup, principal_lookup,
     if not isinstance(owner,Owner) or not callable(issuer_lookup) or not callable(
             cp_lookup) or not callable(principal_lookup) or prior_custody is None:
         raise custody.Refused("independent issuer and CP checker unavailable")
-    prior=custody.verify(prior_custody)
+    try:
+        prior=custody.verify(prior_custody)
+    except (OSError, ValueError, TypeError):
+        # Do not expose private source paths or filesystem details.
+        raise custody.Refused("independent original creation bytes unavailable") from None
     if (prior["run_id"]!=owner.run_id or
         prior["source_pins"]["shared"]!=owner.shared_sha or
         prior["source_pins"]["baobab-iam"]!=owner.iam_sha or
