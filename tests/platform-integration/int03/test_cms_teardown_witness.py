@@ -1,5 +1,4 @@
 """Unit proofs for source-level independent teardown invariants only."""
-import json
 import os
 from pathlib import Path
 import tempfile
