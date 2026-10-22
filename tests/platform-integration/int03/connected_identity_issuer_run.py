@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 import cms_evidence as custody
@@ -32,7 +33,8 @@ def reviewed(path):
     record=json.loads(Path(path).read_bytes())
     fields={"schema","run_id","environment","sources","issuer","ca_file",
             "owner_client","verifier_client","owner_secret_file",
-            "verifier_secret_file","audience","scope","approval_digest"}
+            "verifier_secret_file","audience","scope","approval_digest",
+            "shared_checkout"}
     if (type(record) is not dict or set(record)!=fields or
         record["schema"]!=SCHEMA or record["environment"]!="development" or
         not re.fullmatch(r"[0-9a-f]{32}",record["run_id"]) or
@@ -44,6 +46,7 @@ def reviewed(path):
         not CLIENT.fullmatch(record["verifier_client"]) or
         record["owner_client"]==record["verifier_client"] or
         record["owner_client"] in FORBIDDEN or record["verifier_client"] in FORBIDDEN or
+        not isinstance(record["shared_checkout"],str) or
         not isinstance(record["scope"],str) or
         not re.fullmatch(r"[a-z][a-z0-9:._-]{2,79}",record["scope"]) or
         not isinstance(record["audience"],str) or
@@ -51,6 +54,50 @@ def reviewed(path):
         raise EvidenceRefused("reviewed, distinct, approved IAM fixture clients required")
     return record
 
+
+
+def verify_governed_workloads(plan):
+    """Require real, exact Shared ACTIVE development client registrations.
+
+    A submitted approval digest or an existing provider client alone never
+    makes an unregistered fixture permissible. We do not adopt INT-02 Pulse's
+    named client or the held CMS clients for unrelated INT-03C authority.
+    """
+    checkout=Path(plan["shared_checkout"])
+    if checkout.is_symlink() or not checkout.is_dir():
+        raise EvidenceRefused("reviewed Shared repository missing")
+    for argv in (
+        ["git","-C",str(checkout),"rev-parse","HEAD"],
+        ["git","-C",str(checkout),"status","--porcelain","--untracked-files=all"],
+    ):
+        result=subprocess.run(argv,capture_output=True,text=True,
+                              timeout=10,check=False)
+        if result.returncode or (
+            argv[-1]=="HEAD" and result.stdout.strip()!=plan["sources"]["shared"]) or (
+            argv[-1]=="--untracked-files=all" and result.stdout.strip()):
+            raise EvidenceRefused("Shared registered workload source is not immutable")
+    try:
+        import yaml
+        registry=yaml.safe_load((checkout/"contracts/identity/v1/workload-registry.yaml").read_text())
+    except (ImportError,OSError,ValueError):
+        raise EvidenceRefused("canonical Shared workload registry unavailable") from None
+    members=registry.get("workloads") if isinstance(registry,dict) else None
+    if not isinstance(members,dict):
+        raise EvidenceRefused("canonical workload registry incomplete")
+    for client,required in (
+        (plan["owner_client"],plan["scope"]),
+        (plan["verifier_client"],"context:validate"),
+    ):
+        entry=members.get(client)
+        if (not isinstance(entry,dict) or
+            entry.get("status")!="ACTIVE" or
+            entry.get("environment")!="development" or
+            entry.get("credential_type")!="client_credentials" or
+            entry.get("repository")!="baobab-platform/infrastructure" or
+            plan["audience"] not in entry.get("allowed_audiences",[]) or
+            required not in entry.get("allowed_scopes",[])):
+            raise EvidenceRefused("INT-03C OAuth client lacks canonical active authority")
+    return True
 
 def basic(client,secret):
     if (not isinstance(secret,str) or
@@ -62,6 +109,7 @@ def basic(client,secret):
 def issue(record,*,issuer,now=None):
     """Token issuer and second verifier must independently agree."""
     source_pins(record)
+    verify_governed_workloads(record)
     owner_secret=read_private_token(record["owner_secret_file"])
     checker_secret=read_private_token(record["verifier_secret_file"])
     if owner_secret==checker_secret:
