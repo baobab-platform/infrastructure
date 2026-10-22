@@ -19,7 +19,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from cms_evidence import Refused
+import cms_evidence as custody
 
 PROJECT = re.compile(r"(?:cms-int03-[0-9a-f]{16}|l4-[0-9a-f]{16})\Z")
 RUN = re.compile(r"[0-9a-f]{16,32}\Z")
@@ -46,7 +46,7 @@ class Owner:
         if not isinstance(raw, dict) or set(raw) != {
             "schema", "project", "run_id", "iam_sha", "shared_sha",
             "cp_resources", "private_leaf", "issuer_clients", "prior_digests"}:
-            raise Refused("teardown owner descriptor differs")
+            raise custody.Refused("teardown owner descriptor differs")
         if (raw["schema"] != "infrastructure.int03.teardown-owner.v1" or
             not PROJECT.fullmatch(raw["project"]) or not RUN.fullmatch(raw["run_id"]) or
             not SHA.fullmatch(raw["iam_sha"]) or not SHA.fullmatch(raw["shared_sha"]) or
@@ -59,10 +59,10 @@ class Owner:
             not all(isinstance(v,str) and re.fullmatch(r"sha256:[0-9a-f]{64}",v) for v in raw["prior_digests"].values()) or
             len(set(raw["cp_resources"])) != len(raw["cp_resources"]) or
             raw["private_leaf"] != raw["project"]):
-            raise Refused("owned synthetic topology or provenance absent")
+            raise custody.Refused("owned synthetic topology or provenance absent")
         directory = Path(parent) / raw["private_leaf"]
         if directory.parent != Path(parent):
-            raise Refused("private run path escaped")
+            raise custody.Refused("private run path escaped")
         return cls(raw["project"], raw["run_id"], raw["iam_sha"],
                    raw["shared_sha"], tuple(raw["cp_resources"]),raw["prior_digests"], directory)
 
@@ -77,14 +77,14 @@ class DockerReadback:
         response = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                   text=True, timeout=25, check=False)
         if response.returncode:
-            raise Refused("independent Docker read-back unavailable")
+            raise custody.Refused("independent Docker read-back unavailable")
         if len(response.stdout) > 16384:
-            raise Refused("Docker read-back unbounded")
+            raise custody.Refused("Docker read-back unbounded")
         return response.stdout.strip()
 
     def verify(self, project):
         if not PROJECT.fullmatch(project):
-            raise Refused("unapproved Docker project")
+            raise custody.Refused("unapproved Docker project")
         for kind, args in (
             ("container", ["docker","ps","-aq"]),
             ("network",["docker","network","ls","-q"]),
@@ -92,7 +92,7 @@ class DockerReadback:
             cmd = args + ["--filter", "label=com.docker.compose.project=" + project]
             result = self.run(cmd)
             if result:
-                raise Refused("owned Docker " + kind + " survives teardown")
+                raise custody.Refused("owned Docker " + kind + " survives teardown")
         # Compose ownership labels are not the whole asset set: built images
         # are normally not labelled with the Compose project.
         if project.startswith("cms-int03-"):
@@ -103,7 +103,7 @@ class DockerReadback:
                         ("iam","cp","human","pulse","nabhold")]
         for reference in references:
             if self.run(["docker","image","ls","-q","--filter","reference="+reference]):
-                raise Refused("owned run image survives teardown")
+                raise custody.Refused("owned run image survives teardown")
         return True
 
 
@@ -115,14 +115,14 @@ class HTTPSReadback:
             u=urllib.parse.urlsplit(url)
             if (u.scheme!="https" or u.hostname!=expected or u.username or u.password or
                 u.path not in ("","/") or u.query or u.fragment):
-                raise Refused("witness read-back crossed private origin")
+                raise custody.Refused("witness read-back crossed private origin")
         ca=Path(ca)
         if ca.is_symlink() or not ca.is_file():
-            raise Refused("private CA missing")
+            raise custody.Refused("private CA missing")
         try:
             context=ssl.create_default_context(cafile=str(ca))
         except (ssl.SSLError,OSError):
-            raise Refused("independent witness CA invalid") from None
+            raise custody.Refused("independent witness CA invalid") from None
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, *args, **kwargs):
                 return None
@@ -132,7 +132,7 @@ class HTTPSReadback:
         self.cp=cp.rstrip("/")
         if (not isinstance(cp_token,str) or len(cp_token)<20 or
             len(cp_token)>8192 or any(c.isspace() for c in cp_token)):
-            raise Refused("independent ACTIVE CP reviewer credential required")
+            raise custody.Refused("independent ACTIVE CP reviewer credential required")
         self.token=cp_token
 
     def get(self, url, *, authenticated):
@@ -145,39 +145,39 @@ class HTTPSReadback:
         except urllib.error.HTTPError as error:
             if error.code in (404,410):
                 return error.code,None
-            raise Refused("independent authority rejected read-back") from None
+            raise custody.Refused("independent authority rejected read-back") from None
         except (urllib.error.URLError,TimeoutError,OSError,ValueError):
-            raise Refused("independent authority unavailable") from None
+            raise custody.Refused("independent authority unavailable") from None
         with response:
             status=response.status
             raw=response.read(32769)
             if len(raw)>32768:
-                raise Refused("read-back response too large")
+                raise custody.Refused("read-back response too large")
             if status==200:
                 try:
                     return status,json.loads(raw)
                 except ValueError:
-                    raise Refused("live CP authority returned invalid JSON") from None
-        raise Refused("unexpected authority response")
+                    raise custody.Refused("live CP authority returned invalid JSON") from None
+        raise custody.Refused("unexpected authority response")
 
     def verify_issuer(self):
         for name in NAMES:
             status,_=self.get(self.issuer+"/admin/clients/"+name,authenticated=False)
             if status!=404:
-                raise Refused("real issuer client still active or reachable")
+                raise custody.Refused("real issuer client still active or reachable")
         return True
 
     def verify_cp(self, resource_paths):
         for path in resource_paths:
             if not RESOURCE.fullmatch(path):
-                raise Refused("unreviewed CP resource")
+                raise custody.Refused("unreviewed CP resource")
             status,document=self.get(self.cp+path,authenticated=True)
             if status in (404,410):
                 continue
             if status!=200 or not isinstance(document,dict):
-                raise Refused("CP resource observation missing")
+                raise custody.Refused("CP resource observation missing")
             if document.get("status") not in INACTIVE and document.get("state") not in INACTIVE:
-                raise Refused("CP still reports an effective governed resource")
+                raise custody.Refused("CP still reports an effective governed resource")
         return True
 
 
@@ -189,22 +189,22 @@ def verify_private(directory):
     """
     directory=Path(directory)
     if directory.is_symlink():
-        raise Refused("untrusted private run path")
+        raise custody.Refused("untrusted private run path")
     if not directory.exists():
         return True
     info=directory.lstat()
     if (not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or
         info.st_mode & 0o077):
-        raise Refused("private run directory ownership differs")
+        raise custody.Refused("private run directory ownership differs")
     if any(directory.iterdir()):
-        raise Refused("private run secret, state, or binary survives teardown")
+        raise custody.Refused("private run secret, state, or binary survives teardown")
     return True
 
 
 def independent_inspection(owner, docker, authority):
     """All four independent fences, with no invocation of cleanup callbacks."""
     if not isinstance(owner,Owner):
-        raise Refused("immutable prior owner descriptor required")
+        raise custody.Refused("immutable prior owner descriptor required")
     evidence={}
     # Attempt all fences even if one is defective; no result implies
     # readiness unless all independently checked sources pass.
@@ -218,7 +218,7 @@ def independent_inspection(owner, docker, authority):
         except Exception:
             evidence[name]="UNVERIFIED"
     if set(evidence.values())!={"INDEPENDENT_GET_VERIFIED"}:
-        raise Refused("independent teardown incomplete; recovery must remain available")
+        raise custody.Refused("independent teardown incomplete; recovery must remain available")
     return {"schema":"infrastructure.int03.teardown-witness.v1",
             "project":owner.project,"run_id":owner.run_id,
             "source_pins":{"iam":owner.iam_sha,"shared":owner.shared_sha},
@@ -236,19 +236,18 @@ def verify_prior_creation_custody(owner, custody_dir):
     CP and accepting runtime were ever created. Require a separately sealed
     bundle with all three original documents before checking their absence.
     """
-    import cms_evidence as custody
     manifest=custody.verify(custody_dir)
     if (manifest["run_id"] != owner.run_id or
         manifest["source_pins"]["shared"] != owner.shared_sha or
         manifest["source_pins"]["baobab-iam"] != owner.iam_sha):
-        raise Refused("prior creation proof source/run provenance differs")
+        raise custody.Refused("prior creation proof source/run provenance differs")
     recorded={entry["name"]:"sha256:"+entry["sha256"] for entry in manifest["files"]}
     exact={"issuer_create":"issuer-create.json",
            "cp_create":"cp-create.json",
            "runtime_start":"runtime-start.json"}
     if any(recorded.get(filename)!=owner.prior_digests[kind]
            for kind,filename in exact.items()):
-        raise Refused("issuer, CP or runtime creation evidence not retained")
+        raise custody.Refused("issuer, CP or runtime creation evidence not retained")
     return True
 
 
@@ -257,7 +256,7 @@ def token_file(path):
     s=path.lstat()
     if (path.is_symlink() or not stat.S_ISREG(s.st_mode) or
         s.st_uid!=os.getuid() or s.st_mode & 0o077 or s.st_size>8192):
-        raise Refused("CP checker token is not private")
+        raise custody.Refused("CP checker token is not private")
     return path.read_text().strip()
 
 
@@ -272,7 +271,7 @@ def main(argv=None):
     a=p.parse_args(argv)
     try:
         if a.output.exists() or a.output.is_symlink():
-            raise Refused("cannot overwrite independent witness")
+            raise custody.Refused("cannot overwrite independent witness")
         data=json.loads(a.owner.read_text())
         owner=Owner.from_record(data,parent=a.private_parent)
         verify_prior_creation_custody(owner,a.prior_custody)
@@ -280,9 +279,8 @@ def main(argv=None):
                   HTTPSReadback(a.ca,cp_token=token_file(a.cp_checker_token_file)))
         # Evidence must be retained in an owner-private bundle *outside* the
         # destroyed runtime directory and then sealed by cms_evidence.py.
-        from cms_evidence import root_dir, exclusive, canonical
-        root_dir(a.output.parent)
-        exclusive(a.output,canonical(observed))
+        custody.root_dir(a.output.parent)
+        custody.exclusive(a.output,custody.canonical(observed))
         print("INT03_TEARDOWN_INDEPENDENT_READBACK_UNATTESTED; qualified=false")
         return 0
     except (Refused,OSError,ValueError,TypeError,KeyError):
