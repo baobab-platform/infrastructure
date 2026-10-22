@@ -77,7 +77,7 @@ class TestOperator(unittest.TestCase):
         self.assertEqual(len(fake.calls),2)
         self.doc["document"]["approved"]=True
         with self.assertRaises(Refused):
-            operator.read_plan(self.plan) if False else operator.execute_step(fake,self.doc)
+            operator.execute_step(fake,self.doc)
 
     def test_durable_attempt_precedes_mutation_and_never_claims_success(self):
         receipt=self.root/"receipt.json"
