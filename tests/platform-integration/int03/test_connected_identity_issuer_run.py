@@ -50,7 +50,7 @@ class IssuerRunTests(unittest.TestCase):
                                      "baobab-iam","baobab-cp","nabhold"],"b"*40),
             "issuer":"https://hydra.int03.test","ca_file":str(self.root/"ca.pem"),
             "shared_checkout":str(self.root/"shared"),
-            "owner_client":"synthetic-owner","verifier_client":"synthetic-checker",
+            "owner_client":run.OWNER,"verifier_client":run.VERIFIER,
             "owner_secret_file":str(self.owner),
             "verifier_secret_file":str(self.checker),
             "audience":"baobab-control-plane","scope":"context:resolve",
@@ -115,6 +115,20 @@ class IssuerRunTests(unittest.TestCase):
             self.plan["owner_client"]=previous
         self.write()
         self.plan["environment"]="production"
+        self.write()
+        with self.assertRaises(EvidenceRefused):
+            run.reviewed(self.spec)
+
+    def test_any_other_active_workload_cannot_be_substituted(self):
+        for invalid in ("baobab-int02-pulse-consumer",
+                        "baobab-int03c-issuer-owner-extra",
+                        "baobab-int03-cms-consumer"):
+            self.plan["owner_client"]=invalid
+            self.write()
+            with self.assertRaises(EvidenceRefused):
+                run.reviewed(self.spec)
+        self.plan["owner_client"]=run.OWNER
+        self.plan["verifier_client"]=run.OWNER
         self.write()
         with self.assertRaises(EvidenceRefused):
             run.reviewed(self.spec)
