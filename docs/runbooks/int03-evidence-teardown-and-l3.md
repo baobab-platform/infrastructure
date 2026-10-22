@@ -80,7 +80,13 @@ the cleanup API or relies on a local success flag. It needs an
 owner-private descriptor with exact committed Shared and IAM revisions,
 random run/project identity, exact permitted two IAM clients,
 prior issuer/CP/runtime creation-evidence digests, and the list of
-synthetic CP resources. Live read-backs must establish:
+synthetic CP resources. The `--prior-custody` input is mandatory. The independent witness
+rehashes the original sealed `issuer-create.json`, `cp-create.json` and
+`runtime-start.json` files, matches all three SHA-256 values against the
+owner descriptor, and confirms the exact Shared/IAM pins and run nonce.
+A locally typed digest without a retained original cannot qualify.
+
+Live read-backs must establish:
 
 - No owned Docker containers, networks, volumes or built images.
 - Both named development-only Hydra clients return 404 on a private,
