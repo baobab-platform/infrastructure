@@ -14,7 +14,6 @@ import subprocess
 import sys
 
 import cms_evidence as custody
-from cms_evidence import Refused
 from cms_teardown_witness import DockerReadback, verify_private
 from cms_gate import CASES
 
@@ -28,17 +27,17 @@ RUN = re.compile(r"[0-9a-f]{16}\Z")
 def receipt_file(path):
     info=path.lstat()
     if path.is_symlink() or not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode & 0o077:
-        raise Refused("component receipt is not private")
+        raise custody.Refused("component receipt is not private")
     data=path.read_bytes()
     if len(data)>1_048_576 or not data:
-        raise Refused("component receipt absent/unbounded")
+        raise custody.Refused("component receipt absent/unbounded")
     reported=path.with_name("receipt.sha256")
     if reported.is_symlink() or not reported.is_file():
-        raise Refused("original component receipt digest missing")
+        raise custody.Refused("original component receipt digest missing")
     saved=reported.read_text().strip().split()
     if (len(saved)!=2 or saved[1]!="receipt.json" or
         saved[0]!=hashlib.sha256(data).hexdigest()):
-        raise Refused("component writer bytes not independently verified")
+        raise custody.Refused("component writer bytes not independently verified")
     receipt=json.loads(data)
     if (not isinstance(receipt,dict) or
         receipt.get("schema")!="infrastructure.int03.cms-component.v1" or
@@ -47,7 +46,7 @@ def receipt_file(path):
         receipt.get("identities_created") is not False or
         receipt.get("cases")!=dict.fromkeys(CASES,"BLOCKED") or
         not isinstance(receipt.get("run_id"),str) or not RUN.fullmatch(receipt["run_id"])):
-        raise Refused("CMS component produced no acceptable bounded receipt")
+        raise custody.Refused("CMS component produced no acceptable bounded receipt")
     return receipt
 
 
@@ -58,9 +57,9 @@ def witness(path, *, docker=None):
     project="cms-int03-"+run_id
     inspector=docker or DockerReadback()
     if inspector.verify(project) is not True:
-        raise Refused("Docker destruction not independently observed")
+        raise custody.Refused("Docker destruction not independently observed")
     if (STATE / "int03-cms-component-session.json").exists():
-        raise Refused("component recovery handle survived")
+        raise custody.Refused("component recovery handle survived")
     verify_private(STATE / project)
     result={
         "schema":"infrastructure.int03.cms-component-teardown-witness.v1",
@@ -79,7 +78,7 @@ def witness(path, *, docker=None):
 def capture():
     candidates=sorted(EVIDENCE.glob("cms-component-*/completed/receipt.json"))
     if len(candidates)!=1:
-        raise Refused("exactly one completed disposable CMS evidence run required")
+        raise custody.Refused("exactly one completed disposable CMS evidence run required")
     path=candidates[0]
     observed,original=witness(path)
     target=path.parents[1]/"custody"
@@ -91,7 +90,7 @@ def capture():
     git=subprocess.run(["git","rev-parse","HEAD"],cwd=ROOT,check=False,
                        capture_output=True,text=True,timeout=10)
     if git.returncode or not re.fullmatch("[0-9a-f]{40}",git.stdout.strip()):
-        raise Refused("actual Infrastructure revision not available")
+        raise custody.Refused("actual Infrastructure revision not available")
     pins={**locks["sources"],"infrastructure":git.stdout.strip()}
     run=os.getenv("GITHUB_RUN_ID")
     custody.seal(target,["component.json","teardown.json"],
@@ -104,7 +103,7 @@ def capture():
 def verify():
     targets=sorted(EVIDENCE.glob("cms-component-*/custody/manifest.json"))
     if len(targets)!=1:
-        raise Refused("exactly one sealed CMS bundle required")
+        raise custody.Refused("exactly one sealed CMS bundle required")
     return custody.verify(targets[0].parent)
 
 
@@ -120,7 +119,7 @@ def main(argv=None):
             verify()
         print("INT03_CMS_COMPONENT_EVIDENCE_HASHED_AND_CLEANED; NAB03_BLOCKED; qualified=false")
         return 0
-    except (Refused,OSError,ValueError,TypeError,KeyError,subprocess.TimeoutExpired):
+    except (custody.Refused,OSError,ValueError,TypeError,KeyError,subprocess.TimeoutExpired):
         print("INT03_CMS_COMPONENT_CUSTODY_OR_TEARDOWN_REFUSED; qualified=false",file=sys.stderr)
         return 2
 
