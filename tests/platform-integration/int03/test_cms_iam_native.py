@@ -21,6 +21,12 @@ class FakeClient:
     def __init__(self, fail=None):
         self.calls=[]
         self.fail=fail
+    def _binary(self, directory):
+        path=Path(directory)/"native-iam-bridge"
+        path.write_bytes(b"unit-test-binary")
+        os.chmod(path,0o700)
+        return str(path)
+
     def operate(self, journal, directory, action, name, *, timeout=65):
         self.calls.append((action,name))
         # An ambiguous POST is always recoverable by a second process.
@@ -164,6 +170,7 @@ class Durable(unittest.TestCase):
             self.assertEqual(closures,["acceptors","cp"])
             self.assertEqual(f.calls[-2:],[("destroy",m.NAMES[1]),("destroy",m.NAMES[0])])
             self.assertEqual(m.load_journal(self.owner)["state"],"CLOSED")
+            self.assertFalse((self.owner/"native-iam-bridge").exists())
 
 if __name__=="__main__":
     unittest.main()
