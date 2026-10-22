@@ -116,9 +116,11 @@ class Closing(unittest.TestCase):
         o, _ = new_lifecycle()
         labels = []
         hooks(o, labels)
-        with self.assertRaises(RuntimeError):
+        def interrupted_scope():
             with o:
                 raise RuntimeError("unexpected")
+        with self.assertRaises(RuntimeError):
+            interrupted_scope()
         self.assertEqual(len(labels), 4)
 
 
