@@ -21,7 +21,7 @@ import uuid
 MAX_BODY = 65536
 CP_ORIGIN = "cp.int03.test"
 CERT_ID = re.compile(r"cert_[0-9a-f]{32}\Z")
-RELEASE_ID = re.compile(r"rel_[a-z0-9]+\Z")
+RELEASE_ID = re.compile(r"erl_[a-z0-9]+\Z")
 MARKET_ID = re.compile(r"mkt_[a-z0-9]+\Z")
 GRANT_ID = re.compile(r"agr_[a-z0-9]+\Z")
 SAFE_PATH = re.compile(r"/[a-z0-9/_-]+\Z")
