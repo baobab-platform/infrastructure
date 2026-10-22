@@ -72,13 +72,16 @@ compose() {
   docker compose --env-file "$environment_file" -f "$compose_file" "$@"
 }
 
+# The local admin ports are intentionally not an external management contract.
+# Probe from the existing private, authenticated Compose smoke network instead.
+# Credentials expand inside the disposable smoke container, never on the host
+# curl argv or in the public L3 evidence receipt.
 rmq_api() {
   local path=$1
   shift
-  curl --fail --silent --show-error \
-    -u "${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}" \
-    "http://127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}${path}" \
-    "$@"
+  compose --profile verify run --rm --no-deps --entrypoint /bin/sh smoke \
+    -ec 'exec curl --fail --silent --show-error --max-time 20 -u "$RABBITMQ_DEFAULT_USER:$RABBITMQ_DEFAULT_PASS" "$@"' \
+    -- "http://rabbitmq:15672${path}" "$@"
 }
 
 vhost_enc=$(python3 -c "import urllib.parse,os; print(urllib.parse.quote(os.environ.get('RABBITMQ_DEFAULT_VHOST','nabhold'), safe=''))")
@@ -92,7 +95,7 @@ fi
 
 echo "== L3-02 RabbitMQ vhost readiness =="
 if rmq_api "/api/health/checks/ready-to-serve-clients" >/dev/null; then
-  record "L3-02" pass "RabbitMQ management ready-to-serve-clients"
+  record "L3-02" pass "RabbitMQ private management ready-to-serve-clients"
 else
   record "L3-02" fail "RabbitMQ management health check failed"
 fi
@@ -153,12 +156,15 @@ fi
 echo "== L3-08 RabbitMQ publish/get fixture =="
 # Infra-only bus proof: declare queue, publish via default exchange, get and ack.
 qname="l3.platform.fixture.${timestamp}"
-if rmq_api "/api/queues/${vhost_enc}/${qname}" \
+# RabbitMQ 4.3 refuses deprecated transient/non-exclusive queues: use a\n# durable temporary queue and explicitly delete it after the fixture.\n# Emit only the numeric response status if a private RabbitMQ mutation is
+# refused. Never print Basic auth, queue message bodies or Admin API replies.
+declare_http=""
+if declare_http=$(rmq_api "/api/queues/${vhost_enc}/${qname}" \
   -H 'content-type: application/json' \
   -X PUT \
-  -d '{"durable":false,"auto_delete":true,"arguments":{}}' >/dev/null 2>&1; then
-  payload=$(printf '{"harness":"platform-l3","ts":"%s"}' "$timestamp" | python3 -c 'import json,sys,base64; print(json.dumps({"properties":{},"routing_key":"%s","payload":sys.stdin.read(),"payload_encoding":"string"} % "'"$qname"'"))')
-  # Fix routing_key properly
+  -d '{"durable":true,"auto_delete":false,"arguments":{}}' \
+  -o /dev/null -w '%{http_code}' 2>/dev/null) && \
+  { [ "$declare_http" = "201" ] || [ "$declare_http" = "204" ]; }; then
   payload=$(python3 -c "
 import json
 q = '''${qname}'''
@@ -190,7 +196,11 @@ print(json.dumps({
   # Best-effort cleanup
   rmq_api "/api/queues/${vhost_enc}/${qname}" -X DELETE >/dev/null 2>&1 || true
 else
-  record "L3-08" fail "could not declare fixture queue ${qname}"
+  case "$declare_http" in
+    [1-5][0-9][0-9]) failure_code="$declare_http" ;;
+    *) failure_code="unavailable" ;;
+  esac
+  record "L3-08" fail "private RabbitMQ fixture declaration refused (HTTP $failure_code)"
 fi
 
 echo "== L3-09 optional Regulations probe =="
@@ -206,10 +216,12 @@ fi
 
 echo "== L3-10 APISIX admin probe =="
 if [ -n "${APISIX_ADMIN_KEY:-}" ]; then
-  if curl --fail --silent --show-error --max-time 15 \
-    -H "X-API-KEY: ${APISIX_ADMIN_KEY}" \
-    "http://127.0.0.1:${APISIX_ADMIN_PORT:-9180}/apisix/admin/routes" >/dev/null; then
-    record "L3-10" pass "APISIX admin routes reachable"
+  # A host loopback call is not in APISIX's approved management CIDR,
+  # so a 403 there does not mean the private administrator is unhealthy.
+  if compose --profile verify run --rm --no-deps --entrypoint /bin/sh smoke \
+    -ec 'exec curl --fail --silent --show-error --max-time 20 -H "X-API-KEY: $APISIX_ADMIN_KEY" http://apisix:9180/apisix/admin/routes' \
+    >/dev/null; then
+    record "L3-10" pass "APISIX private admin routes reachable"
   else
     record "L3-10" fail "APISIX admin routes probe failed"
   fi

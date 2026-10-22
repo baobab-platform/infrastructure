@@ -1,6 +1,12 @@
 name: Platform L3 harness
 
 on:
+  pull_request:
+    paths:
+      - tests/platform/run-l3.sh
+      - compose/compose.yaml
+      - compose/apisix/config.yaml
+      - .github/workflows/platform-l3.yml
   push:
     branches: [main]
   schedule:
@@ -10,7 +16,7 @@ on:
 permissions:
   contents: read
 
-# Minute-aware: not on pull_request. Same policy as local-smoke.
+# Isolated disposable Compose smoke on PRs touching the private L3 proof,\n# and scheduled/push verification of main. No production secrets.
 jobs:
   platform-l3:
     name: Platform L3 critical path
