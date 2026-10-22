@@ -99,7 +99,7 @@ def execute_step(fixture, plan):
 def save_custody(path, document, *, exclusive):
     """Atomic, fsynced owner-private intent journal and safe observation."""
     path=Path(path)
-    raw=(json.dumps(document,sort_keys=True,separators=(",",":"))+"\\n").encode()
+    raw=(json.dumps(document,sort_keys=True,separators=(",",":"))+chr(10)).encode()
     if len(raw)>16384:
         raise Refused("bounded CP custody required")
     destination=path if exclusive else path.parent/("."+path.name+"."+os.urandom(8).hex())
