@@ -420,3 +420,69 @@ or treated as authority merely because a synthetic test supplied matching
 JSON. The remaining connected CMS executor must verify deployment/health and
 capability binding, exercise every normative NAB-03 positive/negative against
 the live providers, and retain independent runtime provenance and destruction.
+
+
+## Native issuer provisioning, revocation and crash recovery — IAM #135 / Infrastructure #43
+
+The maintained IAM provider port now has a named, development-only
+`cmd/int03-cms-native` bridge. The Infrastructure owner
+`cms_iam_native.py` is the only accepted calling seam. It verifies
+`cms_gate.evaluate()` from the immutable Shared registry, checks the exact
+clean IAM source pin and **refuses all creates while #354 is HELD**. The CMS
+gate workflow also checks this native preflight against independently checked
+out, exact Shared/IAM revisions. No live issuer client is created in a HELD
+preflight, and no operation is a NAB-03 pass.
+
+When the canonical registry is independently activated through the approved
+Shared change, the connected owner must create an *existing owner-private
+0700 parent*, supply actual pinned IAM/Shared checkouts and real independently
+verifying CP/runtime teardown callbacks, and call
+`provision_connected(...)`. Before either HTTP mutation the owner commits
+an exclusive fsynced 0600 `owner.json` recovery journal with random 128-bit
+run marker and immutable deadline, plus a private credentials directory.
+Its `Lifecycle` registers four cleanup fences before starting: accepting
+resource servers, issuer, CP and private runtime files. A 90-minute maximum
+absolute window and per-invocation timeouts are enforced; the journal survives
+host/process failures for a new owner process.
+
+IAM independently verifies each post-created Hydra client, exact allowed
+grant/scopes/audiences, credentials method, 60s lifetime and per-run marker.
+A client secret is written exclusively to its named private file only after
+that read-back. The separate `revoke_connected` action calls the IAM native
+`RevokeWorkload` port then verifies the issuer has **no grant types**.
+This is issuance containment, not JWT invalidation. `recover()` retries
+native revoke **and delete** in reverse order, independently reads back 404,
+never deletes another run's client, and retains the journal if any issuer
+fence fails. Recover is permitted even if Shared has reverted to HELD.
+All accepting CMS/CP runtimes must be stopped/isolated and independently
+verified before issuer destruction; no stale JWT may be treated as revoked
+merely because a client was deleted.
+
+The standalone safe modes are:
+
+```bash
+python3 -B tests/platform-integration/int03/cms_iam_native.py preflight \\
+  --shared /absolute/exact/pinned/shared \\
+  --iam /absolute/exact/pinned/iam
+
+# After a real run/interruption, while the private issuer is reachable:
+python3 -B tests/platform-integration/int03/cms_iam_native.py recover \\
+  --journal-dir /absolute/private/int03-native-owner \\
+  --shared /absolute/original/pinned/shared \\
+  --iam /absolute/original/pinned/iam \\
+  --hydra-admin https://hydra.int03.test \\
+  --kratos-admin http://kratos:4434 \\
+  --issuer https://hydra.int03.test \\
+  --ca /absolute/private/disposable-ca.pem
+```
+
+The CLI intentionally exposes **no standalone create command**; only the
+connected owner with registered accepting-runtime and CP cleanup callbacks
+may invoke `provision_connected`. No actual Ory/Hydra docker provider has
+yet been added to the INT-03 service overlay, so this is the guarded native
+issuer orchestration seam, not an already operational connected CMS proof.
+A future admitted connected runner must supply the real private Hydra,
+Kratos/companion configuration, source-built CMS, current CP topology,
+capability certification, operational kill switch, token/subject validation,
+and all 14 runtime cases. Until that is verified, all NAB-03 results remain
+BLOCKED, `qualified=false` and protected/production support unchanged.
