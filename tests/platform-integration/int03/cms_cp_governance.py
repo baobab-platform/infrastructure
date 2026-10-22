@@ -148,6 +148,19 @@ class Fixture:
             raise Refused("operator role assignment differs")
         self.cp, self.maker, self.checker = cp, maker, checker
 
+    def verify_operator_registration(self):
+        """Independently resolve both actual tokens to ACTIVE CP Principals.
+
+        The token-file owner's asserted UUID is never considered sufficient.
+        CP itself checks Principal status on its self-authority endpoint,
+        returns that Principal's ID, and does not provision it.
+        """
+        for actor in (self.maker,self.checker):
+            observed=self.cp.call(actor,"GET","/v1/admin/effective-authority")
+            if observed.get("principal_id") != actor.principal_id:
+                raise Refused("issuer token resolved to a different CP Principal")
+        return True
+
     def register_tenant(self, reviewed_request, *, key):
         """Submit CP registration only for independently AUTHORISED onboarding.
 
