@@ -180,12 +180,19 @@ class CPContract(unittest.TestCase):
 
     def test_binding_changeset_cannot_claim_runtime_acceptance(self):
         cs="cs_123abc"
-        f,cp=self.fixture([{"changeset_id":cs,"created_by":self.maker.principal_id,
-                            "approved_by":self.checker.principal_id},
-                           {"changeset_id":cs,"outcome":"APPLIED"}])
+        digest="sha256:"+"a"*64
+        record={"changeset_id":cs,"requested_by":self.maker.principal_id,
+                "approval_id":"approval_123","state":"COMPLETED",
+                "current_plan":{"plan_digest":digest}}
+        outcome={"changeset_id":cs,"final_state":"COMPLETED",
+                 "applied_plan_digest":digest}
+        f,cp=self.fixture([record,outcome])
         r=f.verify_changeset_binding(cs)
         self.assertFalse(r["qualified"])
-        self.assertIn("NEEDS_RUNTIME_RESOLVER_PROOF",r["review"])
+        self.assertIn("RUNTIME_RESOLVER_PROOF",r["review"])
+        f,_=self.fixture([record,dict(outcome,applied_plan_digest="sha256:"+"b"*64)])
+        with self.assertRaises(Refused):
+            f.verify_changeset_binding(cs)
         self.assertEqual(cp.calls[0][2],"/v1/admin/changesets/"+cs)
         with self.assertRaises(Refused):
             f.verify_changeset_binding("client_supplied_UUID")
