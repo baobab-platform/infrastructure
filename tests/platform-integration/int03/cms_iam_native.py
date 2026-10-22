@@ -158,15 +158,17 @@ class NativeClient:
         self.ca = Path(ca)
         self.invoke = invoke or self._invoke
 
-    def _invoke(self, argv, env):
+    def _invoke(self, argv, env, timeout):
         # stderr may include provider transport secrets; never echo it.
         return subprocess.run(argv, cwd=str(self.iam), env=env,
                               text=True, capture_output=True,
-                              timeout=90, check=False)
+                              timeout=timeout, check=False)
 
-    def operate(self, journal, directory, action, name):
+    def operate(self, journal, directory, action, name, *, timeout=65):
         if action not in ACTION_MARKERS or name not in NAMES:
             raise Refused("unregistered issuer operation")
+        if not isinstance(timeout, (int, float)) or not 0 < timeout <= 90:
+            raise Refused("bounded native operation timeout required")
         directory = private_dir(directory)
         clean_source(self.iam, journal["iam_sha"])
         if current_sha(self.shared) != journal["shared_sha"]:
@@ -181,7 +183,7 @@ class NativeClient:
         env = os.environ.copy()
         env["BAOBAB_INT03_NATIVE_DISPOSABLE"] = "1"
         try:
-            p = self.invoke(argv, env)
+            p = self.invoke(argv, env, timeout)
         except (subprocess.TimeoutExpired, OSError):
             raise Refused("native issuer operation interrupted or unavailable") from None
         if (p.returncode != 0 or p.stdout.strip() != ACTION_MARKERS[action] or
@@ -205,7 +207,7 @@ def recover(directory, client):
     # Reverse the creation order; attempt both, even if one fails.
     for name in reversed(NAMES):
         try:
-            client.operate(journal, directory, "destroy", name)
+            client.operate(journal, directory, "destroy", name, timeout=65)
         except Exception:
             failed = True
     if failed:
@@ -255,7 +257,7 @@ def provision_connected(directory, *, shared, iam, lock, client, acceptors_stop,
             journal["state"] = "PROVISIONING"
             durable(Path(directory) / "owner.json", journal)
             lease.execute("iam-provision", lambda remaining, n=name:
-                          client.operate(journal, directory, "create", n),
+                          client.operate(journal, directory, "create", n, timeout=min(remaining, 60)),
                           max_seconds=70)
         journal["state"] = "PROVISIONED"
         durable(Path(directory) / "owner.json", journal)
