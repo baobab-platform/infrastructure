@@ -283,7 +283,7 @@ def main(argv=None):
         custody.exclusive(a.output,custody.canonical(observed))
         print("INT03_TEARDOWN_INDEPENDENT_READBACK_UNATTESTED; qualified=false")
         return 0
-    except (Refused,OSError,ValueError,TypeError,KeyError):
+    except (custody.Refused,OSError,ValueError,TypeError,KeyError):
         print("INT03_TEARDOWN_READBACK_INCOMPLETE; qualified=false",file=sys.stderr)
         return 2
 
