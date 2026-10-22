@@ -26,6 +26,10 @@ class FakeClient:
         # An ambiguous POST is always recoverable by a second process.
         if (action,name)==self.fail:
             raise Refused("private native operation failed")
+        if action=="create":
+            private=Path(directory)/"secrets"/(name+".secret")
+            private.write_text(("a" if name==m.NAMES[0] else "b")*40)
+            os.chmod(private,0o600)
         return True
 
 class Durable(unittest.TestCase):
@@ -50,6 +54,23 @@ class Durable(unittest.TestCase):
         self.assertEqual((self.owner/"secrets").stat().st_mode & 0o777,0o700)
         with self.assertRaises(FileExistsError):
             self.new()
+
+    def test_secret_pair_must_be_independent_and_private(self):
+        self.new()
+        first=self.owner/"secrets"/(m.NAMES[0]+".secret")
+        second=self.owner/"secrets"/(m.NAMES[1]+".secret")
+        first.write_text("a"*40)
+        second.write_text("b"*40)
+        os.chmod(first,0o600)
+        os.chmod(second,0o600)
+        self.assertTrue(m.verify_pair_secret_isolation(self.owner))
+        second.write_text("a"*40)
+        with self.assertRaises(Refused):
+            m.verify_pair_secret_isolation(self.owner)
+        second.write_text("b"*40)
+        os.chmod(second,0o644)
+        with self.assertRaises(Refused):
+            m.verify_pair_secret_isolation(self.owner)
 
     def test_recovery_attempts_both_even_when_second_fails(self):
         self.new()
