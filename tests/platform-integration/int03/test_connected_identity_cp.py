@@ -1,5 +1,4 @@
 """CP observer source tests, not real IAM/CP integration acceptance."""
-import io
 import json
 import os
 from pathlib import Path
@@ -7,7 +6,6 @@ import ssl
 import tempfile
 import unittest
 from unittest.mock import patch
-import urllib.error
 
 from connected_identity_cp import CPTransport, assert_current_human, assert_negative, read_private_token
 from connected_identity_evidence import EvidenceRefused
