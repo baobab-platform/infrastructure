@@ -100,3 +100,13 @@ checker, exact APPROVED non-stale plan digest, and a matching
 `CREATE_CAPABILITY_BINDING` step. It never writes the binding itself.
 The final independent workload resolution must still show the binding and
 grant live. A generic changeset cannot be used to bypass this lifecycle.
+
+Separate nonproduction operator steps now exist: `provisioning-create` (CP
+plans actual authorised onboarding desired state), `provisioning-approve`
+(checker independently chooses exact current `plan_id`, version and digest),
+`provisioning-apply` (CP returns only asynchronous 202 Operation) and
+`provisioning-verify` (GET current READY/ACTIVE CP plan, independently approved
+non-stale SHA-256 digest, matching `CREATE_CAPABILITY_BINDING` operation).
+They are intentionally distinct invocations, never a one-click approval.
+A real workload must separately resolve the binding and grant under its own
+current CP context to qualify runtime authority.
