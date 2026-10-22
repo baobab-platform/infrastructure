@@ -335,10 +335,19 @@ class Fixture:
             read.get("provider_id") != provider_id or
             read.get("capability_key") != capability_key or
             read.get("contract_version") != contract_version or
-            read.get("qualification_profile") != qualification_profile):
+            read.get("qualification_profile") != qualification_profile or
+            read.get("evidence") != evidence):
             raise Refused("independent CP certification read-back differs")
         if read.get("certified_by") == release.get("recorded_by"):
             raise Refused("self-certified EngineRelease")
+        if "valid_until" in read and read["valid_until"] is not None:
+            from datetime import datetime, timezone
+            try:
+                valid_until=datetime.fromisoformat(str(read["valid_until"]).replace("Z","+00:00"))
+                if valid_until.tzinfo is None or valid_until <= datetime.now(timezone.utc):
+                    raise Refused("CP provider certification expired")
+            except ValueError:
+                raise Refused("CP provider certification expiry malformed") from None
         return read
 
     def verify_resolved_provider(self, resolve, *, context_id, provider_id,
