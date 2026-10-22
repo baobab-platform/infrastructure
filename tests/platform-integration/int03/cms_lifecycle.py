@@ -173,7 +173,7 @@ class Lifecycle:
                 try:
                     verified = hook() if hook is not None else False
                     self._cleanup_results[name] = "VERIFIED" if verified is True else "UNVERIFIED"
-                except BaseException:
+                except Exception:
                     self._cleanup_results[name] = "FAILED"
             self._closed = True
             return dict(self._cleanup_results)
