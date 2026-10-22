@@ -103,7 +103,8 @@ class Durable(unittest.TestCase):
             self.assertTrue(client.operate(m.load_journal(self.owner),self.owner,
                                            "destroy",m.NAMES[0]))
         self.assertEqual(calls[0][0][0:3],["go","run","./cmd/int03-cms-native"])
-        self.assertIn("--run-id",calls[0][0])\n        self.assertEqual(calls[0][2],65)
+        self.assertIn("--run-id",calls[0][0])
+        self.assertEqual(calls[0][2],65)
         self.assertEqual(calls[0][1]["BAOBAB_INT03_NATIVE_DISPOSABLE"],"1")
         self.assertNotIn("secret",str(calls[0][1]))
         with self.assertRaises(Refused):
