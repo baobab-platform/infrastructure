@@ -250,6 +250,13 @@ def recover(directory, client):
     return True
 
 
+def private_teardown_verified(directory):
+    """Independently check the private credential directory was emptied."""
+    state = load_journal(directory)
+    private = private_dir(Path(directory) / "secrets")
+    return state["state"] == "CLOSED" and not any(private.iterdir())
+
+
 def provision_connected(directory, *, shared, iam, lock, client, acceptors_stop, cp_cleanup,
                         now=None, monotonic=None):
     """Create the IAM pair in the connected executor, fenced end-to-end.
@@ -275,7 +282,7 @@ def provision_connected(directory, *, shared, iam, lock, client, acceptors_stop,
         acceptors=acceptors_stop,
         issuer=lambda: recover(directory, client),
         cp=cp_cleanup,
-        private=lambda: load_journal(directory)["state"] == "CLOSED",
+        private=lambda: private_teardown_verified(directory),
     )
     try:
         for name in NAMES:
