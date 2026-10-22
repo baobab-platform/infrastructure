@@ -38,13 +38,14 @@ class Owner:
     iam_sha: str
     shared_sha: str
     cp_resources: tuple
+    prior_digests: dict
     private_dir: Path
 
     @classmethod
     def from_record(cls, raw, *, parent):
         if not isinstance(raw, dict) or set(raw) != {
             "schema", "project", "run_id", "iam_sha", "shared_sha",
-            "cp_resources", "private_leaf", "issuer_clients"}:
+            "cp_resources", "private_leaf", "issuer_clients", "prior_digests"}:
             raise Refused("teardown owner descriptor differs")
         if (raw["schema"] != "infrastructure.int03.teardown-owner.v1" or
             not PROJECT.fullmatch(raw["project"]) or not RUN.fullmatch(raw["run_id"]) or
@@ -53,6 +54,9 @@ class Owner:
             not isinstance(raw["cp_resources"], list) or
             not raw["cp_resources"] or len(raw["cp_resources"]) > 24 or
             not all(isinstance(x,str) and RESOURCE.fullmatch(x) for x in raw["cp_resources"]) or
+            not isinstance(raw["prior_digests"],dict) or
+            set(raw["prior_digests"]) != {"issuer_create","cp_create","runtime_start"} or
+            not all(isinstance(v,str) and re.fullmatch(r"sha256:[0-9a-f]{64}",v) for v in raw["prior_digests"].values()) or
             len(set(raw["cp_resources"])) != len(raw["cp_resources"]) or
             raw["private_leaf"] != raw["project"]):
             raise Refused("owned synthetic topology or provenance absent")
@@ -60,7 +64,7 @@ class Owner:
         if directory.parent != Path(parent):
             raise Refused("private run path escaped")
         return cls(raw["project"], raw["run_id"], raw["iam_sha"],
-                   raw["shared_sha"], tuple(raw["cp_resources"]), directory)
+                   raw["shared_sha"], tuple(raw["cp_resources"]),raw["prior_digests"], directory)
 
 
 class DockerReadback:
@@ -89,6 +93,17 @@ class DockerReadback:
             result = self.run(cmd)
             if result:
                 raise Refused("owned Docker " + kind + " survives teardown")
+        # Compose ownership labels are not the whole asset set: built images
+        # are normally not labelled with the Compose project.
+        if project.startswith("cms-int03-"):
+            tag=project.removeprefix("cms-int03-")
+            references=["int03-cms-runtime:"+tag,"int03-cms-tool:"+tag]
+        else:
+            references=["l4-"+service+"-"+project for service in
+                        ("iam","cp","human","pulse","nabhold")]
+        for reference in references:
+            if self.run(["docker","image","ls","-q","--filter","reference="+reference]):
+                raise Refused("owned run image survives teardown")
         return True
 
 
@@ -207,7 +222,8 @@ def independent_inspection(owner, docker, authority):
     return {"schema":"infrastructure.int03.teardown-witness.v1",
             "project":owner.project,"run_id":owner.run_id,
             "source_pins":{"iam":owner.iam_sha,"shared":owner.shared_sha},
-            "fences":evidence,"independent_readback":True,
+            "fences":evidence,"prior_evidence_digests":owner.prior_digests,
+            "independent_readback":True,
             "evidence_class":"OBSERVED_UNATTESTED",
             "qualified":False,"full_int03_acceptance":False,
             "independent_acceptance":False}
