@@ -57,6 +57,39 @@ provider-specific native deletion, reread both issuer and CP after
 cleanup, reject active grants or accepting runtimes, and verify original
 creation-artifact digests.
 
+## Canonical registration and independent original-byte custody
+
+The operator must provide an **actual clean Shared checkout** at the exact
+`cms-lock.json` Shared SHA. `verify_governed_workloads()` reads that
+checkout's canonical workload registry and requires both the owner and
+independent verifier to be ACTIVE, development-only, client_credentials
+workloads owned by Infrastructure with the exact declared CP audience and
+least-privilege scopes. The verifier additionally requires
+`context:validate`. A free-form approval digest or an existing OAuth client
+not present in Shared is insufficient. At this revision the required
+INT-03C-specific registrations have not been independently authorised
+and provisioned; live issuance must refuse rather than borrow the INT-02
+Pulse consumer or HELD CMS clients.
+
+`connected_identity_seven_case.py` re-opens the sealed original
+seven-case evidence bundle, including issuer-create, CP Principal,
+wrong-audience, second Tenant, issuer revocation, Principal deactivation
+and independent teardown proofs. Every digest must refer to the precise
+original file; exact SHA-40 source pins and closed problem/status codes
+are checked again. It returns `candidate_structurally_complete` only
+as a source-level, unqualified result. Local hashes do **not** establish
+external immutable storage or independent acceptance.
+
+`connected_identity_teardown.py` provides an independent, read-only
+post-cleanup witness. The reviewer must verify the original sealed
+creation-artifact bundle at exact source pins, provider-native absence
+of both reviewed IAM clients, terminal CP synthetic resources, a
+**CP-owned** Principal status read-back by a distinct checker, no owned
+Docker resources/images, and no surviving private credentials. There
+is no automatic cleanup call, and no replacement of an unavailable
+Principal status endpoint with a fabricated record. Test doubles exercise
+guards only; they are not proof of actual teardown.
+
 **Seven normative INT-03C cases remain unqualified** without approved
 actual identities, original evidence for each case, independent
 revocation and deactivation, and provider-neutral teardown. Even a
