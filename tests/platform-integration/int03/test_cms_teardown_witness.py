@@ -66,7 +66,7 @@ class Witness(unittest.TestCase):
     def test_prior_creation_requires_real_sealed_matching_bytes(self):
         import hashlib
         import json
-            bundle=self.parent/"retained"
+        bundle=self.parent/"retained"
         bundle.mkdir(mode=0o700)
         names={"issuer_create":"issuer-create.json",
                "cp_create":"cp-create.json",
@@ -86,18 +86,18 @@ class Witness(unittest.TestCase):
         custody.seal(bundle,list(names.values()),run_id=self.owner.run_id,sources=pins)
         self.assertTrue(witness.verify_prior_creation_custody(self.owner,bundle))
         (bundle/"issuer-create.json").write_text('{"qualified":false,"changed":true}')
-        with self.assertRaises(Refused):
+        with self.assertRaises(custody.Refused):
             witness.verify_prior_creation_custody(self.owner,bundle)
 
     def test_each_failed_fence_blocks_complete_teardown(self):
         for d,a in ((Docker(True),Authorities()),(Docker(),Authorities(False,True)),
                     (Docker(),Authorities(True,False))):
-            with self.assertRaises(Refused):
+            with self.assertRaises(custody.Refused):
                 witness.independent_inspection(self.owner,d,a)
         private=self.parent/self.project
         private.mkdir(mode=0o700)
         (private/"leftover.secret").write_text("should never be retained")
-        with self.assertRaises(Refused):
+        with self.assertRaises(custody.Refused):
             witness.independent_inspection(self.owner,Docker(),Authorities())
 
     def test_descriptor_denies_missing_cp_authority_or_wrong_client(self):
@@ -108,7 +108,7 @@ class Witness(unittest.TestCase):
                      {"private_leaf":"../escape"},
                      {"run_id":"unbounded-run"}):
             raw=dict(self.raw,**edit)
-            with self.assertRaises(Refused):
+            with self.assertRaises(custody.Refused):
                 witness.Owner.from_record(raw,parent=self.parent)
 
     def test_docker_label_queries_are_exact_and_zero_or_fail(self):
@@ -125,14 +125,14 @@ class Witness(unittest.TestCase):
             if "network" in cmd:
                 return "network-survives"
             return ""
-        with self.assertRaises(Refused):
+        with self.assertRaises(custody.Refused):
             witness.DockerReadback(foreign).verify(self.project)
 
     def test_remaining_private_binary_blocks_even_without_credentials(self):
         private=self.parent/self.project
         private.mkdir(mode=0o700)
         (private/"native-iam-bridge").write_bytes(b"compiled")
-        with self.assertRaises(Refused):
+        with self.assertRaises(custody.Refused):
             witness.verify_private(private)
         (private/"native-iam-bridge").unlink()
         self.assertTrue(witness.verify_private(private))
