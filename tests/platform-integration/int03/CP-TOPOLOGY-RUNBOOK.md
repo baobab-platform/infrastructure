@@ -17,7 +17,7 @@ acceptance cases remain BLOCKED.
 | Market | `POST /v1/markets`, distinct reviewer `POST /v1/markets/{id}/activate` | CP mints `mkt_` ID, validates its config, and maker must differ from checker. Reviewer uses CP revision If-Match; GET must show ACTIVE, exact `activated_by` and correct owner Tenant. |
 | EngineRelease | `POST /v1/engine-releases`, governed changeset approval | CP mints `erl_` ID. Initial CANDIDATE cannot be called APPROVED by the recording actor. Exact source digest, artefact digests, declared provider support and capability contract majors required. |
 | ProviderCapabilityCertification | Reviewer `POST /v1/provider-capability-certifications` | Distinct registered CP Principal from release recorder, real retained sha256 evidence URIs. Independent `GET` confirms `CERTIFIED` and exact provider, release and capability. Certification **never** creates binding or health. |
-| CapabilityBinding and grant | CP `/v1/admin/changesets` create/submit/plan/approve/apply and current `POST /v1/capabilities/resolve` | Only CP changeset governs binding. Separate approver must approve **exact current plan digest** before apply. After actual workload IAM/CP context is issued, the same registered workload must redeem its own `context_id`, and CP must resolve the expected `grant_id`, `binding_id`, provider and instance. An admin GET or local fixture manifest cannot substitute for current runtime authority. |
+| CapabilityBinding and capability grant | CP `/v1/tenants/{tenantID}/provisioning` plan/approve/apply under ADR-SHARED-015, then workload `POST /v1/capabilities/resolve` | CP TenantProvisioning plans `CREATE_CAPABILITY_BINDING` and `CREATE_CAPABILITY_GRANT` from the actual AUTHORISED, FULFILLED onboarding desired state. Separate Principal approves the exact digest; asynchronous apply and readiness must be observed. CP `/v1/admin/changesets` does **not** support a `CAPABILITY_BINDING` kind. The current workload-owned context must resolve the intended grant, binding, provider and instance; local metadata cannot substitute. |
 
 These routes are verified against existing CP `api/router.go`,
 `market_handler.go`, `tenant_registration_handler.go`,
@@ -81,10 +81,22 @@ or provision new administrators from this tool.
    must be qualified via actual IAM ↔ CP integration. Human buyer Principal
    self-registration is not the CMS workload authority path.
 3. Engine capability-provider registration, instance health and current
-   binding/grant changeset application must be independently accepted.
+   CP TenantProvisioning binding/grant plan approval and apply must be independently accepted.
    These cannot be inferred from a provider certification or CP admin grant.
 4. The reviewer must cite retained **actual** CMS/PG17 and security
    acceptance artefacts and a distinct CP Principal. A fake test response,
    source digest or historical component receipt is not qualification.
 5. All 14 connected NAB-03 cases, independent resource-server teardown,
    Shared registry activation, staging and production remain separately held.
+
+**CP binding implementation correction:** The generic changeset catalogue
+contains `PROVIDER_ACTIVATION` and `ENGINE_RELEASE_APPROVAL`, but **not**
+`CAPABILITY_BINDING`. Binding/grant materialisation belongs to
+`TenantProvisioning` under ADR-SHARED-015. `Fixture.request_provisioning()`
+requests the CP-desired-state plan for one registered tenant and fulfilled
+onboarding request; `Fixture.verify_provisioning_binding()` separately GETs
+the CP state and generated plan, requires READY/ACTIVE, different maker and
+checker, exact APPROVED non-stale plan digest, and a matching
+`CREATE_CAPABILITY_BINDING` step. It never writes the binding itself.
+The final independent workload resolution must still show the binding and
+grant live. A generic changeset cannot be used to bypass this lifecycle.
