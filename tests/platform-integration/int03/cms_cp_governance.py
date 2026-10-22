@@ -150,6 +150,89 @@ class Fixture:
             raise Refused("operator role assignment differs")
         self.cp, self.maker, self.checker = cp, maker, checker
 
+    def register_tenant(self, reviewed_request, *, key):
+        """Submit CP registration only for independently AUTHORISED onboarding.
+
+        CP allocates the Tenant ID asynchronously. An accepted operation is
+        not an ACTIVE tenant; the operator must await CP completion and call
+        verify_tenant with the actual emitted ID.
+        """
+        if (not isinstance(reviewed_request, dict) or
+            not isinstance(reviewed_request.get("onboarding_request_id"), str) or
+            any(k in reviewed_request for k in
+                ("tenant_id", "status", "principal_id", "authorised_by",
+                 "approval", "bootstrap_reason", "evidence_reference"))):
+            raise Refused("CP-authorised onboarding request required, not bootstrap")
+        out = self.cp.call(self.maker, "POST", "/v1/tenants",
+                           body=reviewed_request, idempotency=key, expect=(202,))
+        if not isinstance(out.get("operation_id"), str):
+            raise Refused("CP Tenant registration operation not issued")
+        return {"operation_id": out["operation_id"],
+                "outcome": "PENDING_CP_OPERATION",
+                "tenant_registered": False, "qualified": False}
+
+    def admit_organisation(self, tenant_id, reviewed_document):
+        """Use the actual CP verified-case/decision path, never raw SQL."""
+        canonical_uuid(tenant_id)
+        if (not isinstance(reviewed_document, dict) or
+            not isinstance(reviewed_document.get("verification_case_id"), str) or
+            any(k in reviewed_document for k in
+                ("organisation_id", "status", "verified", "legal_entity_id",
+                 "approved", "is_active"))):
+            raise Refused("actual CP verification/admission references required")
+        out = self.cp.call(self.maker, "POST",
+                           f"/v1/tenants/{tenant_id}/organisation-admission",
+                           body=reviewed_document, expect=(200,))
+        if out.get("identity_resolution") == "QUARANTINED":
+            raise Refused("CP quarantined Organisation identity")
+        # No local Organisation ID is issued. A subsequent caller must read
+        # the actual canonical result and verify it via the CP GET route.
+        return {"cp_outcome": "ADMISSION_RETURNED_UNVERIFIED",
+                "qualified": False}
+
+    def issue_existing_principal_grant(self, principal_id, permission, scope,
+                                       *, grant_type, reason, key):
+        """CP must resolve this already ACTIVE Principal before issuance.
+
+        This never creates an identity; grant issuance is CP's own guarded
+        administrative route with its policy catalogue and tenant boundary.
+        """
+        canonical_uuid(principal_id)
+        if (not isinstance(permission, str) or not permission or
+            not isinstance(scope, dict) or not scope or
+            grant_type not in ("DIRECT", "DELEGATED") or
+            not isinstance(reason, str) or len(reason) < 10):
+            raise Refused("CP grant must have an explicit bounded purpose")
+        request = {"principal_id": principal_id, "permission": permission,
+                   "scope": scope, "grant_type": grant_type, "reason": reason}
+        out = self.cp.call(self.maker, "POST", "/v1/admin/grants",
+                           body=request, idempotency=key, expect=(200, 201))
+        gid = out.get("grant_id")
+        if not isinstance(gid, str) or not GRANT_ID.fullmatch(gid):
+            raise Refused("CP grant ID not issued")
+        # Grant is not made active by this client. The independent reviewer
+        # must verify grant status on GET, including SoD/prohibition.
+        return gid
+
+    def record_engine_release(self, reviewed_document):
+        if (not isinstance(reviewed_document, dict) or
+            not isinstance(reviewed_document.get("engine_id"), str) or
+            not isinstance(reviewed_document.get("source_revision"), str) or
+            not isinstance(reviewed_document.get("artifacts"), list) or
+            not reviewed_document["artifacts"] or
+            not isinstance(reviewed_document.get("provider_support"), list) or
+            any(k in reviewed_document for k in
+                ("release_id", "status", "recorded_by", "approved_by"))):
+            raise Refused("immutable reviewed EngineRelease declaration required")
+        out = self.cp.call(self.maker, "POST", "/v1/engine-releases",
+                           body=reviewed_document, expect=(200, 201))
+        release_id = out.get("release_id")
+        if not isinstance(release_id, str) or not RELEASE_ID.fullmatch(release_id):
+            raise Refused("CP did not mint EngineRelease")
+        if out.get("recorded_by") != self.maker.principal_id or out.get("status") != "CANDIDATE":
+            raise Refused("EngineRelease record is not a maker-owned CANDIDATE")
+        return release_id
+
     def create_market(self, document, *, key):
         if not isinstance(document, dict) or document.get("owner_tenant_id") is None:
             raise Refused("CP market needs approved owning Tenant")
@@ -259,7 +342,7 @@ class Fixture:
     def verify_changeset_binding(self, changeset_id):
         # CP changeset lifecycle is the *only* human-governed provisioning
         # path, not a locally set capability_binding status flag.
-        if not isinstance(changeset_id, str) or not re.fullmatch(r"chg_[a-z0-9]+", changeset_id):
+        if not isinstance(changeset_id, str) or not re.fullmatch(r"cs_[a-z0-9]+", changeset_id):
             raise Refused("governed CP changeset ID required")
         record = self.cp.call(self.checker, "GET",
                               f"/v1/admin/changesets/{changeset_id}")
