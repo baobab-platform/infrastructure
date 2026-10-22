@@ -29,7 +29,7 @@ class ComponentCustody(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name)
         os.chmod(self.root,0o700)
-        self.parent=self.root/"cms-component-"+"a"*16
+        self.parent=self.root/("cms-component-"+"a"*16)
         self.completed=self.parent/"completed"
         self.completed.mkdir(parents=True,mode=0o700)
         self.record=self.completed/"receipt.json"
