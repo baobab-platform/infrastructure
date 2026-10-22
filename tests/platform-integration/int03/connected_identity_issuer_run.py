@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 import cms_evidence as custody
-from connected_identity_cp_run import source_pins
+from connected_identity_sources import source_pins
 from connected_identity_evidence import EvidenceRefused
 from connected_identity_issuer import IssuerPort, ALLOWED
 from connected_identity_cp import read_private_token

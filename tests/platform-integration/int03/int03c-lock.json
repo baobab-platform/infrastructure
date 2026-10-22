@@ -1,0 +1,16 @@
+{
+  "schema": "infrastructure.int03c.sources.v1",
+  "profile": "governed-connected-identity",
+  "decision": "shared:docs/architecture/int03c-governed-proof-bootstrap-decision.md",
+  "infrastructure_baseline": "9ba30c410ffcc6a46f5d912bf03853532f7adf0c",
+  "sources": {
+    "shared": "74dd98d47e678fc479bb4bfc4138d601fb53319e",
+    "baobab-iam": "ca5eb723c7845ed9a60e19fd0ef1a1e900d7b97a",
+    "baobab-cp": "bcea71bd9909be3672dfcb7ce78d04d6feb0e748",
+    "baobab-cms": "a712797177924c875e50ed63a9c01ec34bd632c8",
+    "nabhold": "f3ec2043938c4410ff0bb591302d3dce03ea5766"
+  },
+  "topology_approval": "REQUIRED_INFRASTRUCTURE_49",
+  "cms_activation": "HELD",
+  "qualified": false
+}

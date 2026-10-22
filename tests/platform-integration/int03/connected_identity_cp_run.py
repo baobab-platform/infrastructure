@@ -23,6 +23,7 @@ from cms_cp_context import assert_resolved
 from connected_identity_evidence import (
     AUTHORITY, EvidenceRefused, blocked_receipt, validate,
 )
+from connected_identity_sources import source_pins
 
 BASE=Path(__file__).resolve().parent
 INPUT_SCHEMA="infrastructure.int03c.cp-observer-input.v1"
@@ -70,30 +71,6 @@ def read_reviewed(path):
             "ORGANISATION","BUYER_ORGANISATION","SUPPLIER_ORGANISATION"):
         raise EvidenceRefused("distinct governed Tenant/market topology required")
     return plan
-
-
-def source_pins(plan):
-    """Require real immutable checked-out revision for Infrastructure plus lock."""
-    p=plan.get("sources")
-    if type(p) is not dict or set(p)!={"infrastructure","shared","baobab-cms",
-        "baobab-iam","baobab-cp","nabhold"}:
-        raise EvidenceRefused("source pin inventory incomplete")
-    lock=json.loads((BASE/"cms-lock.json").read_text())
-    if any(p.get(k)!=lock["sources"][k] for k in lock["sources"]):
-        raise EvidenceRefused("native IAM/CP/Shared source lock differs")
-    root=BASE.parents[2]
-    for cmd in (
-        ["git","-C",str(root),"rev-parse","HEAD"],
-        ["git","-C",str(root),"status","--porcelain","--untracked-files=all"],
-    ):
-        result=subprocess.run(cmd,capture_output=True,text=True,timeout=10,check=False)
-        if result.returncode:
-            raise EvidenceRefused("clean Infrastructure checkout unavailable")
-        if cmd[-1]=="HEAD" and result.stdout.strip()!=p["infrastructure"]:
-            raise EvidenceRefused("Infrastructure revision differs")
-        if cmd[-1]=="--untracked-files=all" and result.stdout.strip():
-            raise EvidenceRefused("operator must use clean exact source pin")
-    return p
 
 
 def execute(port, plan, tokens):
