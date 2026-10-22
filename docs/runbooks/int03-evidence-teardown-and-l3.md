@@ -17,7 +17,7 @@ reported three failures:
 | Check | Observed cause | Correction |
 |---|---|---|
 | L3-02 RabbitMQ health | Host `127.0.0.1:15672` connection refused immediately after passing internal `verify-local` smoke | Reuse authenticated `smoke` container on the private `data` network with `rabbitmq:15672`; no external management dependency |
-| L3-08 RabbitMQ publish/get | Host-side management queue declaration could not connect | Issue POST/GET/DELETE through authenticated private `smoke` network; still require routed/consumed fixture and cleanup |
+| L3-08 RabbitMQ publish/get | Host-side management queue declaration could not connect | Issue POST/GET/DELETE through authenticated private `smoke` network. RabbitMQ 4.3 also refuses deprecated transient non-exclusive queues; declare a durable temporary queue and explicitly delete it after the round trip |
 | L3-10 APISIX Admin | Host-loopback Admin API returned **403**, while internal `verify-local` Admin call succeeded | Use internal `apisix:9180` from `smoke`, which is on the governed `control` network permitted by APISIX's `allow_admin` CIDR; preserve full Admin key and HTTP failure checks |
 
 **Important:** Do not widen `allow_admin` to host NAT/public CIDRs,
