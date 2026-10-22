@@ -8,7 +8,7 @@ Principal state before and after exact digest-bound completion.
 from dataclasses import dataclass
 import re
 
-from cms_cp_governance import CPGateway, Fixture, Operator, Refused, canonical_uuid
+from cms_cp_governance import CPGateway, Fixture, Refused, canonical_uuid
 
 EXACT_SUBJECTS=frozenset(("baobab-int03c-issuer-owner","baobab-int03c-issuer-verifier"))
 RUN=re.compile(r"[0-9a-f]{32}\Z")
