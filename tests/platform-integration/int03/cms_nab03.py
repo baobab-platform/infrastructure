@@ -5,9 +5,6 @@ copying JSON from tests. This verifier never creates clients, grants, topology
 or publishes a passing qualification. HELD runs cannot invoke any case.
 """
 from dataclasses import dataclass
-from datetime import datetime, timezone
-import hashlib
-import json
 
 from cms_gate import CASES, CONSUMER, VALIDATOR
 
