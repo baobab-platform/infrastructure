@@ -272,3 +272,50 @@ def native_preflight(shared, iam, lock):
     gate = verify_gate(shared, lock)
     clean_source(iam, lock["sources"]["baobab-iam"])
     return {"gate":gate["gate"]["verdict"],"qualified":False}
+
+
+def main(argv=None):
+    """Private crash-recovery CLI; never an ungated independent provisioner."""
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__.split("\\n\\n", 1)[0])
+    commands = parser.add_subparsers(dest="action", required=True)
+    preflight = commands.add_parser("preflight")
+    preflight.add_argument("--shared", type=Path, required=True)
+    preflight.add_argument("--iam", type=Path, required=True)
+    rec = commands.add_parser("recover")
+    rec.add_argument("--journal-dir", type=Path, required=True)
+    rec.add_argument("--shared", type=Path, required=True)
+    rec.add_argument("--iam", type=Path, required=True)
+    rec.add_argument("--hydra-admin", required=True)
+    rec.add_argument("--kratos-admin", required=True)
+    rec.add_argument("--issuer", required=True)
+    rec.add_argument("--ca", type=Path, required=True)
+    args = parser.parse_args(argv)
+    try:
+        if args.action == "preflight":
+            lock = json.loads((BASE / "cms-lock.json").read_text())
+            result = cms_gate.evaluate(args.shared, lock)
+            if result["gate"]["verdict"] == "HELD":
+                print("INT03_NATIVE_HELD; identities_created=false; qualified=false")
+                return 0
+            if result["gate"]["verdict"] != "OPEN":
+                raise Refused("registry refused")
+            clean_source(args.iam, lock["sources"]["baobab-iam"])
+            print("INT03_NATIVE_READY_UNQUALIFIED")
+            return 0
+        client = NativeClient(args.iam, args.shared, hydra_admin=args.hydra_admin,
+                              kratos_admin=args.kratos_admin, issuer=args.issuer,
+                              ca=args.ca)
+        if recover(args.journal_dir, client):
+            print("INT03_NATIVE_ISSUER_TEARDOWN_VERIFIED; qualified=false")
+            return 0
+        raise Refused("incomplete issuer recovery")
+    except Exception:
+        # No native provider stderr, private paths, credentials or URLs leave
+        # this command. Failed cleanup retains its journal for retry.
+        print("INT03_NATIVE_REFUSED_OR_RECOVERY_INCOMPLETE", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
