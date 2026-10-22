@@ -13,9 +13,8 @@ import os
 from pathlib import Path
 import re
 import sys
-import uuid
 
-from cms_cp_governance import CPGateway, Fixture, Operator, Refused, SHA256
+from cms_cp_governance import CPGateway, Fixture, Operator, Refused
 
 PLAN_SCHEMA = "infrastructure.int03.cp-governed-fixture-plan.v1"
 STEPS = frozenset({"tenant", "organisation", "market", "market-activate",
