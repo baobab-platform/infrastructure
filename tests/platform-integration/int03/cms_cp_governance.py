@@ -158,7 +158,7 @@ class Fixture:
         verify_tenant with the actual emitted ID.
         """
         if (not isinstance(reviewed_request, dict) or
-            not isinstance(reviewed_request.get("onboarding_request_id"), str) or
+            not isinstance(reviewed_request.get("tenant_onboarding_request_id"), str) or
             any(k in reviewed_request for k in
                 ("tenant_id", "status", "principal_id", "authorised_by",
                  "approval", "bootstrap_reason", "evidence_reference"))):
@@ -176,6 +176,9 @@ class Fixture:
         canonical_uuid(tenant_id)
         if (not isinstance(reviewed_document, dict) or
             not isinstance(reviewed_document.get("verification_case_id"), str) or
+            not isinstance(reviewed_document.get("admission_decision_id"), str) or
+            not isinstance(reviewed_document.get("applicant_organisation"), dict) or
+            not isinstance(reviewed_document.get("platform_account"), dict) or
             any(k in reviewed_document for k in
                 ("organisation_id", "status", "verified", "legal_entity_id",
                  "approved", "is_active"))):
@@ -200,7 +203,7 @@ class Fixture:
         canonical_uuid(principal_id)
         if (not isinstance(permission, str) or not permission or
             not isinstance(scope, dict) or not scope or
-            grant_type not in ("DIRECT", "DELEGATED") or
+            grant_type not in ("STANDING", "TIME_BOUND", "JUST_IN_TIME") or
             not isinstance(reason, str) or len(reason) < 10):
             raise Refused("CP grant must have an explicit bounded purpose")
         request = {"principal_id": principal_id, "permission": permission,
@@ -236,6 +239,7 @@ class Fixture:
     def create_market(self, document, *, key):
         if not isinstance(document, dict) or document.get("owner_tenant_id") is None:
             raise Refused("CP market needs approved owning Tenant")
+        canonical_uuid(document["owner_tenant_id"])
         # CP mints the market ID and initially leaves it non-active. No
         # status, approval, reviewer or minted ID comes from this document.
         if any(x in document for x in ("market_id", "status", "approved_by",
