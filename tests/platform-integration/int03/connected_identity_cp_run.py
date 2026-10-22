@@ -19,7 +19,7 @@ import sys
 import uuid
 
 from cms_evidence import canonical, exclusive, root_dir, seal, verify
-from connected_identity_cp import CPTransport, assert_current_human, assert_negative, read_private_token
+from connected_identity_cp import CPTransport, assert_current_human, assert_negative, read_private_token\nfrom cms_cp_context import assert_resolved
 from connected_identity_evidence import (
     AUTHORITY, EvidenceRefused, blocked_receipt, validate,
 )
@@ -114,12 +114,18 @@ def execute(port, plan, tokens):
     # This CP context resolution creates only a short-lived Context using
     # an already registered workload; never creates canonical topology.
     good=port.request("POST","/v1/platform-context/resolve",tokens["workload"],intended)
-    if (good["status"]!=200 or
-        good["document"].get("tenant_id")!=plan["tenant_id"] or
-        good["document"].get("organisation_id")!=plan["organisation_id"] or
-        not isinstance(good["document"].get("context_id"),str) or
-        not good["document"].get("expires_at")):
-        raise EvidenceRefused("actual CP own-tenant current Context unavailable")
+    if good["status"]!=200 or not isinstance(good["document"],dict):
+        raise EvidenceRefused("actual CP own-tenant Context unavailable")
+    # Reuse the earlier reviewed CP context authority assertion: real
+    # organisation-kind, market, expiry and currency must match the exact
+    # CP-issued context. A synthetic UUID is never substituted.
+    try:
+        assert_resolved(good["document"],tenant=plan["tenant_id"],
+                        organisation=plan["organisation_id"],
+                        country=plan["country_code"],kind=plan["organisation_kind"],
+                        now=datetime.now(timezone.utc))
+    except (ValueError,TypeError,KeyError):
+        raise EvidenceRefused("CP issued no current governed runtime context") from None
     bad=port.request("POST","/v1/platform-context/resolve",
                      tokens["wrong_audience"],intended)
     assert_negative(bad,"wrong_audience_denied")
@@ -139,6 +145,9 @@ def execute(port, plan, tokens):
 def capture(plan, checks, output):
     """Seal sanitized CP source facts; no issuer proof, no PASS or acceptance."""
     root=Path(output)
+    # The evidence directory must not be created in a public or shared
+    # parent even when its own final leaf is mode 0700.
+    root_dir(root.parent)
     root.mkdir(mode=0o700,exist_ok=False)
     root_dir(root)
     record=blocked_receipt({k:plan["sources"][k] for k in (
@@ -155,11 +164,16 @@ def capture(plan, checks, output):
         raw=canonical(fact)
         exclusive(root/name,raw)
         names.append(name)
-        record["observations"][case]={
-            "result":"OBSERVED","http_status":status,"code":code,
-            "authority":AUTHORITY[case],
-            "evidence_digest":"sha256:"+hashlib.sha256(raw).hexdigest(),
-        }
+        # A 401 is not proof of revocation, nor is a CP 403 by itself
+        # evidence of governed Principal deactivation. Preserve the actual
+        # denial in an immutable file, but mark both cases BLOCKED until
+        # independent issuer/CP mutation and *unexpired* token evidence.
+        if case not in ("revoked_credential_denied","deactivated_principal_denied"):
+            record["observations"][case]={
+                "result":"OBSERVED","http_status":status,"code":code,
+                "authority":AUTHORITY[case],
+                "evidence_digest":"sha256:"+hashlib.sha256(raw).hexdigest(),
+            }
     # IAM token creation proof and teardown are intentionally BLOCKED; the
     # reviewer must separately provide an immutable original issuer record.
     if validate(record,expected_sources=record["sources"]):
@@ -186,6 +200,8 @@ def main(argv=None):
             raise EvidenceRefused("new private evidence directory required")
         source_pins(p)
         tokens={name:read_private_token(value) for name,value in p["tokens"].items()}
+        if len(set(tokens.values())) != len(tokens):
+            raise EvidenceRefused("independent IAM identities/credentials required")
         actual=CPTransport(p["cp_origin"],p["ca_file"])
         checks=execute(actual,p,tokens)
         capture(p,checks,args.out)
