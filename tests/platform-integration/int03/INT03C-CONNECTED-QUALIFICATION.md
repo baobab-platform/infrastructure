@@ -30,7 +30,7 @@ through this workflow. All fourteen NAB-03 cases remain BLOCKED.
 | Case | Live authority and minimum proof |
 |---|---|
 | iam_issued_token | IAM issuer/client independent configuration and token issuance GET or introspection, signed source/issuer evidence and unexpired exact audience |
-| cp_current_principal | ACTIVE canonical CP Principal from authenticated human `GET /v1/admin/effective-authority`, independently matching the governed CP UUID and original IAM issuer/subject link |
+| cp_current_principal | ACTIVE canonical workload Principal and original IAM issuer/subject linkage from independent CP-owned read-back; human `GET /v1/admin/effective-authority` alone is insufficient |
 | wrong_audience_denied | A **real IAM-issued** token for an independent wrong audience is denied by authenticated CP `POST /v1/platform-context/resolve`; no arbitrary 403 counts |
 | cross_tenant_denied | Real own-Tenant token succeeds for an ACTIVE Tenant/Organisation/country context but CP refuses a *separate CP-governed active* neighbouring Tenant |
 | revoked_credential_denied | IAM independently confirms revocation of a previously live token **before natural expiry**, then CP refuses reuse; an expired token alone is not revocation proof |
@@ -79,9 +79,15 @@ tokens: owner-private file paths for human, workload, wrong_audience,
 
 Do not invent or paste secrets into tracked documentation. The runner
 requires the **actual clean Infrastructure git revision** and the
-reviewed IAM/CP/Shared/CMS/Nabhold `cms-lock.json` pins, distinct
+reviewed IAM/CP/Shared/CMS/Nabhold `int03c-lock.json` pins, distinct
 issuer tokens and actual nonexpired CP organisation/context readbacks.
-The default CMS lock's registry hold is not changed by this probe.
+The exact execution SHA must descend from the lock's merged Infrastructure
+baseline. Use full clean history containing that baseline; a shallow checkout
+without it is refused. The default CMS lock's registry hold is unchanged.
+Infrastructure #49 must separately authorise the exact sources, host/network,
+image digests, run window, distinct CP admins, private credentials, external
+supervisor and immutable evidence custody before any probe or issuer request.
+`inspect` validates input shape only and grants no permission to run.
 
 The runner records fixed route/method/status/problem codes only, without
 retaining token bodies, headers or CP Principal details, and seals all

@@ -5,7 +5,7 @@
 
 ## Normative evidence — seven required actual service observations
 
-1. Fresh private Hydra/Kratos issuance and *independent* active introspection of exact owner client, 60-second access token, CP audience and `context:resolve` only.
+1. Fresh private Hydra issuance and *independent* active introspection of exact owner client, token lifetime within the Accepted Shared 60–900-second ceiling and the independently approved run window, CP audience and `context:resolve` only. A narrower approved native client profile remains binding.
 2. Independently read back the same CP-generated ACTIVE canonical workload Principal *and* its approved exact external (issuer,subject) mapping. A human administrator effective-authority GET alone does not prove workload registration.
 3. Separately IAM-issued wrong-audience token rejected by CP, with exact denial code and before expiry.
 4. Own-Tenant real CP positive, followed by neighbour Tenant denial; the neighbour must be a separately admitted ACTIVE Tenant and the maker/checker must not self-provision it.
@@ -18,9 +18,9 @@ For each, independently retained actual HTTP request/response *sanitized facts* 
 ## Current verified foundations vs blockers
 
 - Shared #366 named exactly `baobab-int03c-issuer-owner` and `baobab-int03c-issuer-verifier`, both ACTIVE **development proof-bootstrap only** with CP audience and `context:resolve` only. No CMS consumer/validator identity activation.
-- IAM #137 adds the maintained Hydra native client create/revoke/destroy adapter for only those two names, with provider-side read-back. Its creation-time deadline check does not itself prove a crash-safe issuer closure or block later token requests after the window.
-- CP #427 adds default-off development-only two-human Principal-disable handlers and transactional source logic. It still requires independent per-run Principal source linkage, maker/checker PostgreSQL concurrency/serialization tests and current context denial.
-- The existing `connected_identity_cp_run.source_pins()` requires the **old CMS-specific `cms-lock.json`**. Its immutable Shared/IAM/CP SHAs do not yet equal the new governed merged dependency SHAs. Do not edit CMS lock or override source pins; create a separately independently reviewed INT-03C lock on the final **merged** IAM/CP/Shared/Infrastructure revisions, keeping the canonical NAB-03 CMS registry hold.
+- IAM #137 is merged at `ca5eb723c7845ed9a60e19fd0ef1a1e900d7b97a`. It implements the native two-client bridge, distinct live deadline watchdog lease and crash-recovery requirements. Actual independent runtime shutdown remains unexecuted under Infrastructure #49.
+- CP #427 is merged at `bcea71bd9909be3672dfcb7ce78d04d6feb0e748`, including immutable two-human provenance, transactional deactivation and disposable PostgreSQL regression CI. Actual approved topology, current canonical workload linkage and live context denial remain unexecuted.
+- `int03c-lock.json` separately pins merged Shared #366, IAM #137, CP #427 and the recorded CMS/Nabhold sources. Both CP and issuer observers use `connected_identity_sources.py`; `cms-lock.json` is unchanged. The exact Infrastructure execution SHA must be a clean descendant of merged #48 (`9ba30c410ffcc6a46f5d912bf03853532f7adf0c`). Source-lock conformance grants no runtime approval.
 - `connected_identity_cp_lifecycle.py` uses only the CP guarded maker/checker HTTP route and independent read-back, with no SQL shortcuts. Its source unit tests cannot certify actual human Principal grants, issuer linkage or CP status changes.
 - The seven-case custody and teardown readers deliberately return `qualified=false`. A complete locally hashed ledger remains **OBSERVED_UNATTESTED** until external immutability and independent checker signoff.
 
@@ -31,3 +31,23 @@ For each, independently retained actual HTTP request/response *sanitized facts* 
 INT-03D has **no independently accepted written acceptance contract found in Shared, Infrastructure, Nabhold, IAM or CP at this review**. Its gate/scope must be authored and approved separately; do not begin a guessed INT-03D execution, or treat INT-03C code completion as a qualified run.
 
 Shared #354 remains HELD and all 14 NAB-03 cases remain BLOCKED.
+
+
+## Separate source preparation and approval package
+
+Infrastructure #49 is an **approval request, not approval**. The source lock
+contains no host, credentials, approver signature, generated topology ID or
+acceptance observation. None may be invented to make a plan executable.
+
+Before any live observer or issuer action, independent operators must review
+the exact Infrastructure execution SHA and every dependency in `int03c-lock.json`,
+then approve host/network, image digests, external deadline supervisor, two CP
+administrators, governed admission inputs and external immutable evidence custody.
+Use a full clean checkout containing the Infrastructure baseline history; missing
+ancestry fails closed. Supply those exact six source revisions in each private
+operator plan. The new lock does not itself provision or build a runtime.
+
+The CP observer remains an incomplete diagnostic: its human administrative read
+is not proof of the workload's canonical issuer/subject linkage. Separate real
+workload provenance, issuer mutation, CP status/link read-back and seven-case
+originals remain mandatory. No source test performs those live actions.
