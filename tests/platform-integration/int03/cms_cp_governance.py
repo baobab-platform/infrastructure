@@ -363,6 +363,69 @@ class Fixture:
                 raise Refused("CP provider certification expiry malformed") from None
         return read
 
+    def request_provisioning(self, tenant_id, onboarding_request_id, *, key):
+        """Use CP's tenant desired-state planner, never a binding SQL write."""
+        canonical_uuid(tenant_id)
+        if not isinstance(onboarding_request_id, str) or not re.fullmatch(
+                r"tor_[A-Za-z0-9]+", onboarding_request_id):
+            raise Refused("approved CP onboarding request ID required")
+        result=self.cp.call(self.maker,"POST",
+                            f"/v1/tenants/{tenant_id}/provisioning",
+                            body={"tenant_onboarding_request_id":onboarding_request_id,
+                                  "desired_state_version":1},
+                            idempotency=key,expect=(201,))
+        if result.get("tenant_id") != tenant_id or not isinstance(
+                result.get("tenant_provisioning_id"), str):
+            raise Refused("CP did not create own-Tenant provisioning plan")
+        return {"tenant_provisioning_id":result["tenant_provisioning_id"],
+                "qualified":False}
+
+    def verify_provisioning_binding(self, tenant_id, provisioning_id,
+                                    capability_key, instance_id):
+        """CP-approved desired state creates bindings through its planner.
+
+        CP's changeset family does NOT expose CAPABILITY_BINDING as a
+        changeset kind. Only TenantProvisioning's CREATE_CAPABILITY_BINDING
+        operation may create the binding, and a separate workload context
+        resolver must still confirm an ACTIVE provider/grant at runtime.
+        """
+        canonical_uuid(tenant_id)
+        if (not isinstance(provisioning_id,str) or
+            not re.fullmatch(r"tp_[a-z0-9]+",provisioning_id) or
+            not isinstance(capability_key,str) or not capability_key or
+            not isinstance(instance_id,str) or not instance_id):
+            raise Refused("canonical CP provisioning and binding identifiers required")
+        path=f"/v1/tenants/{tenant_id}/provisioning/{provisioning_id}"
+        state=self.cp.call(self.checker,"GET",path)
+        plan=self.cp.call(self.checker,"GET",path+"/plan")
+        approval=state.get("approval")
+        current=state.get("current_plan")
+        if (state.get("tenant_id") != tenant_id or
+            state.get("tenant_provisioning_id") != provisioning_id or
+            state.get("state") not in ("READY","ACTIVE") or
+            not isinstance(approval,dict) or
+            approval.get("decision") != "APPROVED" or
+            approval.get("decided_by") != self.checker.principal_id or
+            state.get("created_by") == self.checker.principal_id or
+            not isinstance(current,dict) or current.get("stale") is not False or
+            not isinstance(current.get("plan_digest"),str) or
+            not SHA256.fullmatch(current["plan_digest"]) or
+            approval.get("plan_digest") != current["plan_digest"] or
+            plan.get("plan_digest") != current["plan_digest"]):
+            raise Refused("independently approved CP provisioning not current or ready")
+        steps=plan.get("steps")
+        if not isinstance(steps,list) or not any(
+                isinstance(step,dict) and step.get("operation") == "CREATE_CAPABILITY_BINDING" and
+                isinstance(step.get("resources"),dict) and
+                step["resources"].get("capability_key") == capability_key and
+                step["resources"].get("engine_instance_id") == instance_id
+                for step in steps):
+            raise Refused("CP plan contains no matching capability binding")
+        return {"tenant_provisioning_id":provisioning_id,
+                "approved_plan_digest":current["plan_digest"],
+                "evidence":"CP_DESIRED_STATE_VERIFIED_RUNTIME_RESOLUTION_PENDING",
+                "qualified":False}
+
     def verify_resolved_provider(self, resolve, *, context_id, provider_id,
                                  engine_instance_id, capability_key,
                                  certification_id):
