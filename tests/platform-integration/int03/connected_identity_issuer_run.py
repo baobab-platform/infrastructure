@@ -86,7 +86,7 @@ def verify_governed_workloads(plan):
         raise EvidenceRefused("canonical workload registry incomplete")
     for client,required in (
         (plan["owner_client"],plan["scope"]),
-        (plan["verifier_client"],"context:validate"),
+        (plan["verifier_client"],"context:resolve"),
     ):
         entry=members.get(client)
         if (not isinstance(entry,dict) or
