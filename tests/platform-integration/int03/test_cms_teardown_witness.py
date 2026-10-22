@@ -74,7 +74,7 @@ class Witness(unittest.TestCase):
                "runtime_start":"runtime-start.json"}
         for kind,name in names.items():
             payload=(json.dumps({"schema":"runtime.evidence.v1",
-                                 "phase":kind,"qualified":False})+"\\n").encode()
+                                 "phase":kind,"qualified":False})+"\n").encode()
             dest=bundle/name
             dest.write_bytes(payload)
             os.chmod(dest,0o600)
