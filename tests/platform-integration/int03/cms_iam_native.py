@@ -390,13 +390,16 @@ def main(argv=None):
     try:
         if args.action == "preflight":
             lock = json.loads((BASE / "cms-lock.json").read_text())
+            # Even a HELD gate must check that this exact merged IAM source
+            # actually contains the native bridge. Otherwise CI could be
+            # green while the first authorised connected run cannot execute.
+            clean_source(args.iam, lock["sources"]["baobab-iam"])
             result = cms_gate.evaluate(args.shared, lock)
             if result["gate"]["verdict"] == "HELD":
-                print("INT03_NATIVE_HELD; identities_created=false; qualified=false")
+                print("INT03_NATIVE_HELD; source_pin_verified=true; identities_created=false; qualified=false")
                 return 0
             if result["gate"]["verdict"] != "OPEN":
                 raise Refused("registry refused")
-            clean_source(args.iam, lock["sources"]["baobab-iam"])
             print("INT03_NATIVE_READY_UNQUALIFIED")
             return 0
         client = NativeClient(args.iam, args.shared, hydra_admin=args.hydra_admin,
