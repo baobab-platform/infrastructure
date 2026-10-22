@@ -382,3 +382,27 @@ verified teardown, durable evidence and an independent acceptance decision.
 The present Shared #354 activation hold means the gate still returns HELD and
 all NAB-03 cases remain BLOCKED. Do not run named fixtures or edit the registry
 to exercise this code.
+
+
+### Current CP-owned topology adapter
+
+`cms_cp_context.py` uses CP's current, actually mounted
+`POST /v1/platform-context/resolve` and `/validate` routes, rather than
+inventing a registry or inserting CP UUIDs through the SQL fixture. The
+Infrastructure runner must supply real independent IAM consumer and validator
+tokens, approved synthetic Tenant/Organisation/market participation and the
+disposable trusted CA. It demands that CP return a fresh, bounded context for
+the exact Tenant, Organisation, Organisation kind, country and active market,
+then confirms the context using the separate registered validator's subject
+token path. Redirects, unsafe TLS, unbounded/mismatched/expired results and
+TENANT_PROVISIONING authority are denied. Tokens and response bodies are
+never written to the source receipt. A unit-test transport is *not* live proof.
+
+This verifies only CP's current context authority **after** the CP-owned
+topology, grants, independent maker/checker provider certification and binding
+have actually been established through their governed APIs. The adapter does
+not create, approve or certify them. It must never be wired to a held registry
+or treated as authority merely because a synthetic test supplied matching
+JSON. The remaining connected CMS executor must verify deployment/health and
+capability binding, exercise every normative NAB-03 positive/negative against
+the live providers, and retain independent runtime provenance and destruction.
