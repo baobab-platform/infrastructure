@@ -49,6 +49,7 @@ class Witness(unittest.TestCase):
                   "iam_sha":"b"*40,"shared_sha":"c"*40,
                   "cp_resources":["/v1/tenants/abc123","/v1/admin/grants/agr123"],
                   "private_leaf":self.project,
+                  "prior_digests":dict.fromkeys(["issuer_create","cp_create","runtime_start"],"sha256:"+"e"*64),
                   "issuer_clients":list(witness.NAMES)}
         self.owner=witness.Owner.from_record(self.raw,parent=self.parent)
 
@@ -76,6 +77,7 @@ class Witness(unittest.TestCase):
 
     def test_descriptor_denies_missing_cp_authority_or_wrong_client(self):
         for edit in ({"cp_resources":[]},
+                     {"prior_digests":{}},
                      {"issuer_clients":[witness.NAMES[0]]},
                      {"project":"other-workload"},
                      {"private_leaf":"../escape"},
@@ -90,9 +92,10 @@ class Witness(unittest.TestCase):
             observed.append(cmd)
             return ""
         self.assertTrue(witness.DockerReadback(run).verify(self.project))
-        self.assertEqual(len(observed),3)
+        self.assertEqual(len(observed),5)
         self.assertTrue(all(
-            cmd[-1]=="label=com.docker.compose.project="+self.project for cmd in observed))
+            cmd[-1]=="label=com.docker.compose.project="+self.project for cmd in observed[:3]))
+        self.assertTrue(all(cmd[0:3]==["docker","image","ls"] for cmd in observed[3:]))
         def foreign(cmd):
             if "network" in cmd:
                 return "network-survives"
