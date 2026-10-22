@@ -197,7 +197,9 @@ def verify(root):
         sanitised(data)
         if len(data) != entry["bytes"] or digest(data) != entry["sha256"]:
             raise Refused("retained runtime bytes changed")
-    actual = {p.name for p in root.iterdir() if p.is_file()}
+    # Reject subdirectories and symlinks as well as files. Otherwise an
+    # attacker could stash unsealed credentials in an unlisted directory.
+    actual = {p.name for p in root.iterdir()}
     if actual != seen | {"manifest.json", "manifest.sha256.json"}:
         raise Refused("extra or missing retained files")
     return manifest
