@@ -1,7 +1,9 @@
 # INT-02 CP binary and migration built at exactly the pinned baobab-cp SHA.
 # No test hooks, shadow auth or mock CP binaries are permitted.
 # Both stages are pinned by reviewed digest (EA v2.2 §4.4 iv): tags are mutable.
-FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS builder
+# Reuse Infrastructure's verified supported Go 1.27.3 Alpine builder digest;
+# CGO_ENABLED=0 makes the binaries independent of the build libc.
+FROM golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
