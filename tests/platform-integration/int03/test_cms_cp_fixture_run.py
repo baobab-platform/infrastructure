@@ -79,6 +79,21 @@ class TestOperator(unittest.TestCase):
         with self.assertRaises(Refused):
             operator.read_plan(self.plan) if False else operator.execute_step(fake,self.doc)
 
+    def test_durable_attempt_precedes_mutation_and_never_claims_success(self):
+        receipt=self.root/"receipt.json"
+        attempt={"schema":"infrastructure.int03.cp-fixture-observation.v1",
+                 "state":"ATTEMPTING_CP_POST","qualified":False}
+        operator.save_custody(receipt,attempt,exclusive=True)
+        self.assertEqual(receipt.stat().st_mode & 0o777,0o600)
+        self.assertEqual(json.loads(receipt.read_text())["state"],"ATTEMPTING_CP_POST")
+        with self.assertRaises(FileExistsError):
+            operator.save_custody(receipt,attempt,exclusive=True)
+        operator.save_custody(receipt,dict(attempt,state="CP_RESPONSE_OBSERVED_UNATTESTED"),
+                             exclusive=False)
+        state=json.loads(receipt.read_text())
+        self.assertEqual(state["state"],"CP_RESPONSE_OBSERVED_UNATTESTED")
+        self.assertFalse(state["qualified"])
+
     def test_nonprivate_operator_token_file_denied(self):
         file=self.root/"token"
         file.write_text("not-a-real-token")
