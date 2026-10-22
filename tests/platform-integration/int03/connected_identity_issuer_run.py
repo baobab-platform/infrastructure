@@ -168,6 +168,26 @@ def persist(record,bearer,observation,*,token_output,evidence_output):
     return True
 
 
+def arm_issuer_owner(record, token_output):
+    """Fsync an owner journal *before* any real OAuth token request.
+
+    If the process crashes after issuance, the pending run remains visible
+    and cannot be replayed as a fresh issue; operator must independently
+    reconcile its short-lived issuer token and runtime secrets.
+    """
+    root=custody.root_dir(Path(token_output).parent)
+    path=root/("int03c-issuer-"+record["run_id"]+".journal.json")
+    note={"schema":"infrastructure.int03c.issuer-owner-journal.v1",
+          "run_id":record["run_id"],"source_pins":record["sources"],
+          "owner_client":record["owner_client"],
+          "verifier_client":record["verifier_client"],
+          "approval_digest":record["approval_digest"],
+          "state":"ISSUANCE_ATTEMPTING_UNVERIFIED",
+          "qualified":False,"independent_acceptance":False}
+    custody.exclusive(path,custody.canonical(note))
+    return path
+
+
 def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument("action",choices=("inspect","issue"))
@@ -183,6 +203,9 @@ def main(argv=None):
         if args.token_out is None or args.evidence_out is None:
             raise EvidenceRefused("private owner and evidence destinations required")
         issuer=IssuerPort(record["issuer"],record["ca_file"])
+        # Fail before OAuth POST if a prior run journal exists. Never assume
+        # a lost response means no token was minted.
+        arm_issuer_owner(record,args.token_out)
         token,observed=issue(record,issuer=issuer)
         persist(record,token,observed,token_output=args.token_out,
                 evidence_output=args.evidence_out)
