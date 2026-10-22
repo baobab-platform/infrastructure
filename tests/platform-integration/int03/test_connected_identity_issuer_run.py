@@ -87,6 +87,18 @@ class IssuerRunTests(unittest.TestCase):
             with self.assertRaises(EvidenceRefused):
                 run.issue(p,issuer=FakeIssuer(),now=1000)
 
+    def test_pre_issue_private_journal_cannot_be_replayed(self):
+        p=run.reviewed(self.spec)
+        destination=self.root/"saved.token"
+        journal=run.arm_issuer_owner(p,destination)
+        note=json.loads(journal.read_text())
+        self.assertEqual(note["state"],"ISSUANCE_ATTEMPTING_UNVERIFIED")
+        self.assertFalse(note["qualified"])
+        self.assertNotIn(self.owner.read_text(),journal.read_text())
+        self.assertEqual(journal.stat().st_mode & 0o777,0o600)
+        with self.assertRaises(FileExistsError):
+            run.arm_issuer_owner(p,destination)
+
     def test_introspection_cannot_be_skipped(self):
         p=run.reviewed(self.spec)
         with patch.object(run,"source_pins",return_value=True), patch.object(run,"verify_governed_workloads",return_value=True):
