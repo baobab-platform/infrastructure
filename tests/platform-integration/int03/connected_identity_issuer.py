@@ -3,7 +3,6 @@ No client is created; approval and runtime credentials come from IAM's
 governed fixture authority. It never authenticates as the held CMS clients.
 """
 import json
-import re
 import ssl
 from pathlib import Path
 import urllib.parse
