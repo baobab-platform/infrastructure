@@ -269,6 +269,22 @@ def provision_connected(directory, *, shared, iam, lock, client, acceptors_stop,
         raise
 
 
+
+def revoke_connected(lease, journal, directory, client, name):
+    """Deny future token issuance using IAM's native port plus issuer GET.
+
+    A real connected negative must separately prove previously issued bearer
+    tokens cannot reach accepting services; this provider-side change alone
+    never claims token-revocation acceptance.
+    """
+    if name not in NAMES or load_journal(directory)["run_id"] != journal["run_id"]:
+        raise Refused("revocation owner or identity differs")
+    lease.require_active()
+    return lease.execute("iam-revoke", lambda remaining:
+        client.operate(journal, directory, "revoke", name, timeout=min(remaining, 60)),
+        max_seconds=70)
+
+
 def native_preflight(shared, iam, lock):
     """Safe integration entrypoint under the hold; no state or network writes."""
     gate = verify_gate(shared, lock)
