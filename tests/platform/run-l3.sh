@@ -156,13 +156,13 @@ fi
 echo "== L3-08 RabbitMQ publish/get fixture =="
 # Infra-only bus proof: declare queue, publish via default exchange, get and ack.
 qname="l3.platform.fixture.${timestamp}"
-# Emit only the numeric response status if a private RabbitMQ mutation is
+# RabbitMQ 4.3 refuses deprecated transient/non-exclusive queues: use a\n# durable temporary queue and explicitly delete it after the fixture.\n# Emit only the numeric response status if a private RabbitMQ mutation is
 # refused. Never print Basic auth, queue message bodies or Admin API replies.
 declare_http=""
 if declare_http=$(rmq_api "/api/queues/${vhost_enc}/${qname}" \
   -H 'content-type: application/json' \
   -X PUT \
-  -d '{"durable":false,"auto_delete":false,"arguments":{}}' \
+  -d '{"durable":true,"auto_delete":false,"arguments":{}}' \
   -o /dev/null -w '%{http_code}' 2>/dev/null) && \
   { [ "$declare_http" = "201" ] || [ "$declare_http" = "204" ]; }; then
   payload=$(python3 -c "
