@@ -66,7 +66,9 @@ jobs:
           persist-credentials: false
       - name: Read the locked Shared commit
         id: pin
-        run: echo "shared=$(python3 -c 'import json;print(json.load(open("tests/platform-integration/int03/cms-lock.json"))["sources"]["shared"])')" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "shared=$(python3 -c 'import json;print(json.load(open("tests/platform-integration/int03/cms-lock.json"))["sources"]["shared"])')" >> "$GITHUB_OUTPUT"
+          echo "iam=$(python3 -c 'import json;print(json.load(open("tests/platform-integration/int03/cms-lock.json"))["sources"]["baobab-iam"])')" >> "$GITHUB_OUTPUT"
       - name: Check out Shared at the locked commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,7 +76,16 @@ jobs:
           ref: ${{ steps.pin.outputs.shared }}
           path: .int03-cms/shared
           persist-credentials: false
+      - name: Check out exact CMS IAM native source pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-iam
+          ref: ${{ steps.pin.outputs.iam }}
+          path: .int03-cms/iam
+          persist-credentials: false
       - run: python3 -m pip install PyYAML==6.0.3
+      - name: Independently check native IAM activation and recovery gate
+        run: python3 -B tests/platform-integration/int03/cms_iam_native.py preflight --shared .int03-cms/shared --iam .int03-cms/iam
       - name: Registry gate and NAB-03 receipt
         run: python3 -B tests/platform-integration/int03/cms_gate.py --shared .int03-cms/shared --out "$RUNNER_TEMP/int03-cms-gate"
       - name: Retain the gate receipt
