@@ -17,8 +17,9 @@ Shared #354 CMS consumer/validator clients remain HELD.
   can substitute for this step.
 - `connected_identity_issuer_run.py` accepts only a private
   development-only plan and two **existing**, distinct, independently
-  approved confidential IAM clients. Both exact Shared #354 CMS fixture
-  names are excluded. It verifies the actual clean Infrastructure
+  approved confidential IAM clients. Only Shared #366 names `baobab-int03c-issuer-owner` and
+  `baobab-int03c-issuer-verifier` are eligible; both held Shared #354 CMS names
+  are excluded. It verifies the actual clean Infrastructure
   source and locked IAM/CP/Shared/CMS/Nabhold source revisions.
   The owner client obtains a short-lived `client_credentials` token;
   the separate verifier client queries the issuer's real introspection
@@ -41,13 +42,15 @@ Shared #354 CMS consumer/validator clients remain HELD.
 
 ## Necessary further authority (not simulated)
 
-CP's current generic changeset catalogue supports tenant suspension,
-market activation, provider activation, release approval, instance
-desired release and grants, but **does not provide a governed
-Principal-deactivation changeset kind**. This must be addressed in
-Shared/CP authority before implementing a Principal status mutation.
-Direct SQL changes, hand-modified JWT claims, a fabricated inactive
-Principal and reusing the buyer registration path are prohibited.
+CP #427 is merged at `bcea71bd9909be3672dfcb7ce78d04d6feb0e748`.
+Its default-off, nonproduction Principal provenance and deactivation routes
+require two existing ACTIVE authorised human operators, a separately governed
+ACTIVE workload Principal and exact external linkage, immutable source/run
+provenance and digest-bound approval. The routes create neither the target
+Principal nor its external link. Their source/PG regression is not live
+qualification. Direct SQL, fabricated JWTs or an inactive fixture remain
+prohibited. IAM #137 is separately merged with native-client and deadline
+watchdog safeguards; actual supervised runtime shutdown still needs proof.
 
 The current `cms_teardown_witness.py` is specifically bound to the
 two *held CMS clients*. Reusing it as proof of removal of arbitrary
@@ -60,16 +63,22 @@ creation-artifact digests.
 ## Canonical registration and independent original-byte custody
 
 The operator must provide an **actual clean Shared checkout** at the exact
-`cms-lock.json` Shared SHA. `verify_governed_workloads()` reads that
-checkout's canonical workload registry and requires both the owner and
-independent verifier to be ACTIVE, development-only, client_credentials
-workloads owned by Infrastructure with the exact declared CP audience and
-least-privilege scopes. The verifier additionally requires
-`context:validate`. A free-form approval digest or an existing OAuth client
-not present in Shared is insufficient. At this revision the required
-INT-03C-specific registrations have not been independently authorised
-and provisioned; live issuance must refuse rather than borrow the INT-02
-Pulse consumer or HELD CMS clients.
+`int03c-lock.json` Shared SHA. Both CP and issuer observers use that separate
+lock, never `cms-lock.json`. The exact Infrastructure execution SHA must match
+its clean checkout and descend from the lock's merged Infrastructure baseline;
+fetch the full reviewed history, because missing ancestry is refused.
+
+`verify_governed_workloads()` pins both complete canonical Shared #366 rows:
+ACTIVE development-only `client_credentials`, Infrastructure ownership and
+rotation, CP audience, and **only `context:resolve`** for both clients. The
+verifier has no `context:validate` privilege; its independent OAuth
+introspection permission is governed by IAM. A free-form approval digest or
+provider client is not independent approval. Infrastructure #49 remains an
+approval request: named independent approval of exact sources/images, topology,
+run window, CP operators, private credentials, external deadline supervisor and
+immutable evidence custody must precede live issuance. Do not borrow Pulse or
+HELD CMS clients, create Principals directly or execute from a locally edited
+registry. `inspect` is input review, not authority or source/runtime qualification.
 
 `connected_identity_seven_case.py` re-opens the sealed original
 seven-case evidence bundle, including issuer-create, CP Principal,
