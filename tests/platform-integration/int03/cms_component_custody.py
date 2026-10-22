@@ -83,9 +83,8 @@ def capture():
     observed,original=witness(path)
     target=path.parents[1]/"custody"
     target.mkdir(mode=0o700,exist_ok=False)
-    from cms_evidence import exclusive, canonical
-    exclusive(target/"component.json",canonical(original))
-    exclusive(target/"teardown.json",canonical(observed))
+    custody.exclusive(target/"component.json",custody.canonical(original))
+    custody.exclusive(target/"teardown.json",custody.canonical(observed))
     locks=json.loads((BASE/"cms-lock.json").read_text())
     git=subprocess.run(["git","rev-parse","HEAD"],cwd=ROOT,check=False,
                        capture_output=True,text=True,timeout=10)
