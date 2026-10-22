@@ -353,6 +353,20 @@ staging, production and R0–R3 remain open. Do not change the frozen identity o
 INT-02 locks to make this component pass.
 
 
+## Patched-source refresh — 22 October 2026
+
+The identity/prerequisite overlay now pins CP #425's supported Go 1.27.3
+security build and IAM #132's merged source. The isolated CMS component also
+pins CMS #47 and Nabhold #86, retaining the real Node24/PG17 provider ports.
+The frozen INT-02 baseline and its historical receipt remain unchanged; these
+are new run inputs and need their own actual runtime observations. Old PASS
+receipts do not certify these revisions.
+
+Shared authority pins are unchanged. Both named CMS identities remain absent;
+CMS component execution still requires HELD and every connected case remains
+BLOCKED/qualified=false. No source refresh activates authority, upgrades CMS
+PARTIAL support or accepts native protected C4, staging, production or R0–R3.
+
 ## Supervised native-CMS lifecycle pre-gate foundation
 
 `cms_lifecycle.py` introduces a separate, fail-closed lifecycle guard with an
