@@ -190,6 +190,46 @@ class CPContract(unittest.TestCase):
                     provider_id=provider,engine_instance_id=instance,
                     capability_key=cap,certification_id=cert_id)
 
+    def test_binding_owned_by_cp_tenant_provisioning_not_generic_changeset(self):
+        tenant=ident()
+        tp="tp_abc123"
+        capability="content.entry.resolve"
+        instance="ei_cms123"
+        digest="sha256:"+"a"*64
+        state={"tenant_id":tenant,"tenant_provisioning_id":tp,"state":"READY",
+               "created_by":self.maker.principal_id,
+               "approval":{"decision":"APPROVED","decided_by":self.checker.principal_id,
+                           "plan_digest":digest},
+               "current_plan":{"stale":False,"plan_digest":digest}}
+        plan={"plan_digest":digest,
+              "steps":[{"operation":"CREATE_CAPABILITY_BINDING",
+                        "resources":{"capability_key":capability,
+                                     "engine_instance_id":instance}}]}
+        f,cp=self.fixture([state,plan])
+        r=f.verify_provisioning_binding(tenant,tp,capability,instance)
+        self.assertFalse(r["qualified"])
+        self.assertEqual([x[2] for x in cp.calls],
+                         [f"/v1/tenants/{tenant}/provisioning/{tp}",
+                          f"/v1/tenants/{tenant}/provisioning/{tp}/plan"])
+        f,_=self.fixture([state,{"plan_digest":digest,"steps":
+                           [{"operation":"CREATE_CAPABILITY_GRANT",
+                             "resources":{"capability_key":capability}}]}])
+        with self.assertRaises(Refused):
+            f.verify_provisioning_binding(tenant,tp,capability,instance)
+        f,_=self.fixture([dict(state,approval=dict(state["approval"],
+                        decided_by=self.maker.principal_id)),plan])
+        with self.assertRaises(Refused):
+            f.verify_provisioning_binding(tenant,tp,capability,instance)
+        f,_=self.fixture([state,dict(plan,plan_digest="sha256:"+"b"*64)])
+        with self.assertRaises(Refused):
+            f.verify_provisioning_binding(tenant,tp,capability,instance)
+        f2,cp2=self.fixture([{"tenant_id":tenant,"tenant_provisioning_id":tp}])
+        with self.assertRaises(Refused):
+            f2.request_provisioning(tenant,"unreviewed-id",key="int03-reviewed-tenant-provisioning")
+        out=f2.request_provisioning(tenant,"tor_abc123",key="int03-reviewed-tenant-provisioning")
+        self.assertFalse(out["qualified"])
+        self.assertEqual(cp2.calls[0][2],f"/v1/tenants/{tenant}/provisioning")
+
     def test_binding_changeset_cannot_claim_runtime_acceptance(self):
         cs="cs_123abc"
         digest="sha256:"+"a"*64
