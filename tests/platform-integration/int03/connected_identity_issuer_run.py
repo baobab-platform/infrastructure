@@ -96,6 +96,11 @@ def verify_governed_workloads(plan):
         (VERIFIER,"context:resolve"),
     ):
         entry=members.get(client)
+        expected_runtime=("INT-03C supervised disposable issuer proof owner"
+                          if client == OWNER
+                          else "INT-03C independent disposable issuer verifier")
+        if not isinstance(entry,dict) or entry.get("runtime") != expected_runtime:
+            raise EvidenceRefused("INT-03C immutable registry profile differs")
         if (not isinstance(entry,dict) or
             entry.get("status")!="ACTIVE" or
             entry.get("environment")!="development" or
