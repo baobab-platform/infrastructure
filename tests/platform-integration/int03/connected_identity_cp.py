@@ -18,8 +18,6 @@ from connected_identity_evidence import EvidenceRefused
 
 MAX_BODY = 32768
 ORIGINS = frozenset(("cp.int02.test", "cp.int03.test"))
-PATHS = frozenset(("/v1/admin/effective-authority",
-                   "/v1/platform-context/resolve", "/v1/platform-context/validate"))
 CODES = frozenset((
     "AUTH_TOKEN_REQUIRED", "AUTHORIZATION_DENIED", "IDENTITY_RESOLUTION_FAILED",
     "TENANT_CONTEXT_MISMATCH", "CONTEXT_DENIED", "CONTEXT_NOT_FOUND",
