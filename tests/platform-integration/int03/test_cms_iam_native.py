@@ -86,6 +86,17 @@ class Durable(unittest.TestCase):
         self.assertFalse(self.owner.exists())
         self.assertEqual(fake.calls,[])
 
+    def test_revocation_cannot_target_foreign_identity_or_owner(self):
+        self.new()
+        f=FakeClient()
+        with self.assertRaises(Refused):
+            m.revoke_connected(None,m.load_journal(self.owner),self.owner,f,"product-client")
+        bad=dict(m.load_journal(self.owner))
+        bad["run_id"]="0"*32
+        with self.assertRaises(Refused):
+            m.revoke_connected(None,bad,self.owner,f,m.NAMES[0])
+        self.assertEqual(f.calls,[])
+
     def test_issuer_client_receives_only_fixed_native_commands(self):
         self.new()
         client=m.NativeClient("/iam","/shared",hydra_admin="https://hydra.int03.test",
@@ -124,6 +135,8 @@ class Durable(unittest.TestCase):
             self.assertEqual([x[0] for x in f.calls],["create","create"])
             self.assertEqual(journal["state"],"PROVISIONED")
             self.assertEqual(lease.receipt()["qualified"],False)
+            m.revoke_connected(lease,journal,self.owner,f,m.NAMES[0])
+            self.assertEqual(f.calls[2],("revoke",m.NAMES[0]))
             self.assertEqual(lease.close(),{"acceptors":"VERIFIED","issuer":"VERIFIED",
                                             "cp":"VERIFIED","private":"VERIFIED"})
             self.assertEqual(closures,["acceptors","cp"])
