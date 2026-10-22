@@ -396,10 +396,21 @@ class Fixture:
                               f"/v1/admin/changesets/{changeset_id}")
         result = self.cp.call(self.maker, "GET",
                               f"/v1/admin/changesets/{changeset_id}/outcome")
-        if record.get("changeset_id") != changeset_id or result.get("changeset_id") != changeset_id:
-            raise Refused("CP binding changeset provenance absent")
-        if record.get("approved_by") == record.get("created_by"):
-            raise Refused("CP changeset was self-approved")
+        plan=record.get("current_plan") if isinstance(record, dict) else None
+        digest=plan.get("plan_digest") if isinstance(plan, dict) else None
+        if (record.get("changeset_id") != changeset_id or
+            result.get("changeset_id") != changeset_id or
+            record.get("state") != "COMPLETED" or
+            result.get("final_state") != "COMPLETED" or
+            not isinstance(record.get("approval_id"), str) or not record["approval_id"] or
+            not isinstance(digest, str) or not SHA256.fullmatch(digest) or
+            result.get("applied_plan_digest") != digest or
+            record.get("requested_by") != self.maker.principal_id):
+            raise Refused("CP-approved exact plan/outcome not established")
+        # CP's changeset service enforces distinct approver. The approval
+        # record itself and exact plan also require retained independent
+        # evidence; a COMPLETED status is still not invocation acceptance.
         return {"changeset_id": changeset_id,
-                "review": "CP_READBACK_ONLY_NEEDS_RUNTIME_RESOLVER_PROOF",
+                "plan_digest": digest,
+                "review": "CP_COMPLETED_NEEDS_APPROVAL_ACTOR_AND_RUNTIME_RESOLVER_PROOF",
                 "qualified": False}
