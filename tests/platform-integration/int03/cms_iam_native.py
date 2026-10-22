@@ -153,9 +153,11 @@ def start_owner(directory, *, gate, iam_sha, deadline):
 class NativeClient:
     """Execute the maintained IAM Go bridge, never hand-build Hydra clients."""
     def __init__(self, iam, shared, *, hydra_admin, kratos_admin, issuer, ca, invoke=None):
-        self.iam, self.shared = Path(iam), Path(shared)
+        # The Go child changes cwd to IAM; resolve host paths first so the
+        # immutable Shared checkout and CA cannot accidentally be reinterpreted.
+        self.iam, self.shared = Path(iam).absolute(), Path(shared).absolute()
         self.hydra_admin, self.kratos_admin, self.issuer = hydra_admin, kratos_admin, issuer
-        self.ca = Path(ca)
+        self.ca = Path(ca).absolute()
         self.invoke = invoke or self._invoke
 
     def _invoke(self, argv, env, timeout):
