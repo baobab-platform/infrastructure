@@ -325,6 +325,11 @@ def provision_connected(directory, *, shared, iam, lock, client, acceptors_stop,
         private=lambda: private_teardown_verified(directory),
     )
     try:
+        # Compile before the first remote POST; slow module/toolchain work
+        # must not consume an issuance operation's bounded 60-second window.
+        # This stays inside the supervised lifetime and full cleanup fences.
+        lease.execute("iam-build", lambda remaining: client._binary(directory),
+                      max_seconds=180)
         for name in NAMES:
             journal["state"] = "PROVISIONING"
             durable(Path(directory) / "owner.json", journal)
