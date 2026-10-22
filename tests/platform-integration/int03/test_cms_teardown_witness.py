@@ -63,6 +63,33 @@ class Witness(unittest.TestCase):
         self.assertEqual(authority.calls[0],"issuer")
         self.assertEqual(authority.calls[1][0],"cp")
 
+    def test_prior_creation_requires_real_sealed_matching_bytes(self):
+        import hashlib
+        import json
+        import cms_evidence as custody
+        bundle=self.parent/"retained"
+        bundle.mkdir(mode=0o700)
+        names={"issuer_create":"issuer-create.json",
+               "cp_create":"cp-create.json",
+               "runtime_start":"runtime-start.json"}
+        for kind,name in names.items():
+            payload=(json.dumps({"schema":"runtime.evidence.v1",
+                                 "phase":kind,"qualified":False})+"\\n").encode()
+            dest=bundle/name
+            dest.write_bytes(payload)
+            os.chmod(dest,0o600)
+            self.raw["prior_digests"][kind]="sha256:"+hashlib.sha256(payload).hexdigest()
+        self.owner=witness.Owner.from_record(self.raw,parent=self.parent)
+        pins=dict.fromkeys(["shared","baobab-cms","baobab-iam","baobab-cp",
+                            "nabhold","infrastructure"],"d"*40)
+        pins["shared"]=self.owner.shared_sha
+        pins["baobab-iam"]=self.owner.iam_sha
+        custody.seal(bundle,list(names.values()),run_id=self.owner.run_id,sources=pins)
+        self.assertTrue(witness.verify_prior_creation_custody(self.owner,bundle))
+        (bundle/"issuer-create.json").write_text('{"qualified":false,"changed":true}')
+        with self.assertRaises(Refused):
+            witness.verify_prior_creation_custody(self.owner,bundle)
+
     def test_each_failed_fence_blocks_complete_teardown(self):
         for d,a in ((Docker(True),Authorities()),(Docker(),Authorities(False,True)),
                     (Docker(),Authorities(True,False))):
