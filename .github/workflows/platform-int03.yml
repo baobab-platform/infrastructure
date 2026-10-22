@@ -49,6 +49,7 @@ jobs:
       - run: node --check tests/platform-integration/int03/cms_probe.mjs
       - run: node --check tests/platform-integration/int03/consumer.mjs
       - run: bash -n tests/platform-integration/int03/fixture.sh
+      - run: bash -n tests/platform/run-l3.sh
   cms-gate:
     name: INT-03 CMS registry gate (NAB-03 BLOCKED while the activation hold stands)
     # Accepted Shared #354: the CMS lane needs two named development identities
@@ -110,6 +111,13 @@ jobs:
       - name: Always recover owned CMS resources
         if: always()
         run: python3 -B tests/platform-integration/int03/cms_provider.py down
+      - name: Independently witness CMS-only Docker teardown and seal runtime evidence
+        # Read-only second process, after cleanup: not an IAM/CP/NAB-03 pass.
+        if: always()
+        run: python3 -B tests/platform-integration/int03/cms_component_custody.py capture
+      - name: Independently re-hash sealed runtime evidence
+        if: always()
+        run: python3 -B tests/platform-integration/int03/cms_component_custody.py verify
       - name: Retain only atomic sanitized component receipts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -119,6 +127,12 @@ jobs:
           path: |
             tests/platform-integration/evidence/cms-component-*/completed/receipt.json
             tests/platform-integration/evidence/cms-component-*/completed/receipt.sha256
+            tests/platform-integration/evidence/cms-component-*/custody/component.json
+            tests/platform-integration/evidence/cms-component-*/custody/teardown.json
+            tests/platform-integration/evidence/cms-component-*/custody/manifest.json
+            tests/platform-integration/evidence/cms-component-*/custody/manifest.sha256.json
+          retention-days: 14
+          overwrite: false
   connected:
     name: Real Nabhold BFF, IAM, CP and TLS Redis smoke
     needs: source
