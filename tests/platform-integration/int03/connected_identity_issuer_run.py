@@ -23,6 +23,8 @@ from connected_identity_cp import read_private_token
 CLIENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{3,99}\Z")
 SHA256 = re.compile(r"sha256:[0-9a-f]{64}\Z")
 FORBIDDEN = {"baobab-int03-cms-consumer", "baobab-int03-cms-validator"}
+OWNER = "baobab-int03c-issuer-owner"
+VERIFIER = "baobab-int03c-issuer-verifier"
 SCHEMA = "infrastructure.int03c.issuer-operator.v1"
 
 
@@ -44,7 +46,7 @@ def reviewed(path):
         not isinstance(record["verifier_client"],str) or
         not CLIENT.fullmatch(record["owner_client"]) or
         not CLIENT.fullmatch(record["verifier_client"]) or
-        record["owner_client"]==record["verifier_client"] or
+        (record["owner_client"] != OWNER or record["verifier_client"] != VERIFIER) or
         record["owner_client"] in FORBIDDEN or record["verifier_client"] in FORBIDDEN or
         not isinstance(record["shared_checkout"],str) or
         not isinstance(record["scope"],str) or
@@ -84,9 +86,14 @@ def verify_governed_workloads(plan):
     members=registry.get("workloads") if isinstance(registry,dict) else None
     if not isinstance(members,dict):
         raise EvidenceRefused("canonical workload registry incomplete")
+    if (plan["owner_client"] != OWNER or plan["verifier_client"] != VERIFIER or
+        plan["audience"] != "baobab-control-plane" or plan["scope"] != "context:resolve"):
+        raise EvidenceRefused("only exact Shared #366 INT-03C proof identities are eligible")
+    if set(name for name in members if name.startswith("baobab-int03c-")) != {OWNER,VERIFIER}:
+        raise EvidenceRefused("governed INT-03C client inventory widened")
     for client,required in (
-        (plan["owner_client"],plan["scope"]),
-        (plan["verifier_client"],"context:resolve"),
+        (OWNER,"context:resolve"),
+        (VERIFIER,"context:resolve"),
     ):
         entry=members.get(client)
         if (not isinstance(entry,dict) or
@@ -94,6 +101,12 @@ def verify_governed_workloads(plan):
             entry.get("environment")!="development" or
             entry.get("credential_type")!="client_credentials" or
             entry.get("repository")!="baobab-platform/infrastructure" or
+            entry.get("owner")!="baobab-platform/infrastructure" or
+            entry.get("rotation_owner")!="baobab-platform/infrastructure" or
+            entry.get("allowed_audiences")!=["baobab-control-plane"] or
+            entry.get("allowed_scopes")!=["context:resolve"] or
+            set(entry) != {"repository","owner","runtime","environment","allowed_audiences",
+                          "allowed_scopes","credential_type","rotation_owner","status"} or
             plan["audience"] not in entry.get("allowed_audiences",[]) or
             required not in entry.get("allowed_scopes",[])):
             raise EvidenceRefused("INT-03C OAuth client lacks canonical active authority")
