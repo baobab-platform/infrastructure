@@ -131,10 +131,11 @@ class Durable(unittest.TestCase):
                 stdout="INT03_NATIVE_DESTROYED_READBACK_VERIFIED\n"
             return Result()
         client.invoke=capture
-        with patch.object(m,"clean_source"),patch.object(m,"current_sha",return_value=SHARED):
+        with patch.object(m,"clean_source"),patch.object(m,"current_sha",return_value=SHARED), \
+             patch.object(client,"_binary",return_value="/private/native-iam-bridge"):
             self.assertTrue(client.operate(m.load_journal(self.owner),self.owner,
                                            "destroy",m.NAMES[0]))
-        self.assertEqual(calls[0][0][0:3],["go","run","./cmd/int03-cms-native"])
+        self.assertEqual(calls[0][0][0],"/private/native-iam-bridge")
         self.assertIn("--run-id",calls[0][0])
         self.assertEqual(calls[0][2],65)
         self.assertEqual(calls[0][1]["BAOBAB_INT03_NATIVE_DISPOSABLE"],"1")
