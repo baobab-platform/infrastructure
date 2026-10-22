@@ -122,6 +122,14 @@ def main(argv=None):
             raise Refused("explicit independent operator evidence and out-of-repo receipt required")
         if args.receipt.exists() or args.receipt.is_symlink():
             raise Refused("existing CP fixture receipt requires independent reconciliation")
+        # Verify durable custody is available *before* attempting a CP POST.
+        # A failed/uncertain POST must be reconciled by CP idempotency/read-back,
+        # never automatically retried with a different operation identity.
+        target = args.receipt
+        parent = target.parent
+        st = parent.lstat()
+        if parent.is_symlink() or not parent.is_dir() or st.st_uid != os.getuid() or st.st_mode & 0o077:
+            raise Refused("private 0700 receipt directory required")
         maker=Operator(args.maker_principal, private_file(args.maker_token_file), "maker")
         checker=Operator(args.checker_principal, private_file(args.checker_token_file), "checker")
         cp=CPGateway(args.cp_origin, args.ca)
@@ -129,11 +137,6 @@ def main(argv=None):
         # Write-only, exclusive, owner-private receipt; never include either
         # operator token, raw CP payload or any claimed acceptance. Recovery
         # from an ambiguous POST requires independent CP lookup/reconciliation.
-        target = args.receipt
-        parent = target.parent
-        st = parent.lstat()
-        if parent.is_symlink() or not parent.is_dir() or st.st_uid != os.getuid() or st.st_mode & 0o077:
-            raise Refused("private 0700 receipt directory required")
         data={"schema":"infrastructure.int03.cp-fixture-observation.v1",
               "run_id":plan["run_id"],"step":plan["step"],
               "plan_digest":digest,"cp_observation":result,
