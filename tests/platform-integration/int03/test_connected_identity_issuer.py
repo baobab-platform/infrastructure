@@ -40,7 +40,7 @@ class IssuerTests(unittest.TestCase):
     def test_discovery_must_bind_exact_real_issuer(self):
         self.out=[Reply({"issuer":"https://hydra.int03.test",
              "token_endpoint":"https://hydra.int03.test/oauth2/token",
-             "introspection_endpoint":"https://hydra.int03.test/admin/oauth2/introspect"})]
+             "introspection_endpoint":"https://hydra.int03.test/admin/oauth2/introspect",\n             "revocation_endpoint":"https://hydra.int03.test/oauth2/revoke"})]
         self.assertTrue(self.port.discover())
         self.assertEqual(len(self.inputs),1)
         self.assertEqual(self.inputs[0].get_method(),"GET")
@@ -51,7 +51,7 @@ class IssuerTests(unittest.TestCase):
                     "http://hydra.int03.test/oauth2/token"):
             self.out=[Reply({"issuer":"https://hydra.int03.test",
                 "token_endpoint":url,
-                "introspection_endpoint":"https://hydra.int03.test/oauth2/introspect"})]
+                "introspection_endpoint":"https://hydra.int03.test/oauth2/introspect",\n                "revocation_endpoint":"https://hydra.int03.test/oauth2/revoke"})]
             with self.assertRaises(EvidenceRefused):
                 self.port.discover()
 
@@ -86,7 +86,7 @@ class IssuerTests(unittest.TestCase):
             self.port.execute("token_endpoint",{"grant_type":"client_credentials"},"Basic fake")
         self.out=[Reply({"issuer":"https://hydra.int03.test",
              "token_endpoint":"https://hydra.int03.test/oauth2/token",
-             "introspection_endpoint":"https://hydra.int03.test/oauth2/introspect"})]
+             "introspection_endpoint":"https://hydra.int03.test/oauth2/introspect",\n                "revocation_endpoint":"https://hydra.int03.test/oauth2/revoke"})]
         self.port.discover()
         self.out=[Reply({"active":False})]
         result=self.port.execute("introspection_endpoint",{"token":"opaque"},
