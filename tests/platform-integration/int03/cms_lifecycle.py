@@ -7,6 +7,7 @@ A monotonic clock enforces the original absolute deadline even if wall time move
 """
 from datetime import datetime, timezone
 import math
+import threading
 import time
 
 from cms_gate import CASES, CONSUMER, VALIDATOR
@@ -67,6 +68,8 @@ class Lifecycle:
         self._close_hooks = {}
         self._cleanup_results = {}
         self._used = False
+        self._lock = threading.RLock()
+        self._watchdog = None
         self._case_results = dict.fromkeys(CASES, "BLOCKED")
 
     def remaining(self):
@@ -97,6 +100,13 @@ class Lifecycle:
         if any(not callable(hooks[name]) for name in CLOSURE_ORDER):
             raise Refused("all four closure owners must be callable")
         self._close_hooks = hooks
+        # A separate wall-clock watchdog closes an idle run at the immutable
+        # deadline; the caller must additionally use an external process-level
+        # timeout and recovery after crash/SIGKILL.
+        seconds = max(0, self.remaining())
+        self._watchdog = threading.Timer(seconds, self.close)
+        self._watchdog.daemon = True
+        self._watchdog.start()
 
     def execute(self, operation, callback, *, max_seconds=30):
         """Perform one bounded action; never log callback results or credentials."""
@@ -107,8 +117,8 @@ class Lifecycle:
         if not isinstance(max_seconds, (int, float)) or not math.isfinite(max_seconds) or max_seconds <= 0:
             raise Refused("invalid operation timeout")
         self._used = True
-        limit = min(self.require_active(), float(max_seconds))
         try:
+            limit = min(self.require_active(), float(max_seconds))
             result = callback(limit)
             self.require_active()
             return result
@@ -151,23 +161,22 @@ class Lifecycle:
         self._case_results[case] = "OBSERVED_UNATTESTED"
 
     def close(self):
-        """Attempt ALL fences, in strict order, including on failure/expiry.
-
-        The hook returns True only after independent read-back proves that
-        accepting trust or issuer/CP objects are destroyed or disabled.
-        """
-        if self._closed:
+        """Attempt every fence, including after a partial failed provision."""
+        with self._lock:
+            if self._closed:
+                return dict(self._cleanup_results)
+            self._closing = True
+            if self._watchdog is not None:
+                self._watchdog.cancel()
+            for name in CLOSURE_ORDER:
+                hook = self._close_hooks.get(name)
+                try:
+                    verified = hook() if hook is not None else False
+                    self._cleanup_results[name] = "VERIFIED" if verified is True else "UNVERIFIED"
+                except BaseException:
+                    self._cleanup_results[name] = "FAILED"
+            self._closed = True
             return dict(self._cleanup_results)
-        self._closing = True
-        for name in CLOSURE_ORDER:
-            hook = self._close_hooks.get(name)
-            try:
-                verified = hook() if hook is not None else False
-                self._cleanup_results[name] = "VERIFIED" if verified is True else "UNVERIFIED"
-            except BaseException:
-                self._cleanup_results[name] = "FAILED"
-        self._closed = True
-        return dict(self._cleanup_results)
 
     def receipt(self):
         """Sanitized status; NEVER an actual NAB-03 qualification receipt."""
