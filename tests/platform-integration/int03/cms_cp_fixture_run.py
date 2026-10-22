@@ -18,7 +18,9 @@ from cms_cp_governance import CPGateway, Fixture, Operator, Refused
 
 PLAN_SCHEMA = "infrastructure.int03.cp-governed-fixture-plan.v1"
 STEPS = frozenset({"tenant", "organisation", "market", "market-activate",
-                   "principal-grant", "engine-release", "provider-certify"})
+                   "principal-grant", "engine-release", "provider-certify",
+                   "provisioning-create", "provisioning-approve", "provisioning-apply",
+                   "provisioning-verify"})
 RUN_ID = re.compile(r"int03-cp-[a-z0-9-]{12,90}\Z")
 
 
@@ -84,6 +86,32 @@ def execute_step(fixture, plan):
             d["principal_id"], d["permission"], d["scope"],
             grant_type=d["grant_type"], reason=d["reason"], key=key)
         return {"grant_id": gid, "qualified": False}
+    if step == "provisioning-create":
+        if set(d) != {"tenant_id","tenant_onboarding_request_id"}:
+            raise Refused("authorised CP TenantProvisioning plan input required")
+        return fixture.request_provisioning(
+            d["tenant_id"], d["tenant_onboarding_request_id"], key=key)
+    if step == "provisioning-approve":
+        if set(d) != {"tenant_id","tenant_provisioning_id",
+                      "reviewed_plan_digest","reason"}:
+            raise Refused("independently reviewed CP plan digest required")
+        return fixture.approve_provisioning_plan(
+            d["tenant_id"],d["tenant_provisioning_id"],
+            reviewed_plan_digest=d["reviewed_plan_digest"],
+            reason=d["reason"])
+    if step == "provisioning-apply":
+        if set(d) != {"tenant_id","tenant_provisioning_id","reviewed_plan_digest"}:
+            raise Refused("reviewed CP apply plan required")
+        return fixture.apply_approved_provisioning(
+            d["tenant_id"],d["tenant_provisioning_id"],
+            reviewed_plan_digest=d["reviewed_plan_digest"],idempotency_key=key)
+    if step == "provisioning-verify":
+        if set(d) != {"tenant_id","tenant_provisioning_id",
+                      "capability_key","engine_instance_id"}:
+            raise Refused("CP desired binding verification input required")
+        return fixture.verify_provisioning_binding(
+            d["tenant_id"],d["tenant_provisioning_id"],
+            d["capability_key"],d["engine_instance_id"])
     if step == "engine-release":
         return {"release_id": fixture.record_engine_release(d), "qualified": False}
     if step == "provider-certify":
