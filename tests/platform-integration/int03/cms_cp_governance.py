@@ -343,6 +343,52 @@ class Fixture:
             raise Refused("self-certified EngineRelease")
         return read
 
+    def verify_resolved_provider(self, resolve, *, context_id, provider_id,
+                                 engine_instance_id, capability_key,
+                                 certification_id):
+        """Require the CURRENT CP capability resolver, not a local binding.
+
+        `resolve` is the separate live workload HTTP port invoking
+        POST /v1/capabilities/resolve with a CP-issued own context handle.
+        It must authenticate the *workload*, not either human administrator.
+        """
+        canonical_uuid(context_id)
+        if (not callable(resolve) or not isinstance(provider_id, str) or
+            not isinstance(engine_instance_id, str) or
+            not isinstance(capability_key, str) or not
+            isinstance(certification_id, str) or not CERT_ID.fullmatch(certification_id)):
+            raise Refused("current provider resolution inputs required")
+        cert = self.cp.call(self.checker, "GET",
+                            f"/v1/provider-capability-certifications/{certification_id}")
+        if (cert.get("certification_id") != certification_id or
+            cert.get("status") != "CERTIFIED" or
+            cert.get("provider_id") != provider_id or
+            cert.get("capability_key") != capability_key):
+            raise Refused("CP certification not current")
+        if cert.get("certified_by") == self.maker.principal_id:
+            raise Refused("CP certification actor not independent")
+        result = resolve({"context_id": context_id,
+                          "capability_key": capability_key,
+                          "required_contract_version": cert.get("contract_version")})
+        invocation = result.get("invocation") if isinstance(result, dict) else None
+        if (not isinstance(result, dict) or result.get("decision") != "RESOLVED" or
+            result.get("context_id") != context_id or result.get("capability_key") != capability_key or
+            not isinstance(result.get("grant_id"), str) or
+            not isinstance(result.get("binding_id"), str) or
+            not isinstance(invocation, dict) or
+            invocation.get("provider_id") != provider_id or
+            invocation.get("engine_instance_id") != engine_instance_id or
+            invocation.get("contract_version") != cert.get("contract_version")):
+            raise Refused("CP did not resolve the certified live provider binding")
+        # Resolver selection is a real CP fact, not full provider invocation
+        # or performance/security proof. No NAB-03 qualification implied.
+        return {"binding_id": result["binding_id"],
+                "grant_id": result["grant_id"],
+                "provider_id": provider_id,
+                "engine_instance_id": engine_instance_id,
+                "evidence": "CP_RESOLVER_UNATTESTED",
+                "qualified": False}
+
     def verify_changeset_binding(self, changeset_id):
         # CP changeset lifecycle is the *only* human-governed provisioning
         # path, not a locally set capability_binding status flag.
