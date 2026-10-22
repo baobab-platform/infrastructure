@@ -229,6 +229,29 @@ def independent_inspection(owner, docker, authority):
             "independent_acceptance":False}
 
 
+def verify_prior_creation_custody(owner, custody_dir):
+    """Prove the owner references actual prior source-pinned evidence bytes.
+
+    An arbitrary 64-character digest alone is not evidence that issuer,
+    CP and accepting runtime were ever created. Require a separately sealed
+    bundle with all three original documents before checking their absence.
+    """
+    import cms_evidence as custody
+    manifest=custody.verify(custody_dir)
+    if (manifest["run_id"] != owner.run_id or
+        manifest["source_pins"]["shared"] != owner.shared_sha or
+        manifest["source_pins"]["baobab-iam"] != owner.iam_sha):
+        raise Refused("prior creation proof source/run provenance differs")
+    recorded={entry["name"]:"sha256:"+entry["sha256"] for entry in manifest["files"]}
+    exact={"issuer_create":"issuer-create.json",
+           "cp_create":"cp-create.json",
+           "runtime_start":"runtime-start.json"}
+    if any(recorded.get(filename)!=owner.prior_digests[kind]
+           for kind,filename in exact.items()):
+        raise Refused("issuer, CP or runtime creation evidence not retained")
+    return True
+
+
 def token_file(path):
     path=Path(path)
     s=path.lstat()
@@ -243,6 +266,7 @@ def main(argv=None):
     p.add_argument("--owner",type=Path,required=True)
     p.add_argument("--private-parent",type=Path,required=True)
     p.add_argument("--ca",type=Path,required=True)
+    p.add_argument("--prior-custody",type=Path,required=True)
     p.add_argument("--cp-checker-token-file",type=Path,required=True)
     p.add_argument("--output",type=Path,required=True)
     a=p.parse_args(argv)
@@ -251,6 +275,7 @@ def main(argv=None):
             raise Refused("cannot overwrite independent witness")
         data=json.loads(a.owner.read_text())
         owner=Owner.from_record(data,parent=a.private_parent)
+        verify_prior_creation_custody(owner,a.prior_custody)
         observed=independent_inspection(owner,DockerReadback(),
                   HTTPSReadback(a.ca,cp_token=token_file(a.cp_checker_token_file)))
         # Evidence must be retained in an owner-private bundle *outside* the
