@@ -49,6 +49,7 @@ class IssuerRunTests(unittest.TestCase):
             "sources":dict.fromkeys(["infrastructure","shared","baobab-cms",
                                      "baobab-iam","baobab-cp","nabhold"],"b"*40),
             "issuer":"https://hydra.int03.test","ca_file":str(self.root/"ca.pem"),
+            "shared_checkout":str(self.root/"shared"),
             "owner_client":"synthetic-owner","verifier_client":"synthetic-checker",
             "owner_secret_file":str(self.owner),
             "verifier_secret_file":str(self.checker),
@@ -64,7 +65,7 @@ class IssuerRunTests(unittest.TestCase):
 
     def test_real_issuer_separately_introspects_and_retains_no_secret(self):
         p=run.reviewed(self.spec)
-        with patch.object(run,"source_pins",return_value=p["sources"]):
+        with patch.object(run,"source_pins",return_value=p["sources"]), patch.object(run,"verify_governed_workloads",return_value=True):
             issuer=FakeIssuer()
             token,observation=run.issue(p,issuer=issuer,now=1000)
         self.assertEqual(token,"t"*128)
@@ -80,9 +81,15 @@ class IssuerRunTests(unittest.TestCase):
         self.assertTrue(custody.verify(directory)["files"])
         self.assertNotIn(token,(directory/"issuer-create.json").read_text())
 
-    def test_introspection_cannot_be_skipped(self):
+    def test_unregistered_clients_cannot_issue_any_credential(self):
         p=run.reviewed(self.spec)
         with patch.object(run,"source_pins",return_value=True):
+            with self.assertRaises(EvidenceRefused):
+                run.issue(p,issuer=FakeIssuer(),now=1000)
+
+    def test_introspection_cannot_be_skipped(self):
+        p=run.reviewed(self.spec)
+        with patch.object(run,"source_pins",return_value=True), patch.object(run,"verify_governed_workloads",return_value=True):
             with self.assertRaises(EvidenceRefused):
                 run.issue(p,issuer=FakeIssuer(wrong=True),now=1000)
 
@@ -103,13 +110,13 @@ class IssuerRunTests(unittest.TestCase):
     def test_different_live_issuer_and_verifier_credentials_required(self):
         p=run.reviewed(self.spec)
         self.checker.write_text(self.owner.read_text())
-        with patch.object(run,"source_pins",return_value=True):
+        with patch.object(run,"source_pins",return_value=True), patch.object(run,"verify_governed_workloads",return_value=True):
             with self.assertRaises(EvidenceRefused):
                 run.issue(p,issuer=FakeIssuer(),now=1000)
 
     def test_custody_does_not_overwrite_or_store_token_in_manifest(self):
         p=run.reviewed(self.spec)
-        with patch.object(run,"source_pins",return_value=True):
+        with patch.object(run,"source_pins",return_value=True), patch.object(run,"verify_governed_workloads",return_value=True):
             token,obs=run.issue(p,issuer=FakeIssuer(),now=1000)
         dest=self.root/"saved.token"
         directory=self.root/"custody"
