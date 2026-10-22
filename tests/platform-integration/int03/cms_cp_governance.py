@@ -7,8 +7,6 @@ continue while the Shared #354 CMS identity gate is HELD. Connected NAB-03
 still MUST fail closed while the registry is HELD.
 """
 from dataclasses import dataclass
-from datetime import datetime, timezone
-import hashlib
 import json
 from pathlib import Path
 import re
