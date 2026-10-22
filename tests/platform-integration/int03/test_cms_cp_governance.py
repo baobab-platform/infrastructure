@@ -147,6 +147,37 @@ class CPContract(unittest.TestCase):
                        contract_version=1,evidence=[{"uri":"https://e","digest":"unverified"}],
                        qualification_profile="int03.cms.actual")
 
+    def test_current_certified_provider_requires_actual_cp_resolver(self):
+        cert_id="cert_"+"a"*32
+        ctx=ident()
+        provider="provider_abc123"
+        instance="instance_abc123"
+        cap="content.entry.resolve"
+        cert={"certification_id":cert_id,"certified_by":self.checker.principal_id,
+              "status":"CERTIFIED","provider_id":provider,"capability_key":cap,
+              "contract_version":1}
+        f,_=self.fixture([cert])
+        def resolve(body):
+            self.assertEqual(body["context_id"],ctx)
+            self.assertEqual(body["required_contract_version"],1)
+            return {"decision":"RESOLVED","context_id":ctx,"capability_key":cap,
+                    "grant_id":"grant_abc123","binding_id":"bind_abc123",
+                    "invocation":{"provider_id":provider,
+                                  "engine_instance_id":instance,"contract_version":1}}
+        r=f.verify_resolved_provider(resolve,context_id=ctx,provider_id=provider,
+                  engine_instance_id=instance,capability_key=cap,certification_id=cert_id)
+        self.assertFalse(r["qualified"])
+        f,_=self.fixture([cert])
+        with self.assertRaises(Refused):
+            f.verify_resolved_provider(lambda b: dict(resolve(b),decision="DENIED"),
+                   context_id=ctx,provider_id=provider,engine_instance_id=instance,
+                   capability_key=cap,certification_id=cert_id)
+        f,_=self.fixture([dict(cert,status="REVOKED")])
+        with self.assertRaises(Refused):
+            f.verify_resolved_provider(resolve,context_id=ctx,
+                    provider_id=provider,engine_instance_id=instance,
+                    capability_key=cap,certification_id=cert_id)
+
     def test_binding_changeset_cannot_claim_runtime_acceptance(self):
         cs="cs_123abc"
         f,cp=self.fixture([{"changeset_id":cs,"created_by":self.maker.principal_id,
