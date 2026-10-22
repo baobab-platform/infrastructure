@@ -166,6 +166,34 @@ class NativeClient:
                               text=True, capture_output=True,
                               timeout=timeout, check=False)
 
+    def _binary(self, directory):
+        """Compile exact clean IAM source to a private executable before POST.
+
+        Direct process invocation avoids orphaning a go-run child during
+        timeout/SIGTERM. A crashed owner can rebuild from the exact pin.
+        """
+        target = Path(directory) / "native-iam-bridge"
+        if target.exists():
+            st = target.lstat()
+            if target.is_symlink() or not target.is_file() or st.st_uid != os.getuid() or st.st_mode & 0o077:
+                raise Refused("native binary ownership differs")
+            return str(target)
+        temporary = Path(directory) / (".native-iam-" + secrets.token_hex(8))
+        try:
+            p = subprocess.run(["go", "build", "-trimpath", "-o", str(temporary),
+                                "./cmd/int03-cms-native"],
+                               cwd=str(self.iam), text=True,
+                               capture_output=True, timeout=180, check=False)
+            if p.returncode != 0 or not temporary.is_file():
+                raise Refused("native IAM binary build refused")
+            os.chmod(temporary, 0o700)
+            os.replace(temporary, target)
+            return str(target)
+        except (subprocess.TimeoutExpired, OSError):
+            raise Refused("native IAM binary build interrupted") from None
+        finally:
+            temporary.unlink(missing_ok=True)
+
     def operate(self, journal, directory, action, name, *, timeout=65):
         if action not in ACTION_MARKERS or name not in NAMES:
             raise Refused("unregistered issuer operation")
@@ -175,7 +203,7 @@ class NativeClient:
         clean_source(self.iam, journal["iam_sha"])
         if current_sha(self.shared) != journal["shared_sha"]:
             raise Refused("recovery cannot change Shared provenance")
-        argv = ["go", "run", "./cmd/int03-cms-native",
+        argv = [self._binary(directory),
                 "--action", action, "--name", name,
                 "--run-id", journal["run_id"], "--hydra-admin", self.hydra_admin,
                 "--kratos-admin", self.kratos_admin, "--issuer", self.issuer,
