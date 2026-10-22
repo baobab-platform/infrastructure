@@ -156,10 +156,15 @@ fi
 echo "== L3-08 RabbitMQ publish/get fixture =="
 # Infra-only bus proof: declare queue, publish via default exchange, get and ack.
 qname="l3.platform.fixture.${timestamp}"
-if rmq_api "/api/queues/${vhost_enc}/${qname}" \
+# Emit only the numeric response status if a private RabbitMQ mutation is
+# refused. Never print Basic auth, queue message bodies or Admin API replies.
+declare_http=""
+if declare_http=$(rmq_api "/api/queues/${vhost_enc}/${qname}" \
   -H 'content-type: application/json' \
   -X PUT \
-  -d '{"durable":false,"auto_delete":true,"arguments":{}}' >/dev/null 2>&1; then
+  -d '{"durable":false,"auto_delete":false,"arguments":{}}' \
+  -o /dev/null -w '%{http_code}' 2>/dev/null) && \
+  { [ "$declare_http" = "201" ] || [ "$declare_http" = "204" ]; }; then
   payload=$(python3 -c "
 import json
 q = '''${qname}'''
@@ -191,7 +196,11 @@ print(json.dumps({
   # Best-effort cleanup
   rmq_api "/api/queues/${vhost_enc}/${qname}" -X DELETE >/dev/null 2>&1 || true
 else
-  record "L3-08" fail "could not declare fixture queue ${qname}"
+  case "$declare_http" in
+    [1-5][0-9][0-9]) failure_code="$declare_http" ;;
+    *) failure_code="unavailable" ;;
+  esac
+  record "L3-08" fail "private RabbitMQ fixture declaration refused (HTTP $failure_code)"
 fi
 
 echo "== L3-09 optional Regulations probe =="
