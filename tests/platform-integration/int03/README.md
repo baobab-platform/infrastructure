@@ -351,3 +351,34 @@ provider certification/health/binding, Nabhold consumption or the full matrix.
 The canonical activation hold, native protected IAM–CP, executive authority,
 staging, production and R0–R3 remain open. Do not change the frozen identity or
 INT-02 locks to make this component pass.
+
+
+## Supervised native-CMS lifecycle pre-gate foundation
+
+`cms_lifecycle.py` introduces a separate, fail-closed lifecycle guard with an
+immutable UTC and monotonic maximum of 90 minutes from creation, a 60-second
+maximum token lease bounded by the original deadline, operation-level timeouts
+and an independent watchdog. It requires an authentic OPEN-shaped canonical
+gate receipt **before** executing an adapter operation; HELD and REFUSED cannot
+provision. The Infrastructure runner must independently verify the receipt
+against the pinned clean Shared checkout, never handcraft an OPEN document.
+`test_cms_lifecycle.py` exercises guard/cleanup behaviour using fake callbacks
+and cannot establish actual provider compatibility.
+
+For an eventual real run the owner MUST register all four bounded, separately
+verifiable closure callbacks *before* any POST: stop every accepting CMS/CP
+runtime and invalidate trust; revoke/destroy issuer clients and token trust;
+remove CP-owned disposable topology/grants; remove private files, volumes and
+secrets. Closure attempts all owners even if one fails. A callback returns
+`True` only after separate observation confirms destruction. No callback may
+log secret material. Use an external process supervisor and host recovery as
+well: in-process watchdogs cannot survive SIGKILL, runner crash or host loss.
+
+This new primitive intentionally never emits `qualified=true`, even when a
+unit test marks 14 local labels observed. Only a separately reviewed live
+executor can prove real issuer/CP/CMS operations, independently certified
+current CP topology, all negative scenarios, original source/image provenance,
+verified teardown, durable evidence and an independent acceptance decision.
+The present Shared #354 activation hold means the gate still returns HELD and
+all NAB-03 cases remain BLOCKED. Do not run named fixtures or edit the registry
+to exercise this code.
