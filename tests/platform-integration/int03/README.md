@@ -420,3 +420,30 @@ or treated as authority merely because a synthetic test supplied matching
 JSON. The remaining connected CMS executor must verify deployment/health and
 capability binding, exercise every normative NAB-03 positive/negative against
 the live providers, and retain independent runtime provenance and destruction.
+
+
+### CP-owned synthetic topology and independent certification (PR #44)
+
+[CP-TOPOLOGY-RUNBOOK.md](CP-TOPOLOGY-RUNBOOK.md) defines the concrete
+governed Tenant, Organisation, Principal, administrative grant, market,
+EngineRelease, provider-certification and changeset/binding routes. The
+development-only operator client `cms_cp_governance.py` uses CP's real
+HTTPS APIs, CP-issued IDs, separate maker/checker human Principals,
+immutable evidence digests, independently observed market activation and
+certification read-back. The separate capability resolution helper requires
+a *real workload-owned CP context* and a current certified provider.
+
+`cms_cp_fixture_run.py inspect --plan <reviewed-file>` is safe before
+activation and performs no network or mutations. Applying one reviewed
+CP-only step requires two real CP human admin tokens, a private CA, a
+private receipt journal and existing approved CP admission evidence.
+An intent is durably recorded **before** a write, with ambiguous outcomes
+left for independent CP reconciliation rather than blind retry.
+
+This does NOT create or activate either Shared #354 CMS IAM identity;
+it never uses the buyer human-Principal registration route to fabricate a
+CMS workload Principal, and a CP administrative grant is **not** a runtime
+capability grant. A local test's positive HTTP response is non-qualifying.
+Actual CP adapter live execution, governed binding activation, registered
+workload Principal/context, issuer teardown and NAB-03 evidence remain
+outstanding.
