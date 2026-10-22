@@ -194,6 +194,29 @@ class NativeClient:
         return True
 
 
+
+def verify_pair_secret_isolation(directory):
+    """Reject missing, widened, non-private or accidentally shared credentials.
+
+    Secrets remain in owner-private storage; only equality/shape is checked.
+    Never copy them to a receipt or log, including on errors.
+    """
+    secrets_dir = private_dir(Path(directory) / "secrets")
+    raw = []
+    for name in NAMES:
+        path = secrets_dir / (name + ".secret")
+        st = path.lstat()
+        if path.is_symlink() or st.st_mode & 0o077 or st.st_uid != os.getuid() or st.st_size > 4096:
+            raise Refused("native credential boundary differs")
+        value = path.read_bytes().strip()
+        if len(value) < 32 or len(value) > 512:
+            raise Refused("native credential missing or truncated")
+        raw.append(value)
+    if raw[0] == raw[1]:
+        raise Refused("native consumer/validator must use independent secrets")
+    return True
+
+
 def recover(directory, client):
     """Safe even when the registry was subsequently held or a POST was lost.
 
@@ -261,6 +284,7 @@ def provision_connected(directory, *, shared, iam, lock, client, acceptors_stop,
             lease.execute("iam-provision", lambda remaining, n=name:
                           client.operate(journal, directory, "create", n, timeout=min(remaining, 60)),
                           max_seconds=70)
+        verify_pair_secret_isolation(directory)
         journal["state"] = "PROVISIONED"
         durable(Path(directory) / "owner.json", journal)
         # The connected owner now uses the two private credentials only inside
