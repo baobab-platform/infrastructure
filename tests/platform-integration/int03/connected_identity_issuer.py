@@ -70,7 +70,7 @@ class IssuerPort:
         if metadata.get("issuer") != self.issuer:
             raise EvidenceRefused("issuer discovery mismatch")
         endpoints = {}
-        for name in ("token_endpoint", "introspection_endpoint"):
+        for name in ("token_endpoint", "introspection_endpoint", "revocation_endpoint"):
             endpoint = metadata.get(name)
             if not isinstance(endpoint, str):
                 raise EvidenceRefused("issuer operation not available")
@@ -96,6 +96,31 @@ class IssuerPort:
                              headers={"Authorization": private_auth,
                                       "Content-Type": "application/x-www-form-urlencoded",
                                       "Accept": "application/json"})
+
+    def revoke(self, token, owner_basic):
+        """RFC7009 request by the original owner; checker MUST introspect after.
+
+        Return value is transport-only, never an independently witnessed
+        revoked access token. A 200 acknowledgement is not revocation proof.
+        """
+        if ("revocation_endpoint" not in self.endpoints or
+            not isinstance(token, str) or not 32 <= len(token) <= MAX or
+            not isinstance(owner_basic,str) or not owner_basic.startswith("Basic ") or
+            len(owner_basic)>1024):
+            raise EvidenceRefused("supervised issuer revocation not prepared")
+        endpoint=self.endpoints["revocation_endpoint"]
+        raw=urllib.parse.urlencode(
+            {"token":token,"token_type_hint":"access_token"}).encode()
+        request=urllib.request.Request(endpoint,data=raw,method="POST",
+            headers={"Authorization":owner_basic,
+                     "Content-Type":"application/x-www-form-urlencoded"})
+        try:
+            with self.open(request,timeout=20) as response:
+                if response.status not in (200,204) or len(response.read(1025))>1024:
+                    raise EvidenceRefused("issuer refused revocation")
+        except (urllib.error.URLError,OSError,TimeoutError,ValueError):
+            raise EvidenceRefused("issuer revocation unavailable") from None
+        return True
 
     @staticmethod
     def assert_introspection(response, *, client_id, audience, scope, now):
