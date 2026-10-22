@@ -1,6 +1,6 @@
 """INT-03C synthetic adapters: contract coverage only, NEVER runtime PASS."""
-import os
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 import tempfile
 import unittest
 import uuid
@@ -33,11 +33,15 @@ class LiveCPObserver(unittest.TestCase):
                  "baobab-iam","baobab-cp","nabhold"],"b"*40)}
         self.tokens=dict.fromkeys(["human","workload","wrong_audience",
                                    "revoked","deactivated"],"private-token")
+        moment=datetime.now(timezone.utc)
         self.responses=[
             {"status":200,"code":"","document":{"principal_id":self.human}},
             {"status":200,"code":"","document":{"context_id":str(uuid.uuid4()),
              "tenant_id":self.tenant,"organisation_id":self.organisation,
-             "expires_at":"2026-10-23T00:00:00Z"}},
+             "country_code":"ZA","organisation_type":"ORGANISATION",
+             "market_id":"mkt_reviewed","currency_code":"ZAR",
+             "resolved_at":(moment-timedelta(seconds=3)).isoformat(),
+             "expires_at":(moment+timedelta(minutes=12)).isoformat()}},
             {"status":401,"code":"AUTH_TOKEN_REQUIRED","document":None},
             {"status":403,"code":"TENANT_CONTEXT_MISMATCH","document":None},
             {"status":401,"code":"AUTH_TOKEN_REQUIRED","document":None},
@@ -61,6 +65,8 @@ class LiveCPObserver(unittest.TestCase):
             self.assertFalse(receipt["qualified"])
             self.assertFalse(receipt["nab03_qualified"])
             self.assertEqual(receipt["observations"]["iam_issued_token"]["result"],"BLOCKED")
+            self.assertEqual(receipt["observations"]["revoked_credential_denied"]["result"],"BLOCKED")
+            self.assertEqual(receipt["observations"]["deactivated_principal_denied"]["result"],"BLOCKED")
             self.assertEqual(receipt["observations"]["independent_teardown"]["result"],"BLOCKED")
             self.assertFalse(validate(receipt,expected_sources={
                 k:receipt["sources"][k] for k in receipt["sources"]}))
