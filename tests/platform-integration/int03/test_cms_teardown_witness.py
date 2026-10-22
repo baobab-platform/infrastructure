@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 import cms_teardown_witness as witness
-from cms_evidence import Refused
+import cms_evidence as custody
 
 
 class Docker:
@@ -15,7 +15,7 @@ class Docker:
     def verify(self,project):
         self.calls.append(project)
         if self.leftover:
-            raise Refused("labelled network survived")
+            raise custody.Refused("labelled network survived")
         return True
 
 
@@ -27,12 +27,12 @@ class Authorities:
     def verify_issuer(self):
         self.calls.append("issuer")
         if not self.issuer:
-            raise Refused("issuer survived")
+            raise custody.Refused("issuer survived")
         return True
     def verify_cp(self,paths):
         self.calls.append(("cp",paths))
         if not self.cp:
-            raise Refused("active grant survived")
+            raise custody.Refused("active grant survived")
         return True
 
 
@@ -66,8 +66,7 @@ class Witness(unittest.TestCase):
     def test_prior_creation_requires_real_sealed_matching_bytes(self):
         import hashlib
         import json
-        import cms_evidence as custody
-        bundle=self.parent/"retained"
+            bundle=self.parent/"retained"
         bundle.mkdir(mode=0o700)
         names={"issuer_create":"issuer-create.json",
                "cp_create":"cp-create.json",
