@@ -4,12 +4,11 @@ The source receipts cannot promote themselves. A separate reviewer must
 download externally retained artifact bytes and repeat all checks against
 issuer, CP and accepting-runtime evidence after disposal.
 """
-import hashlib
 import json
 from pathlib import Path
 
 import cms_evidence as custody
-from connected_identity_evidence import CASES, PROOFS, EvidenceRefused, validate
+from connected_identity_evidence import CASES, EvidenceRefused, validate
 
 PROOF_FILE = {
     "actual_issuer_token": "issuer-create.json",
