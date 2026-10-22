@@ -97,6 +97,34 @@ def execute_step(fixture, plan):
     raise Refused("unknown CP authority step")
 
 
+def save_custody(path, document, *, exclusive):
+    """Atomic, fsynced owner-private intent journal and safe observation."""
+    path=Path(path)
+    raw=(json.dumps(document,sort_keys=True,separators=(",",":"))+"\\n").encode()
+    if len(raw)>16384:
+        raise Refused("bounded CP custody required")
+    destination=path if exclusive else path.parent/("."+path.name+"."+os.urandom(8).hex())
+    flags=os.O_WRONLY|os.O_CREAT|os.O_EXCL
+    if hasattr(os,"O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd=os.open(destination,flags,0o600)
+    try:
+        with os.fdopen(fd,"wb") as out:
+            out.write(raw)
+            out.flush()
+            os.fsync(out.fileno())
+        if not exclusive:
+            os.replace(destination,path)
+        dfd=os.open(path.parent,os.O_DIRECTORY|os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    finally:
+        if not exclusive:
+            destination.unlink(missing_ok=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n",1)[0])
     parser.add_argument("action", choices=("inspect", "apply"))
@@ -133,30 +161,18 @@ def main(argv=None):
         maker=Operator(args.maker_principal, private_file(args.maker_token_file), "maker")
         checker=Operator(args.checker_principal, private_file(args.checker_token_file), "checker")
         cp=CPGateway(args.cp_origin, args.ca)
-        result=execute_step(Fixture(cp,maker,checker), plan)
-        # Write-only, exclusive, owner-private receipt; never include either
-        # operator token, raw CP payload or any claimed acceptance. Recovery
-        # from an ambiguous POST requires independent CP lookup/reconciliation.
-        data={"schema":"infrastructure.int03.cp-fixture-observation.v1",
+        # Commit an unqualified intent before the first network mutation.
+        # A crash leaves ATTEMPTING for a separate CP owner to reconcile.
+        base={"schema":"infrastructure.int03.cp-fixture-observation.v1",
               "run_id":plan["run_id"],"step":plan["step"],
-              "plan_digest":digest,"cp_observation":result,
-              "qualified":False,"full_int03_acceptance":False,
-              "identity_registry_unmodified":True,
+              "plan_digest":digest,"qualified":False,
+              "full_int03_acceptance":False,"identity_registry_unmodified":True,
               "independent_acceptance":False}
-        flags=os.O_WRONLY|os.O_CREAT|os.O_EXCL
-        if hasattr(os,"O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        fd=os.open(target,flags,0o600)
-        with os.fdopen(fd,"w") as out:
-            json.dump(data,out,sort_keys=True)
-            out.write("\n")
-            out.flush()
-            os.fsync(out.fileno())
-        dfd=os.open(parent,os.O_DIRECTORY|os.O_RDONLY)
-        try:
-            os.fsync(dfd)
-        finally:
-            os.close(dfd)
+        save_custody(target,dict(base,state="ATTEMPTING_CP_POST"),exclusive=True)
+        result=execute_step(Fixture(cp,maker,checker), plan)
+        # Record only CP-issued identifiers and bounded observations.
+        save_custody(target,dict(base,state="CP_RESPONSE_OBSERVED_UNATTESTED",
+                                 cp_observation=result),exclusive=False)
         print("CP_FIXTURE_OPERATION_OBSERVED; independent acceptance pending; qualified=false")
         return 0
     except (Refused, ValueError, OSError, KeyError, TypeError):
