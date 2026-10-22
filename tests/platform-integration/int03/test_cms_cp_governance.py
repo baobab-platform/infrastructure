@@ -230,6 +230,43 @@ class CPContract(unittest.TestCase):
         self.assertFalse(out["qualified"])
         self.assertEqual(cp2.calls[0][2],f"/v1/tenants/{tenant}/provisioning")
 
+    def test_independent_review_and_apply_require_exact_nonstale_cp_plan(self):
+        tenant=ident()
+        tp="tp_abc123"
+        digest="sha256:"+"a"*64
+        plan={"plan_id":"plan_abc123","plan_version":1,
+              "plan_digest":digest,"blockers":[]}
+        state={"tenant_id":tenant,"tenant_provisioning_id":tp,"state":"PLANNED",
+               "created_by":self.maker.principal_id,"revision":2,
+               "current_plan":{"plan_id":"plan_abc123","plan_version":1,
+                               "plan_digest":digest,"stale":False}}
+        decision={"decision":"APPROVED","plan_digest":digest,
+                  "decided_by":self.checker.principal_id}
+        f,cp=self.fixture([state,plan,decision])
+        approved=f.approve_provisioning_plan(tenant,tp,
+                    reviewed_plan_digest=digest,reason="Independent complete plan evaluation")
+        self.assertEqual(approved["decision"],"APPROVED_UNQUALIFIED")
+        self.assertFalse(approved["qualified"])
+        self.assertEqual(cp.calls[-1][1],"POST")
+        self.assertEqual(cp.calls[-1][5],'"2"')
+        self.assertEqual(cp.calls[-1][0].principal_id,self.checker.principal_id)
+        after=dict(state,approval=decision)
+        f,cp=self.fixture([after,{"operation_id":"op_async123"}])
+        accepted=f.apply_approved_provisioning(tenant,tp,
+                       reviewed_plan_digest=digest,idempotency_key="int03-plan-reviewed-2026")
+        self.assertEqual(accepted["state"],"CP_APPLY_ACCEPTED_PENDING_READBACK")
+        self.assertFalse(accepted["qualified"])
+        self.assertEqual(cp.calls[-1][2],f"/v1/tenants/{tenant}/provisioning/{tp}/apply")
+        f,_=self.fixture([dict(state,current_plan=dict(state["current_plan"],
+                  stale=True)),plan])
+        with self.assertRaises(Refused):
+            f.approve_provisioning_plan(tenant,tp,reviewed_plan_digest=digest,
+                                     reason="Independent complete plan evaluation")
+        f,_=self.fixture([dict(after,approval=dict(decision,decided_by=self.maker.principal_id))])
+        with self.assertRaises(Refused):
+            f.apply_approved_provisioning(tenant,tp,
+                          reviewed_plan_digest=digest,idempotency_key="int03-plan-reviewed-2026")
+
     def test_binding_changeset_cannot_claim_runtime_acceptance(self):
         cs="cs_123abc"
         digest="sha256:"+"a"*64
