@@ -160,6 +160,10 @@ def main(argv=None):
         maker=Operator(args.maker_principal, private_file(args.maker_token_file), "maker")
         checker=Operator(args.checker_principal, private_file(args.checker_token_file), "checker")
         cp=CPGateway(args.cp_origin, args.ca)
+        fixture=Fixture(cp,maker,checker)
+        # Require real CP to identify both independent ACTIVE administrators
+        # before accepting their authorisation to write any topology record.
+        fixture.verify_operator_registration()
         # Commit an unqualified intent before the first network mutation.
         # A crash leaves ATTEMPTING for a separate CP owner to reconcile.
         base={"schema":"infrastructure.int03.cp-fixture-observation.v1",
@@ -168,7 +172,7 @@ def main(argv=None):
               "full_int03_acceptance":False,"identity_registry_unmodified":True,
               "independent_acceptance":False}
         save_custody(target,dict(base,state="ATTEMPTING_CP_POST"),exclusive=True)
-        result=execute_step(Fixture(cp,maker,checker), plan)
+        result=execute_step(fixture, plan)
         # Record only CP-issued identifiers and bounded observations.
         save_custody(target,dict(base,state="CP_RESPONSE_OBSERVED_UNATTESTED",
                                  cp_observation=result),exclusive=False)
