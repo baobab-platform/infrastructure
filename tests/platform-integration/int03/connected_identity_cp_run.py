@@ -18,7 +18,8 @@ import sys
 import uuid
 
 from cms_evidence import canonical, exclusive, root_dir, seal, verify
-from connected_identity_cp import CPTransport, assert_current_human, assert_negative, read_private_token\nfrom cms_cp_context import assert_resolved
+from connected_identity_cp import CPTransport, assert_current_human, assert_negative, read_private_token
+from cms_cp_context import assert_resolved
 from connected_identity_evidence import (
     AUTHORITY, EvidenceRefused, blocked_receipt, validate,
 )
