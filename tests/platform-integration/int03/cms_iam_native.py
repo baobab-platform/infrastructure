@@ -245,6 +245,22 @@ def verify_pair_secret_isolation(directory):
     return True
 
 
+def scrub_local(directory):
+    """Remove owned local credentials and compiled native binary after 404."""
+    directory = private_dir(directory)
+    private_dir(directory / "secrets")
+    for name in NAMES:
+        secret = directory / "secrets" / (name + ".secret")
+        if secret.is_symlink():
+            raise Refused("secret path replaced")
+        secret.unlink(missing_ok=True)
+    binary = directory / "native-iam-bridge"
+    if binary.is_symlink():
+        raise Refused("native binary replaced")
+    binary.unlink(missing_ok=True)
+    return True
+
+
 def recover(directory, client):
     """Safe even when the registry was subsequently held or a POST was lost.
 
@@ -253,7 +269,7 @@ def recover(directory, client):
     """
     journal = load_journal(directory)
     if journal["state"] == "CLOSED":
-        return True
+        return scrub_local(directory)
     journal["state"] = "REVOKING"
     durable(Path(directory) / "owner.json", journal)
     failed = False
@@ -269,20 +285,16 @@ def recover(directory, client):
         return False
     journal["state"] = "CLOSED"
     durable(Path(directory) / "owner.json", journal)
-    # Secrets are removed *only after* issuer read-back proves deletion.
-    for name in NAMES:
-        secret = Path(directory) / "secrets" / (name + ".secret")
-        if secret.is_symlink():
-            raise Refused("secret path replaced")
-        secret.unlink(missing_ok=True)
-    return True
+    # Only independently verified issuer destruction permits local scrubbing.
+    return scrub_local(directory)
 
 
 def private_teardown_verified(directory):
     """Independently check the private credential directory was emptied."""
     state = load_journal(directory)
     private = private_dir(Path(directory) / "secrets")
-    return state["state"] == "CLOSED" and not any(private.iterdir())
+    return (state["state"] == "CLOSED" and not any(private.iterdir()) and
+            not (Path(directory) / "native-iam-bridge").exists())
 
 
 def provision_connected(directory, *, shared, iam, lock, client, acceptors_stop, cp_cleanup,
