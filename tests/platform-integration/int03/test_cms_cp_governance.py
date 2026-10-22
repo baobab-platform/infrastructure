@@ -40,6 +40,16 @@ class CPContract(unittest.TestCase):
         with self.assertRaises(Refused):
             Fixture(FakeCP([]),Operator(self.maker.principal_id,self.maker.credential,"checker"),self.maker)
 
+    def test_operator_tokens_resolve_to_independent_active_cp_principals(self):
+        f,cp=self.fixture([{"principal_id":self.maker.principal_id},
+                           {"principal_id":self.checker.principal_id}])
+        self.assertTrue(f.verify_operator_registration())
+        self.assertEqual([x[2] for x in cp.calls],
+                         ["/v1/admin/effective-authority"]*2)
+        f,_=self.fixture([{"principal_id":self.checker.principal_id}])
+        with self.assertRaises(Refused):
+            f.verify_operator_registration()
+
     def test_canonical_tenant_is_cp_minted_after_authorised_onboarding(self):
         approved={"tenant_onboarding_request_id":"tor_reviewed",
                   "legal_entity_id":"reviewed-entity","display_name":"INT03 synthetic",
