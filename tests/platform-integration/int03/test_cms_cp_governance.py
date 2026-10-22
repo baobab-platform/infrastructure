@@ -132,9 +132,11 @@ class CPContract(unittest.TestCase):
         f,cp=self.fixture([release,{"certification_id":cert_id},certificate])
         evidence=[{"type":"INTEGRATION_TEST","uri":"https://github.com/baobab-platform/infrastructure/actions/runs/123",
                    "digest":"sha256:"+"a"*64}]
+        certificate["evidence"]=evidence
         result=f.certify_provider(provider_id=pid,capability_key=key,release_id=rid,
                    contract_version=1,evidence=evidence,qualification_profile="int03.cms.actual")
         self.assertEqual(result["status"],"CERTIFIED")
+        self.assertEqual(result["evidence"],evidence)
         self.assertEqual(cp.calls[1][2],CERTIFY_ROUTE)
         self.assertEqual(cp.calls[1][0].principal_id,self.checker.principal_id)
         f2,_=self.fixture([dict(release,recorded_by=self.checker.principal_id)])
