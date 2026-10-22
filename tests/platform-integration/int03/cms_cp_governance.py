@@ -380,6 +380,88 @@ class Fixture:
         return {"tenant_provisioning_id":result["tenant_provisioning_id"],
                 "qualified":False}
 
+    def approve_provisioning_plan(self, tenant_id, provisioning_id, *,
+                                  reviewed_plan_digest, reason):
+        """Independently decide exactly one reviewed CP-generated plan.
+
+        The reviewer must receive and scrutinise a retained current CP plan
+        separately; this function never silently approves one on creation.
+        """
+        canonical_uuid(tenant_id)
+        if (not isinstance(provisioning_id,str) or not re.fullmatch(
+                r"tp_[a-z0-9]+",provisioning_id) or
+            not isinstance(reviewed_plan_digest,str) or
+            not SHA256.fullmatch(reviewed_plan_digest) or
+            not isinstance(reason,str) or len(reason)<10 or len(reason)>500):
+            raise Refused("explicit independent CP reviewer digest/reason required")
+        route=f"/v1/tenants/{tenant_id}/provisioning/{provisioning_id}"
+        state=self.cp.call(self.checker,"GET",route)
+        plan=self.cp.call(self.checker,"GET",route+"/plan")
+        current=state.get("current_plan")
+        if (state.get("tenant_id")!=tenant_id or
+            state.get("tenant_provisioning_id")!=provisioning_id or
+            state.get("created_by")==self.checker.principal_id or
+            state.get("state")!="PLANNED" or
+            not isinstance(current,dict) or
+            current.get("stale") is not False or
+            current.get("plan_digest")!=reviewed_plan_digest or
+            plan.get("plan_digest")!=reviewed_plan_digest or
+            plan.get("plan_id")!=current.get("plan_id") or
+            plan.get("plan_version")!=current.get("plan_version") or
+            plan.get("blockers") not in (None,[])):
+            raise Refused("reviewed CP plan is missing, stale, blocked or self-approved")
+        revision=state.get("revision")
+        if type(revision) is not int or revision<1:
+            raise Refused("CP provisioning revision missing")
+        result=self.cp.call(self.checker,"POST",route+"/approve",
+            body={"plan_id":current["plan_id"],"plan_version":current["plan_version"],
+                  "plan_digest":reviewed_plan_digest,"decision":"APPROVED","reason":reason},
+            if_match=f'"{revision}"',expect=(200,))
+        if (result.get("decision")!="APPROVED" or
+            result.get("plan_digest")!=reviewed_plan_digest or
+            result.get("decided_by")!=self.checker.principal_id):
+            raise Refused("CP independent plan decision not verified")
+        return {"tenant_provisioning_id":provisioning_id,
+                "plan_digest":reviewed_plan_digest,
+                "decision":"APPROVED_UNQUALIFIED",
+                "qualified":False}
+
+    def apply_approved_provisioning(self,tenant_id,provisioning_id,*,
+                                   reviewed_plan_digest,idempotency_key):
+        """CP operation-only apply; HTTP 202 does not prove a binding."""
+        canonical_uuid(tenant_id)
+        if (not isinstance(provisioning_id,str) or not re.fullmatch(
+                r"tp_[a-z0-9]+",provisioning_id) or
+            not isinstance(reviewed_plan_digest,str) or
+            not SHA256.fullmatch(reviewed_plan_digest)):
+            raise Refused("CP provisioning and reviewed digest required")
+        route=f"/v1/tenants/{tenant_id}/provisioning/{provisioning_id}"
+        state=self.cp.call(self.maker,"GET",route)
+        approval=state.get("approval")
+        current=state.get("current_plan")
+        revision=state.get("revision")
+        if (state.get("tenant_id")!=tenant_id or
+            state.get("tenant_provisioning_id")!=provisioning_id or
+            state.get("state")!="PLANNED" or
+            not isinstance(approval,dict) or
+            approval.get("decision")!="APPROVED" or
+            approval.get("decided_by")!=self.checker.principal_id or
+            state.get("created_by")==self.checker.principal_id or
+            not isinstance(current,dict) or current.get("stale") is not False or
+            current.get("plan_digest")!=reviewed_plan_digest or
+            approval.get("plan_digest")!=reviewed_plan_digest or
+            type(revision) is not int or revision<1):
+            raise Refused("CP plan is not independently approved or current")
+        # Apply is strictly asynchronous. CP workers own all writes.
+        operation=self.cp.call(self.maker,"POST",route+"/apply",
+                               body={},idempotency=idempotency_key,
+                               if_match=f'"{revision}"',expect=(202,))
+        if not isinstance(operation.get("operation_id"),str):
+            raise Refused("CP did not issue an operation")
+        return {"operation_id":operation["operation_id"],
+                "state":"CP_APPLY_ACCEPTED_PENDING_READBACK",
+                "qualified":False}
+
     def verify_provisioning_binding(self, tenant_id, provisioning_id,
                                     capability_key, instance_id):
         """CP-approved desired state creates bindings through its planner.
