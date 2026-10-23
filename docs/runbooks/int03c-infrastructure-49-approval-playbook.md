@@ -88,12 +88,11 @@ After G6, close #49 only if independent custody and teardown proofs are accepted
 
 ## 7. Offline packet preflight (never a permission grant)
 
-Use `tests/platform-integration/int03/int03c_approval_packet.py` to inspect a **private**, credential-free frozen packet against the exact committed `int03c-lock.json`. This is only a review candidate; actual CP/IAM and signer identity/role proof must be independently established before provisioning. Run:
+Use `tests/platform-integration/int03/int03c_approval_packet.py` to inspect a **private**, credential-free frozen packet against the exact committed `int03c-lock.json`. The CLI accepts no alternate lock path and requires the actual clean, exact-commit Infrastructure checkout with baseline ancestry. This is only a review candidate; actual CP/IAM and signer identity/role proof must be independently established before provisioning. Run:
 
 ```bash
 python3 -B tests/platform-integration/int03/int03c_approval_packet.py \
-  --packet /private/int03c-approval-packet.json \
-  --lock tests/platform-integration/int03/int03c-lock.json
+  --packet /private/int03c-approval-packet.json
 python3 -B -m unittest discover -s tests/platform-integration/int03 \
   -p 'test_int03c_approval_packet.py' -v
 ```
@@ -112,4 +111,4 @@ The packet requires **exactly** these top-level keys:
 
 Never commit a completed private packet. No credentials, production resource names or private grant details belong in tracked JSON. A zero exit code reports only `STRUCTURAL_REVIEW_ONLY` with `authorised=false` and `APPROVAL_REQUIRED_RUNTIME_HELD`; the canonical `plan_sha256` printed must be bound to **separate independently authenticated approvals outside this source preflight**. A valid format neither proves real identities nor supplies an approval. Changing a packet after signatures invalidates them.
 
-The preflight cannot verify source ancestry, signed decision authority, source/image-to-running-instance matches, CA trust, live grant read-backs, actual external WORM retention or external supervisor operation. Those checks remain G0–G6 independent operator responsibilities. Missing one means no execution.
+The preflight now invokes the governed INT-03C source-lock and clean-checkout/ancestry verifier. It still cannot verify signed decision authority, source/image-to-running-instance matches, CA trust, live grant read-backs, actual external WORM retention or external supervisor operation. Those checks remain G0–G6 independent operator responsibilities. Missing one means no execution.
