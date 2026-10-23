@@ -78,6 +78,8 @@ class ApprovalGateTests(unittest.TestCase):
         result = approval.inspect(synthetic_packet(), LOCK)
         self.assertFalse(result["authorised"])
         self.assertEqual(result["classification"], "STRUCTURAL_REVIEW_ONLY")
+        self.assertEqual(result["review_applicability"], "OPTIONAL_INDEPENDENT_49_ONLY")
+        # HELD is specific to the optional #49 ceremony, never ADR-043 development.
         self.assertEqual(result["runtime_status"], "APPROVAL_REQUIRED_RUNTIME_HELD")
         self.assertEqual(len(result["plan_sha256"]), 64)
 
