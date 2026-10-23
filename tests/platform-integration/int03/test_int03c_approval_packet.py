@@ -1,7 +1,6 @@
 """Negative controls for Infrastructure #49's *non-authorising* preflight."""
 from __future__ import annotations
 
-from copy import deepcopy
 import importlib.util
 from pathlib import Path
 import unittest
