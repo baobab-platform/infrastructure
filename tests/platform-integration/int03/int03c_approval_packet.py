@@ -1,8 +1,12 @@
-"""Non-authorising, offline structural inspection for Infrastructure issue #49.
+"""Non-authorising, optional legacy independent packet review for #49.
 
+Accepted ADR-SHARED-043 supersedes mandatory independent-human approval for
+isolated synthetic development. Do NOT make this optional worksheet a gate on
+CP #433's development provisioning or normal INT-03C/NAB-03 development tests.
+Its historical lock and REVIEW_ONLY output neither qualify current merged
+Shared #371 / CP #433 nor grant protected staging/production acceptance.
 This tool deliberately cannot unlock a runtime. It never contacts IAM, CP,
-GitHub, a host or custody: those independent human/provider proofs are gates,
-not values that a JSON document may assert on its own.
+GitHub, a host or custody.
 """
 from __future__ import annotations
 
@@ -225,6 +229,9 @@ def inspect(packet: dict, source_lock: dict) -> dict:
 
     canonical = json.dumps(packet, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return {
+        # A HELD result below applies only to the independently witnessed
+        # historical #49 worksheet, never to standing development authority.
+        "review_applicability": "OPTIONAL_INDEPENDENT_49_ONLY",
         "classification": "STRUCTURAL_REVIEW_ONLY",
         "authorised": False,
         "runtime_status": "APPROVAL_REQUIRED_RUNTIME_HELD",
@@ -240,7 +247,7 @@ def inspect(packet: dict, source_lock: dict) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Offline review only; NEVER grants Infrastructure #49 approval")
+    parser = argparse.ArgumentParser(description="Optional independent #49 packet worksheet; NEVER a development/protected-environment approval")
     parser.add_argument("--packet", type=Path, required=True, help="Private review packet, no credentials")
     args = parser.parse_args()
     try:
