@@ -71,3 +71,31 @@ The INT-03C result, even if later accepted, **does not activate** the separate d
 To authorise G1/G2, Wekhaso Nabusiu must personally confirm the exact business mandate and bounded disposable run packet through a verified signing/account route. Brian James Nabusiu, Brenda Adams and Edo Watalu must personally accept or decline their proposed independent functions; security reviewers must verify their competence and actual CP/provider permissions. This documented nomination **cannot stand in for those actions**.
 
 After G6, close #49 only if independent custody and teardown proofs are accepted, the final disposition is explicit, and all relevant evidence links are retained. Otherwise keep #49 open. No production go-live is inferred.
+
+## 7. Offline packet preflight (never a permission grant)
+
+Use `tests/platform-integration/int03/int03c_approval_packet.py` to inspect a **private**, credential-free frozen packet against the exact committed `int03c-lock.json`. This is only a review candidate; actual CP/IAM and signer identity/role proof must be independently established before provisioning. Run:
+
+```bash
+python3 -B tests/platform-integration/int03/int03c_approval_packet.py \
+  --packet /private/int03c-approval-packet.json \
+  --lock tests/platform-integration/int03/int03c-lock.json
+python3 -B -m unittest discover -s tests/platform-integration/int03 \
+  -p 'test_int03c_approval_packet.py' -v
+```
+
+The packet requires **exactly** these top-level keys:
+
+- `schema`: `infrastructure.int03c.infrastructure49.review-packet.v1`
+- `issue`: `baobab-platform/infrastructure#49`
+- `environment`: `development`; `synthetic_only`: `true`
+- `run_id`: an independently randomly generated 32-character lowercase hexadecimal value
+- `window`: `start_utc` and `deadline_utc` as actual ISO-8601 UTC timestamps, no more than 90 minutes apart
+- `sources`: 40-character Git SHAs for `shared`, `baobab-iam`, `baobab-cp`, `baobab-cms`, `nabhold` and `infrastructure`; the first five must equal the committed INT-03C lock
+- `image_digests`: actual `sha256:<64 hex>` OCI digests for at least `cp`, `iam`, `postgres` and `verifier`, plus every other run-critical service
+- `roles`: one object per `executive_approver`, `run_approver`, `security_reviewer`, `cp_maker`, `cp_checker`, `runtime_operator`, `independent_witness`, `evidence_custodian`; each has exactly `person` and `authenticated_actor_ref` (the verified, non-secret stable identity reference)
+- `topology`: `private_host_ref`, `private_network_ref`, `threat_model_ref`, `private_ca_sha256` (64 hex), `external_deadline_supervisor_ref`, `external_immutable_custody_ref`, `custody_retention_policy_ref`, `cp_origin`, `hydra_origin` (the exact private `.int03.test` HTTPS origins defined above)
+
+Never commit a completed private packet. No credentials, production resource names or private grant details belong in tracked JSON. A zero exit code reports only `STRUCTURAL_REVIEW_ONLY` with `authorised=false` and `APPROVAL_REQUIRED_RUNTIME_HELD`; the canonical `plan_sha256` printed must be bound to **separate independently authenticated approvals outside this source preflight**. A valid format neither proves real identities nor supplies an approval. Changing a packet after signatures invalidates them.
+
+The preflight cannot verify source ancestry, signed decision authority, source/image-to-running-instance matches, CA trust, live grant read-backs, actual external WORM retention or external supervisor operation. Those checks remain G0–G6 independent operator responsibilities. Missing one means no execution.
