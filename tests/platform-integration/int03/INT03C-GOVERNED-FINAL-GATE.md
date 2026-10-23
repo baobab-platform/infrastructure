@@ -1,6 +1,8 @@
 # INT-03C governed real IAM + CP qualification acceptance gate
 
-**Status: engineering preparation. The normative seven-case run has not been executed or accepted.**  
+**Status: engineering preparation. No seven-case real-component acceptance evidence is established by the source tests in this repository.**
+
+**Accepted precedence (23 October 2026): ADR-SHARED-043 supersedes the independent-human and external-WORM prerequisites for isolated synthetic development INT-03C execution.** Merged CP #433 now provides an isolated development-only canonical bootstrap; merged Shared #371 separately protects governed non-BFF estate assignment approval versus restriction scopes. Normal development may run seven actual cases and record `REAL_COMPONENT_SYNTHETIC_DATA` PASS individually once witnessed by automated real component checks, source/image pins, private receipts, and cleanup; human appointment, optional #49 packet and external WORM storage are not prerequisites. No source-only tests can mark them PASS. Independent reviewed topology/personnel/custody gates below describe the **legacy optional #49 enhanced-verification track**, not normal development. Protected staging and production still require independent authorisation under ADR-SHARED-043; the optional historical packet cannot authorize them. The existing `int03c-lock.json` pins older historical Shared/CP commits, not the new merges; do not mistake it for current-runtime certification.  
 **Authority:** Accepted Shared `docs/architecture/int03c-governed-proof-bootstrap-decision.md`, Shared #366 merged at `74dd98d47e678fc479bb4bfc4138d601fb53319e`, IAM #137, CP #427 and Infrastructure #47.
 
 ## Normative evidence — seven required actual service observations
@@ -26,16 +28,16 @@ For each, independently retained actual HTTP request/response *sanitized facts* 
 
 ## Stop/go gate
 
-**BLOCKED** until all six conditions hold: (i) IAM and CP mandatory CI green, review security satisfied, exact-head merge reconciled; (ii) private source-built actual IAM and CP runtime; (iii) two current approved CP human Principal operators plus separately governed synthetic Principal and Tenant/Organisation/market provider grants; (iv) real seven complete current cases with strict positive and negative codes and original-byte external custody; (v) independent teardown including token/JWT verifier shutdown; (vi) final reviewer reproduction of exact hashes and live disappearance. No bypass via SQL, fake JWT, mock transport, manual STATUS=PASS, or old CMS lock.
+**For the optional #49 enhanced independent-verification track only: BLOCKED** until all six conditions hold: (i) IAM and CP mandatory CI green, review security satisfied, exact-head merge reconciled; (ii) private source-built actual IAM and CP runtime; (iii) two current approved CP human Principal operators plus separately governed synthetic Principal and Tenant/Organisation/market provider grants; (iv) real seven complete current cases with strict positive and negative codes and original-byte external custody; (v) independent teardown including token/JWT verifier shutdown; (vi) final reviewer reproduction of exact hashes and live disappearance. No bypass via SQL, fake JWT, mock transport, manual STATUS=PASS, or old CMS lock.
 
 INT-03D has **no independently accepted written acceptance contract found in Shared, Infrastructure, Nabhold, IAM or CP at this review**. Its gate/scope must be authored and approved separately; do not begin a guessed INT-03D execution, or treat INT-03C code completion as a qualified run.
 
-Shared #354 remains HELD and all 14 NAB-03 cases remain BLOCKED.
+ADR-SHARED-043 lifted Shared #354's **development** independent-approval hold; that does not imply CMS runtime integration or NAB-03 acceptance. Any of the fourteen NAB-03 cases without live evidence remains BLOCKED/NOT_IMPLEMENTED, while independently authorised staging/production acceptance remains pending.
 
 
 ## Separate source preparation and approval package
 
-Infrastructure #49 is an **approval request, not approval**. The source lock
+Infrastructure #49 remains an **optional enhanced independent-verification approval request, not an approval or a development bootstrap prerequisite**. The source lock
 contains no host, credentials, approver signature, generated topology ID or
 acceptance observation. None may be invented to make a plan executable.
 

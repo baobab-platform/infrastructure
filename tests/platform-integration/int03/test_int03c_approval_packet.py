@@ -2,8 +2,16 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 
 module_path = Path(__file__).with_name("int03c_approval_packet.py")
@@ -70,6 +78,8 @@ class ApprovalGateTests(unittest.TestCase):
         result = approval.inspect(synthetic_packet(), LOCK)
         self.assertFalse(result["authorised"])
         self.assertEqual(result["classification"], "STRUCTURAL_REVIEW_ONLY")
+        self.assertEqual(result["review_applicability"], "OPTIONAL_INDEPENDENT_49_ONLY")
+        # HELD is specific to the optional #49 ceremony, never ADR-043 development.
         self.assertEqual(result["runtime_status"], "APPROVAL_REQUIRED_RUNTIME_HELD")
         self.assertEqual(len(result["plan_sha256"]), 64)
 
@@ -199,6 +209,133 @@ class ApprovalGateTests(unittest.TestCase):
         packet["roles"]["cp_maker"]["authenticated_actor_ref"] = "TODO"
         with self.assertRaises(approval.PacketError):
             approval.inspect(packet, LOCK)
+
+
+class PrivatePacketCliTests(unittest.TestCase):
+    """Real offline subprocess/Git checks; all packet actors and pins synthetic."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.directory = Path(self.temp.name)
+        self.root = self.directory / "source"
+        self.root.mkdir()
+        self.git("init", "-q")
+        self.git("config", "user.name", "Synthetic packet test")
+        self.git("config", "user.email", "packet-test@example.invalid")
+        (self.root / "baseline").write_text("synthetic prerequisite")
+        self.commit()
+        lock = dict(LOCK, infrastructure_baseline=self.git("rev-parse", "HEAD"))
+        self.modules = self.root / "tests/platform-integration/int03"
+        self.modules.mkdir(parents=True)
+        for name in ("int03c_approval_packet.py", "connected_identity_sources.py",
+                     "connected_identity_evidence.py"):
+            shutil.copyfile(module_path.with_name(name), self.modules / name)
+        (self.modules / "int03c-lock.json").write_text(json.dumps(lock))
+        self.commit()
+        self.packet = synthetic_packet()
+        self.packet["sources"]["infrastructure"] = self.git("rev-parse", "HEAD")
+        # The private packet is deliberately outside the immutable source tree.
+        self.file = self.directory / "private-sensitive-packet.json"
+        self.write(json.dumps(self.packet, indent=2).replace("\n", "\r\n").encode())
+
+    def git(self, *args):
+        return subprocess.check_output(["git", "-C", str(self.root), *args], text=True).strip()
+
+    def commit(self):
+        self.git("add", ".")
+        self.git("commit", "-qm", "synthetic source")
+
+    def write(self, raw):
+        self.file.write_bytes(raw)
+        self.file.chmod(0o600)
+
+    def run_cli(self, path=None):
+        return subprocess.run([sys.executable, "-B", str(self.modules / module_path.name),
+                               "--packet", str(path or self.file)],
+                              capture_output=True, text=True, timeout=5)
+
+    def assert_blocked(self, path=None):
+        result = self.run_cli(path)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertRegex(result.stderr, r"\ABLOCKED: [A-Za-z]+\n\Z")
+        self.assertNotIn(str(self.directory), result.stderr)
+        self.assertNotIn("actor-", result.stderr)
+
+    def test_clean_exact_source_returns_held_and_original_byte_hash(self):
+        original = self.file.read_bytes()
+        first = self.run_cli()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        result = json.loads(first.stdout)
+        self.assertFalse(result["authorised"])
+        self.assertEqual(result["runtime_status"], "APPROVAL_REQUIRED_RUNTIME_HELD")
+        self.assertEqual(result["packet_sha256"], hashlib.sha256(original).hexdigest())
+        self.assertEqual(result["packet_size_bytes"], len(original))
+        self.write(json.dumps(self.packet, separators=(",", ":")).encode())
+        second = json.loads(self.run_cli().stdout)
+        self.assertEqual(result["plan_sha256"], second["plan_sha256"])
+        self.assertNotEqual(result["packet_sha256"], second["packet_sha256"])
+        self.assertNotIn("actor-", first.stdout)
+        self.assertNotIn("private-reviewed", first.stdout)
+        self.write(self.file.read_bytes().ljust(approval.PACKET_LIMIT, b" "))
+        self.file.chmod(0o400)
+        boundary = self.run_cli()
+        self.assertEqual(boundary.returncode, 0, boundary.stderr)
+        self.assertEqual(json.loads(boundary.stdout)["packet_size_bytes"], approval.PACKET_LIMIT)
+
+    def test_refuses_shared_permissions(self):
+        for mode in (0o644, 0o640, 0o604):
+            self.file.chmod(mode)
+            with self.subTest(mode=mode):
+                self.assert_blocked()
+
+    def test_refuses_links_nonfiles_and_missing_input_without_blocking(self):
+        link = self.directory / "symlink"
+        link.symlink_to(self.file)
+        self.assert_blocked(link)
+        hardlink = self.directory / "hardlink"
+        os.link(self.file, hardlink)
+        self.assert_blocked(hardlink)
+        self.assert_blocked()
+        self.assert_blocked(self.directory)
+        self.assert_blocked(self.directory / "absent")
+        fifo = self.directory / "fifo"
+        os.mkfifo(fifo, 0o600)
+        self.assert_blocked(fifo)
+
+    def test_refuses_empty_oversized_malformed_ambiguous_and_deep_json(self):
+        for raw in (b"", b" " * (approval.PACKET_LIMIT + 1), b"\xff", b"{",
+                    b'{"environment":"production","environment":"development"}',
+                    b'{"nested":{"id":1,"id":2}}',
+                    b'{"unexpected":NaN}', b'{"unexpected":Infinity}',
+                    b'{"unexpected":-Infinity}', b"[" * 1500 + b"]" * 1500):
+            self.write(raw)
+            with self.subTest(length=len(raw)):
+                self.assert_blocked()
+
+    def test_cli_refuses_dirty_source_or_different_infrastructure_revision(self):
+        (self.root / "untracked").write_text("source drift")
+        self.assert_blocked()
+        (self.root / "untracked").unlink()
+        self.packet["sources"]["infrastructure"] = "0" * 40
+        self.write(json.dumps(self.packet).encode())
+        self.assert_blocked()
+
+    def test_reader_rejects_foreign_owner_and_observed_mutation(self):
+        with patch.object(approval.os, "getuid", return_value=os.getuid() + 1):
+            with self.assertRaises(approval.PacketError):
+                approval.read_private_packet(self.file)
+        original_read = os.read
+
+        def mutate_after_read(descriptor, limit):
+            raw = original_read(descriptor, limit)
+            self.file.chmod(0o644)
+            return raw
+
+        with patch.object(approval.os, "read", side_effect=mutate_after_read):
+            with self.assertRaises(approval.PacketError):
+                approval.read_private_packet(self.file)
 
 
 if __name__ == "__main__":
