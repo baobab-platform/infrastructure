@@ -36,6 +36,41 @@ class PacketError(ValueError):
     """Source-only, fail-closed review error; never indicates runtime acceptance."""
 
 
+def unique_object(pairs):
+    """Reject duplicate JSON members before canonical hashing or policy checks."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise PacketError("duplicate field in protected approval JSON")
+        result[key] = value
+    return result
+
+
+def parse_protected_json(raw: str) -> dict:
+    """Always decode the full packet as strict, unambiguous JSON."""
+    return json.loads(raw, object_pairs_hook=unique_object)
+
+
+def validate_source_lock(lock: dict) -> dict:
+    """Require the complete closed #49 source lock, not a free-form sources map."""
+    if (type(lock) is not dict or set(lock) != {
+            "schema", "profile", "decision", "infrastructure_baseline",
+            "sources", "topology_approval", "cms_activation", "qualified"} or
+        lock["schema"] != "infrastructure.int03c.sources.v1" or
+        lock["profile"] != "governed-connected-identity" or
+        lock["decision"] != "shared:docs/architecture/int03c-governed-proof-bootstrap-decision.md" or
+        lock["topology_approval"] != "REQUIRED_INFRASTRUCTURE_49" or
+        lock["cms_activation"] != "HELD" or lock["qualified"] is not False or
+        type(lock["infrastructure_baseline"]) is not str or
+        not SHA.fullmatch(lock["infrastructure_baseline"]) or
+        type(lock["sources"]) is not dict or
+        set(lock["sources"]) != set(SOURCES) - {"infrastructure"} or
+        any(type(value) is not str or not SHA.fullmatch(value)
+            for value in lock["sources"].values())):
+        raise PacketError("source lock must be the complete, non-authorising INT-03C lock")
+    return lock
+
+
 def _require(value: object, field: str) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > 512:
         raise PacketError(f"{field}: nonempty bounded text required")
@@ -85,11 +120,9 @@ def inspect(packet: dict, source_lock: dict) -> dict:
         raise PacketError("window: must be positive and at most 90 minutes")
 
     sources = packet["sources"]
-    locked = source_lock.get("sources") if isinstance(source_lock, dict) else None
+    locked = validate_source_lock(source_lock)["sources"]
     if not isinstance(sources, dict) or set(sources) != set(SOURCES):
         raise PacketError("sources: exactly six pinned repository SHAs required")
-    if not isinstance(locked, dict) or set(locked) != set(SOURCES) - {"infrastructure"}:
-        raise PacketError("source lock: missing or malformed immutable upstream pins")
     for name in SOURCES:
         value = sources[name]
         if not isinstance(value, str) or not SHA.fullmatch(value):
@@ -115,17 +148,27 @@ def inspect(packet: dict, source_lock: dict) -> dict:
             raise PacketError(f"roles.{role}: person and identity reference required")
         _require(actor["person"], f"roles.{role}.person")
         ids[role] = _require(actor["authenticated_actor_ref"], f"roles.{role}.authenticated_actor_ref")
-    # Shared authority is allowed only for explicit non-conflicting functions.
-    excluded = (
-        ("cp_maker", "cp_checker"), ("run_approver", "runtime_operator"),
-        ("run_approver", "independent_witness"), ("run_approver", "cp_maker"),
-        ("security_reviewer", "runtime_operator"), ("security_reviewer", "cp_maker"),
-        ("independent_witness", "runtime_operator"),
-        ("independent_witness", "cp_maker"), ("independent_witness", "cp_checker"),
-        ("evidence_custodian", "runtime_operator"), ("evidence_custodian", "cp_maker"),
-        ("evidence_custodian", "cp_checker"),
-        ("executive_approver", "runtime_operator"),
+    # One corporate approver cannot also operate, check or witness the run.
+    # Technical reviewer and CP checker may be the same independently
+    # qualified adult; CP maker and runtime operator may be the same adult.
+    # Witness and evidence custodian may also coincide, but neither can
+    # create/mutate the resources they are independently verifying.
+    approval_roles = ("executive_approver", "run_approver")
+    mutating_and_witness_roles = (
+        "cp_maker", "cp_checker", "runtime_operator",
+        "independent_witness", "evidence_custodian",
     )
+    excluded = [
+        (a, b) for a in approval_roles for b in mutating_and_witness_roles
+    ]
+    excluded += [
+        (a, b) for a in ("security_reviewer", "cp_checker")
+        for b in ("cp_maker", "runtime_operator")
+    ]
+    excluded += [
+        (a, b) for a in ("independent_witness", "evidence_custodian")
+        for b in ("cp_maker", "cp_checker", "runtime_operator")
+    ]
     for left, right in excluded:
         if ids[left] == ids[right]:
             raise PacketError(f"role separation: {left} must differ from {right}")
@@ -165,19 +208,21 @@ def inspect(packet: dict, source_lock: dict) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Offline review only; NEVER grants Infrastructure #49 approval")
     parser.add_argument("--packet", type=Path, required=True, help="Private review packet, no credentials")
-    parser.add_argument(
-        "--lock", type=Path,
-        default=Path(__file__).with_name("int03c-lock.json"),
-        help="Current source-merged INT-03C lock",
-    )
     args = parser.parse_args()
     try:
+        # The canonical Shared/IAM/CP lock and clean execution source ancestry
+        # are validated by the already-governed INT-03C source authority module.
+        # A caller cannot override the lock path with a fabricated local file.
+        from connected_identity_evidence import EvidenceRefused
+        from connected_identity_sources import read_lock, source_pins
+
         if args.packet.stat().st_size > 16384:
             raise PacketError("packet too large")
-        packet = json.loads(args.packet.read_text(encoding="utf-8"))
-        lock = json.loads(args.lock.read_text(encoding="utf-8"))
+        packet = parse_protected_json(args.packet.read_text(encoding="utf-8"))
+        lock = read_lock()
+        source_pins(packet)
         outcome = inspect(packet, lock)
-    except (PacketError, OSError, ValueError, TypeError) as exc:
+    except (PacketError, OSError, ValueError, TypeError, EvidenceRefused) as exc:
         # Never print private packet contents or references in diagnostics.
         print(f"BLOCKED: {type(exc).__name__}", file=sys.stderr)
         return 2
