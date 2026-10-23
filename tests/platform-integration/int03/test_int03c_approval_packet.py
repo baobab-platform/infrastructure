@@ -25,7 +25,16 @@ ROLES = {
 }
 # All values below are synthetic unit-test input, NOT identity, topology,
 # approval, accepted evidence or a usable runtime manifest.
-LOCK = {"sources": {key: char * 40 for key, char in zip(PIN_NAMES, "abcde")}}
+LOCK = {
+    "schema": "infrastructure.int03c.sources.v1",
+    "profile": "governed-connected-identity",
+    "decision": "shared:docs/architecture/int03c-governed-proof-bootstrap-decision.md",
+    "infrastructure_baseline": "9" * 40,
+    "sources": {key: char * 40 for key, char in zip(PIN_NAMES, "abcde")},
+    "topology_approval": "REQUIRED_INFRASTRUCTURE_49",
+    "cms_activation": "HELD",
+    "qualified": False,
+}
 
 
 def synthetic_packet():
@@ -105,6 +114,61 @@ class ApprovalGateTests(unittest.TestCase):
             packet["roles"][left]["authenticated_actor_ref"] = packet["roles"][right]["authenticated_actor_ref"]
             with self.subTest(left=left, right=right), self.assertRaises(approval.PacketError):
                 approval.inspect(packet, LOCK)
+
+    def test_rejects_ambiguous_nested_and_top_level_json(self):
+        # The first of two contradictory values must not be discarded.
+        for raw in (
+            '{"environment":"production","environment":"development"}',
+            '{"roles":{"cp_maker":{"person":"A","person":"B"}}}',
+            '{"topology":{"cp_origin":"https://bad.example","cp_origin":"https://cp.int03.test"}}',
+        ):
+            with self.subTest(raw=raw), self.assertRaises(approval.PacketError):
+                approval.parse_protected_json(raw)
+
+    def test_rejects_incomplete_or_forged_source_lock(self):
+        packet = synthetic_packet()
+        with self.assertRaises(approval.PacketError):
+            approval.inspect(packet, {"sources": LOCK["sources"]})
+        for key, value in (
+            ("schema", "untrusted"),
+            ("infrastructure_baseline", "unverified"),
+            ("cms_activation", "ACTIVE"),
+            ("topology_approval", "GRANTED"),
+            ("qualified", True),
+        ):
+            forged = dict(LOCK, **{key: value})
+            with self.subTest(key=key), self.assertRaises(approval.PacketError):
+                approval.inspect(packet, forged)
+
+    def test_rejects_every_forbidden_approver_collision(self):
+        for left in ("executive_approver", "run_approver"):
+            for right in ("cp_maker", "cp_checker", "runtime_operator",
+                          "independent_witness", "evidence_custodian"):
+                packet = synthetic_packet()
+                packet["roles"][right]["authenticated_actor_ref"] = packet["roles"][left]["authenticated_actor_ref"]
+                with self.subTest(left=left, right=right), self.assertRaises(approval.PacketError):
+                    approval.inspect(packet, LOCK)
+
+    def test_rejects_checker_operating_own_run(self):
+        packet = synthetic_packet()
+        packet["roles"]["runtime_operator"]["authenticated_actor_ref"] = (
+            packet["roles"]["cp_checker"]["authenticated_actor_ref"]
+        )
+        with self.assertRaises(approval.PacketError):
+            approval.inspect(packet, LOCK)
+
+    def test_rejects_assistant_as_credentialed_actor(self):
+        packet = synthetic_packet()
+        packet["roles"]["support_ops"] = {
+            "person": "support-nominee",
+            "authenticated_actor_ref": "assistant-actor",
+        }
+        with self.assertRaises(approval.PacketError):
+            approval.inspect(packet, LOCK)
+        packet = synthetic_packet()
+        packet["roles"]["cp_maker"]["assistant"] = "support-nominee"
+        with self.assertRaises(approval.PacketError):
+            approval.inspect(packet, LOCK)
 
     def test_rejects_source_drift_and_unpinned_image(self):
         packet = synthetic_packet()
