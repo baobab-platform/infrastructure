@@ -19,6 +19,20 @@ Four named **candidates** have been identified. No GitHub account, CP Principal,
 
 This mapping is **NOMINATED, NOT ACCEPTED**. Each person must accept through their own authenticated identity. Do **not** infer GitHub usernames from names (including the current issue author); do not share personal passwords, IAM subjects or CP human tokens. If a nominee lacks authority or independence, replace the *role* with a separately authorised qualified individual via a reviewed amendment, not a fictional role assignment.
 
+## 1A. Restricted support appointments — private personal roster
+
+The group sponsor has also nominated three **associated supporting positions**: an operations-support associate attached to the CP maker/runtime operator, a governance-support associate attached to the CP checker/security reviewer, and an honorary support association attached to the independent evidence/teardown witness. **Names and any age/guardian details belong in a privately retained personnel register**, not in this public repository. The private register maps each supporting person to exactly one accountable adult, records nomination/acceptance and lawful age-appropriate participation, and has no bearing on runtime authorisation.
+
+| Public support position | Accountable adult | Allowed scope | Excluded scope |
+| --- | --- | --- | --- |
+| **INT03C-SUPPORT-OPS** | Brian James Nabusiu | Non-sensitive orientation, administrative coordination, learning activities under supervision | Host operation, IAM/CP credentials, Principal grants, deployments, issuer mutation or approval |
+| **INT03C-SUPPORT-REVIEW** | Brenda Adams | Non-sensitive planning assistance, educational checklists, meeting notes under supervision | CP checker identity/decision, security approval, review signoff, live records, or maker-checker substitute |
+| **INT03C-SUPPORT-HONORARY** | Edo Watalu | Honorary affiliation only, **no assigned work** | External evidence custody, live-teardown observation, identity verification, signature or independent witness substitute |
+
+**Nomination is not employment, role acceptance or access entitlement.** In particular, an infant/child cannot discharge work obligations or compliance responsibilities. Verify lawful eligibility, supervision and consent before considering any future age-appropriate support activity; otherwise keep the association honorary or purely educational. No support position receives a GitHub assignment, CP/IAM Principal, workload client, secret, production/synthetic tenant authority, regulated data or access to original proof artifacts by virtue of this nomination.
+
+The entire G0–G6 independence matrix continues to count **only verified authorised accountable adult persons**. A supporting position cannot sign for its accountable adult, serve as an additional approval, increase quorum, satisfy separation of duties, or witness the adult's own execution. The offline approval packet's exact actor-role keys deliberately have **no assistant credential slot**. Future support-role expansion requires separately approved, privacy-reviewed policy and cannot alter an already signed source/runtime plan.
+
 **Minimum separation:** business/run authoriser ≠ runtime operator; CP maker ≠ CP checker; witness ≠ authoriser, runtime operator, maker or checker. The two CP human administrators must exist as separate ACTIVE authorised CP Principals *before* disposable workload creation. A security reviewer competent to inspect the isolation/threat model must countersign the topology; the CP checker may fill that review function only if separately qualified and not the plan's maker or runtime operator. GitHub PR approval alone never constitutes run approval.
 
 ## 2. Independent approval packet (private, reviewed, content-addressed)
