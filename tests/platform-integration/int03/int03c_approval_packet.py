@@ -10,8 +10,10 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import stat
 import sys
 
 
@@ -30,10 +32,39 @@ SOURCES = ("shared", "baobab-iam", "baobab-cp", "baobab-cms", "nabhold", "infras
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 NONCE = re.compile(r"[0-9a-f]{32}\Z")
+PACKET_LIMIT = 16_384
 
 
 class PacketError(ValueError):
     """Source-only, fail-closed review error; never indicates runtime acceptance."""
+
+
+def read_private_packet(path: Path) -> bytes:
+    """Read one bounded owner-private snapshot, without following the leaf.
+
+    Parents must be protected by the operator: this does not establish host
+    trust. NONBLOCK refuses FIFOs without hanging; the descriptor, not a prior
+    path stat, controls type, ownership, links, permissions and size checks.
+    """
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(descriptor)
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or
+                before.st_mode & 0o077 or before.st_nlink != 1 or
+                not 0 < before.st_size <= PACKET_LIMIT):
+            raise PacketError("private bounded regular packet required")
+        raw = os.read(descriptor, PACKET_LIMIT + 1)
+        after = os.fstat(descriptor)
+        # Fail closed on short/growing reads or an observed in-place mutation.
+        # Hashing and parsing below use these same bytes, with no path reopen.
+        fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns",
+                  "st_mode", "st_uid", "st_nlink")
+        if (len(raw) != before.st_size or len(raw) > PACKET_LIMIT or
+                any(getattr(before, name) != getattr(after, name) for name in fields)):
+            raise PacketError("packet changed during read")
+        return raw
+    finally:
+        os.close(descriptor)
 
 
 def unique_object(pairs):
@@ -48,7 +79,10 @@ def unique_object(pairs):
 
 def parse_protected_json(raw: str) -> dict:
     """Always decode the full packet as strict, unambiguous JSON."""
-    return json.loads(raw, object_pairs_hook=unique_object)
+    def reject_constant(_value):
+        raise PacketError("non-JSON numeric constant in protected approval JSON")
+
+    return json.loads(raw, object_pairs_hook=unique_object, parse_constant=reject_constant)
 
 
 def validate_source_lock(lock: dict) -> dict:
@@ -216,13 +250,16 @@ def main() -> int:
         from connected_identity_evidence import EvidenceRefused
         from connected_identity_sources import read_lock, source_pins
 
-        if args.packet.stat().st_size > 16384:
-            raise PacketError("packet too large")
-        packet = parse_protected_json(args.packet.read_text(encoding="utf-8"))
+        raw = read_private_packet(args.packet)
+        packet = parse_protected_json(raw.decode("utf-8", errors="strict"))
         lock = read_lock()
         source_pins(packet)
         outcome = inspect(packet, lock)
-    except (PacketError, OSError, ValueError, TypeError, EvidenceRefused) as exc:
+        # Preserve the existing semantic digest, and separately bind the exact
+        # frozen file (including whitespace/newlines) for original-byte custody.
+        outcome["packet_sha256"] = hashlib.sha256(raw).hexdigest()
+        outcome["packet_size_bytes"] = len(raw)
+    except (PacketError, OSError, ValueError, TypeError, RecursionError, EvidenceRefused) as exc:
         # Never print private packet contents or references in diagnostics.
         print(f"BLOCKED: {type(exc).__name__}", file=sys.stderr)
         return 2
