@@ -1,14 +1,30 @@
 # Infrastructure #49 — independent INT-03C approval, provisioning and witness runbook
 
-**Classification:** governance and development-only operator procedure. **Current gate:** `APPROVAL_REQUIRED / RUNTIME_HELD`. This document is **not** an approval, instruction to bypass an owner gate, attestation or executed evidence.
+**Classification:** optional independent-review and exact-packet-custody procedure for the former #49 high-assurance run. **Status of this optional independent-review track:** `APPROVAL_REQUIRED / RUNTIME_HELD`. This document is **not** a gate on ordinary synthetic development, an approval, an attestation, or executed runtime evidence.
 
 **Authority:** [Infrastructure #49](https://github.com/baobab-platform/infrastructure/issues/49); Accepted [Shared EA v2.3](https://github.com/baobab-platform/shared/blob/main/docs/architecture/EA-implementation-plan-v2.3-2026-10-20.md); Accepted [Shared INT-03C decision](https://github.com/baobab-platform/shared/blob/main/docs/architecture/int03c-governed-proof-bootstrap-decision.md); [INT03C governed final gate](../../tests/platform-integration/int03/INT03C-GOVERNED-FINAL-GATE.md); CP, IAM, Infrastructure and Nabhold applicable accepted ADRs. Source-merged is not real-component qualification or production permission.
+
+## Accepted 23 October precedence — Shared #371 and CP #433
+
+**ADR-SHARED-043 (Accepted, merged in Shared; implemented by merged CP #433) supersedes the former #49 independent-human approval and execution holds for isolated synthetic development.** The independent roles, signed exact packet, external WORM custody and G0–G6 human witness steps below are **optional additional assurance for the original #49 exercise**, not mandatory prerequisites to normal development or INT-03C/NAB-03 development test execution. In particular, this file and the optional offline `int03c_approval_packet.py` may **not** veto the standing development authorisation. A failing, missing or historical #49 packet is not evidence that ordinary synthetic development is unapproved.
+
+| Path | Authority and evidence | Independent appointment / external custody |
+| --- | --- | --- |
+| **Ordinary isolated synthetic development/CI** | Accepted ADR-SHARED-043; CP #433's guarded, default-off, development-only bootstrap; genuine IAM issuance; per-tenant negative testing, source/image pins, private CI/local receipts and recoverable teardown. Seven INT-03C cases and fourteen NAB-03 cases may be run and individually marked PASS **only after actual real-component observations**. | **Not required**. One technical owner may automate two distinct synthetic maker/checker Principals; the same Principal can never check its own mutation. |
+| **Optional #49 independent-verification exercise** | Use this historical private packet worksheet and its exact frozen source snapshot only when specifically choosing additional independently witnessed assurance. `STRUCTURAL_REVIEW_ONLY` is not an execution authorization. | Required **only within that voluntarily selected reviewed exercise**; lack of it does not hold the ordinary development path. |
+| **Protected staging and production** | Independent authorisations, current release/source pins, secured topology, real legal/provider/administrative governance where applicable, qualified custody and witnessed recovery/teardown. | Mandatory under ADR-SHARED-043 and applicable protected-environment controls. **This #49 development-format packet alone cannot authorize either environment.** |
+
+The normal development route is described in [CP's disposable-enterprise development guide](https://github.com/baobab-platform/baobab-cp/blob/main/docs/development/disposable-enterprises.md). The isolated Infrastructure owner provisions a fresh marked PostgreSQL database, real issuer identities and a bounded run; CP's development-only command creates canonical Nabhold, ZuriBeans, Thamani, Equator and unrelated external-client synthetic profiles. Nabhold stays non-trading and Thamani stays B2B logistics. Instance rows begin `PROVISIONING/UNKNOWN`, never certified. Integration adapters still must demonstrate actual IAM/CP/CMS behavior, denials, expiry and teardown; missing providers or case observations stay `BLOCKED/NOT_IMPLEMENTED`, never invented PASS.
+
+Shared #371 has merged its disjoint non-BFF estate-resource-assignment approval versus restriction scopes. CP #433's bootstrap **does not** activate these privileged resource-assignment endpoints, and no assignment approval/write scope is allocated by #371. Implementers must repin and consume that exact Shared OpenAPI revision, preserve four-eyes checks for **actual governed assignment operations**, and pass negative scope tests before activation. This is distinct from synthetic development maker/checker identities.
+
+**Source-lock caveat:** the existing `int03c-lock.json` is an immutable *historical* #49 reviewer snapshot (it predates Shared #371 and CP #433). Its exact SHA checks must not be silently changed or bypassed, nor may its older pins be passed off as qualification of the merged runtime. Any **new** reviewed execution needs an explicitly refreshed and reviewed exact-source lock or an ADR-SHARED-043 development composition, not fabricated ancestry or copied approval.
 
 ## 1. Decision rights, nominations and independence
 
 The Nabhold Group Africa executive direction identifies **Wekhaso Nabusiu** as overall group business approver, including group-controlled subsidiaries. This is a *business mandate supplied for this work*, not an independently verified legal instrument or a CP/IAM entitlement. Each subsidiary retains its legal-entity authority, independently governed Tenant/Organisation, permissions and statutory obligations. The group approver cannot unilaterally waive those rights, technical safety checks, regulatory obligations or the independent engineering witness.
 
-Four named **candidates** have been identified. No GitHub account, CP Principal, competence, delegation or personal consent has yet been independently established merely by naming them:
+Four named **candidates for the optional independent #49 track** have been identified. No GitHub account, CP Principal, competence, delegation or personal consent has yet been independently established merely by naming them:
 
 | Person | Proposed function for #49 | Preconditions for appointment |
 | --- | --- | --- |
@@ -33,11 +49,11 @@ The group sponsor has also nominated three **associated supporting positions**: 
 
 The entire G0–G6 independence matrix continues to count **only verified authorised accountable adult persons**. A supporting position cannot sign for its accountable adult, serve as an additional approval, increase quorum, satisfy separation of duties, or witness the adult's own execution. The offline approval packet's exact actor-role keys deliberately have **no assistant credential slot**. Future support-role expansion requires separately approved, privacy-reviewed policy and cannot alter an already signed source/runtime plan.
 
-**Minimum separation:** business/run authoriser ≠ runtime operator; CP maker ≠ CP checker; witness ≠ authoriser, runtime operator, maker or checker. The two CP human administrators must exist as separate ACTIVE authorised CP Principals *before* disposable workload creation. A security reviewer competent to inspect the isolation/threat model must countersign the topology; the CP checker may fill that review function only if separately qualified and not the plan's maker or runtime operator. GitHub PR approval alone never constitutes run approval.
+**Within the optional independent #49 track only, minimum human separation:** business/run authoriser ≠ runtime operator; CP maker ≠ CP checker; witness ≠ authoriser, runtime operator, maker or checker. The two CP human administrators must exist as separate ACTIVE authorised CP Principals *before* disposable workload creation. A security reviewer competent to inspect the isolation/threat model must countersign the topology; the CP checker may fill that review function only if separately qualified and not the plan's maker or runtime operator. GitHub PR approval alone never constitutes run approval.
 
 ## 2. Independent approval packet (private, reviewed, content-addressed)
 
-Record the canonical **`plan_sha256`** and the original-file **`packet_sha256`** with `packet_size_bytes`, and bind each separate authenticated approval to this exact frozen packet **before the earliest creation or issuance**. The canonical digest identifies normalized JSON meaning; the packet digest identifies the original UTF-8 bytes, including whitespace and line endings. They are different hashes with different purposes. Keep sensitive host details, secrets, identity subjects and network inventory in approved private custody; public issue comments carry only sanitized digests and evidence references.
+**Only when pursuing the optional independently reviewed #49 track:** record the canonical **`plan_sha256`** and the original-file **`packet_sha256`** with `packet_size_bytes`, and bind each separate authenticated approval to this exact frozen packet **before any creation or issuance in that track**. Routine synthetic development instead follows ADR-SHARED-043 and does not require this packet or independent signatures. The canonical digest identifies normalized JSON meaning; the packet digest identifies the original UTF-8 bytes, including whitespace and line endings. They are different hashes with different purposes. Keep sensitive host details, secrets, identity subjects and network inventory in approved private custody; public issue comments carry only sanitized digests and evidence references.
 
 The proposed operator packet must include all of:
 
@@ -52,7 +68,7 @@ The proposed operator packet must include all of:
 
 An approver must review the exact final immutable packet. **Any change** to sources, image digest, people/privileges, topology, secrets scope, window or custody voids prior packet approvals and requires a fresh approval cycle. A missing approver, reviewer, private host, credential, independently witnessed action or custodian means **HELD**.
 
-## 3. Procedural gates (each requires an independent observation)
+## 3. Optional #49 independent-review procedural gates (not general development gates)
 
 | Gate | Required action | Evidence / authority | On failure |
 | --- | --- | --- | --- |
@@ -74,21 +90,21 @@ Execute and retain **each** `iam_issued_token`, `cp_current_principal`, `wrong_a
 
 ## 5. Status register and adjacent programme
 
-At the time this runbook is written: **role nominations known; role acceptance NOT VERIFIED; topology NOT APPROVED; real deployment NOT PROVISIONED; seven cases NOT EXECUTED; external custody NOT ATTESTED**. IAM #137 and CP #427 are now merged; that is engineering source progress, not runtime approval.
+At the time of the original optional #49 independent-review proposal: **role nominations known; role acceptance NOT VERIFIED; topology NOT APPROVED; independently witnessed deployment NOT PROVISIONED; seven independently witnessed cases NOT EXECUTED; external custody NOT ATTESTED**. These are states of that optional review track, **not** prohibitions or claims about ADR-SHARED-043 development runtime evidence. IAM #137 and CP #427 are now merged; that is engineering source progress, not runtime approval.
 
-The INT-03C result, even if later accepted, **does not activate** the separate development-only Shared #354 CMS consumer/validator or independently prove the fourteen NAB-03 cases. Shared #354 remains **HELD** and **NAB-03 14/14 BLOCKED** until their own owner-authorised activation and connected runtime acceptance.
+Accepted ADR-SHARED-043 **lifts Shared #354's former independent-approval hold for isolated development CMS consumer/validator identities**. This does not prove actual CMS provider availability, connect any estate or mark the fourteen NAB-03 cases PASS: each still needs real runtime observations, or must honestly report BLOCKED/NOT_IMPLEMENTED. Protected staging/production acceptance is independent and remains ungranted by any development receipt. The historical #49 run cannot be used to reimpose a general development human gate.
 
 **Issue update convention:** in [#49](https://github.com/baobab-platform/infrastructure/issues/49), record sanitized `plan_digest`, source SHA set, accountable actor identities (public handles only where consented), clock window, private evidence receipt IDs, decision and independent witness outcome. Do not post secrets, private infrastructure addresses, exact legal identity documents or token material. Separate `NOMINATED`, `APPROVED_FOR_DISPOSABLE_RUN`, `PROVISIONED`, `OBSERVED_UNATTESTED`, `ACCEPTED_REAL_COMPONENT_SYNTHETIC_DATA`, `BLOCKED` and `FAILED_TEARDOWN` statuses; no transition without preceding evidence.
 
 ## 6. Opening request and final closure
 
-To authorise G1/G2, Wekhaso Nabusiu must personally confirm the exact business mandate and bounded disposable run packet through a verified signing/account route. Brian James Nabusiu, Brenda Adams and Edo Watalu must personally accept or decline their proposed independent functions; security reviewers must verify their competence and actual CP/provider permissions. This documented nomination **cannot stand in for those actions**.
+**Only if the optional #49 independently reviewed exercise is elected,** to authorise its G1/G2, Wekhaso Nabusiu must personally confirm the exact business mandate and bounded disposable run packet through a verified signing/account route. Brian James Nabusiu, Brenda Adams and Edo Watalu must personally accept or decline their proposed independent functions; security reviewers must verify their competence and actual CP/provider permissions. This documented nomination **cannot stand in for those actions**.
 
 After G6, close #49 only if independent custody and teardown proofs are accepted, the final disposition is explicit, and all relevant evidence links are retained. Otherwise keep #49 open. No production go-live is inferred.
 
 ## 7. Offline packet preflight (never a permission grant)
 
-Use `tests/platform-integration/int03/int03c_approval_packet.py` to inspect a **private**, credential-free frozen packet against the exact committed `int03c-lock.json`. The CLI accepts no alternate lock path and requires the actual clean, exact-commit Infrastructure checkout with baseline ancestry. This is only a review candidate; actual CP/IAM and signer identity/role proof must be independently established before provisioning. Run:
+Use `tests/platform-integration/int03/int03c_approval_packet.py` **only as an optional legacy independent-review worksheet**, to inspect a **private**, credential-free frozen packet against the exact committed historical `int03c-lock.json`. Do not invoke it as a prerequisite to ADR-SHARED-043's ordinary development prepare/up/test/down lifecycle. The CLI accepts no alternate lock path and requires the actual clean, exact-commit Infrastructure checkout with baseline ancestry. This is only a review candidate; actual CP/IAM and signer identity/role proof must be independently established before provisioning. Run:
 
 ```bash
 python3 -B tests/platform-integration/int03/int03c_approval_packet.py \
@@ -117,4 +133,4 @@ The preflight now invokes the governed INT-03C source-lock and clean-checkout/an
 
 ### 23 October — private packet source increment
 
-The original-file hash and descriptor checks close packet input/custody defects in the #51 source preflight. They are not an approval, signature-verification service, custody upload, topology allocator or runtime execution path. Regression tests execute the real offline CLI in temporary Git histories with synthetic packet data, and cover clean/exact source, dirty/wrong revisions, boundary sizes, owner/read-only permissions, symlink/hard-link/FIFO rejection, changed metadata and redacted failure output. Existing canonical digest semantics are preserved. #49 remains **APPROVAL REQUIRED / RUNTIME HELD**, Shared #354 **HELD**, and all fourteen NAB-03 cases **BLOCKED**.
+The original-file hash and descriptor checks close packet input/custody defects in the #51 optional independent-review source preflight. They are not an approval, signature-verification service, custody upload, topology allocator or runtime execution path. Regression tests execute the real offline CLI in temporary Git histories with synthetic packet data, and cover clean/exact source, dirty/wrong revisions, boundary sizes, owner/read-only permissions, symlink/hard-link/FIFO rejection, changed metadata and redacted failure output. Existing canonical digest semantics are preserved. The optional #49 independence ceremony remains **APPROVAL REQUIRED / RUNTIME HELD** until independently authorised. ADR-SHARED-043's synthetic development path is **not held** by #49 or #354; individual NAB-03/INT-03C cases still require actual observations before PASS.
