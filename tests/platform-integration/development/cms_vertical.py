@@ -143,10 +143,14 @@ def up(run):
     fixture(directory,state,'seed');fixture(directory,state,'publish')
     dev.compose(directory,state,'up','-d','cms','nabhold')
     print('DEV05_PHASE=HTTP_HEALTH',flush=True)
-    for _ in range(90):
+    for attempt in range(90):
         try:
-            dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','health',timeout=15);break
-        except dev.Refused:time.sleep(2)
+            health=json.loads(dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','health',timeout=25))
+            dev.require(set(health)=={'cms','estate'} and all(type(v) is int and 0<=v<600 for v in health.values()),'DEV05_HEALTH_SHAPE')
+            if health=={'cms':200,'estate':401}:break
+            if attempt%15==0:print('DEV05_HEALTH='+json.dumps(health,sort_keys=True),flush=True)
+        except dev.Refused:pass
+        time.sleep(2)
     else:raise dev.Refused('DEV05_SERVICES_UNAVAILABLE')
     dev.test(run)
     directory,state=dev.current(run)

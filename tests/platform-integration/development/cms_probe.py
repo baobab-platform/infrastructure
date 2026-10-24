@@ -126,12 +126,16 @@ def main(action):
         clients()
         return
     if action=='health':
-        p.require(p.request('GET',CMS+'/api/health/live')[0]==200)
-        p.require(p.request('GET',ESTATE+'/api/auth/session',timeout=15)[0]==401);return
-    value=report();current='published-home-nav-footer'
+        result={'cms':0,'estate':0}
+        for name,url in [('cms',CMS+'/api/health/live'),('estate',ESTATE+'/api/auth/session')]:
+            try:result[name]=p.request('GET',url,timeout=10)[0]
+            except (OSError,ValueError):pass
+        print(json.dumps(result));return
+    value=report();current={'initial':'published-home-nav-footer','draft':'draft-or-preview','withdraw':'withdrawn-content',
+        'outage':'dependency-outage-and-restoration','restored':'dependency-outage-and-restoration','finish':'disabled-caller'}.get(action,'published-home-nav-footer')
     def record(case,ok):
         nonlocal current
-        current=case;p.require(ok,'DEV05_ASSERTION_FAILED');value['cases'][case]={'result':'PASS','reason':'OBSERVED'};checkpoint(value)
+        current=case;ok=ok() if callable(ok) else ok;p.require(ok,'DEV05_ASSERTION_FAILED');value['cases'][case]={'result':'PASS','reason':'OBSERVED'};checkpoint(value)
     try:
         native,bootstrap,own=config()
         if action=='initial':
@@ -156,39 +160,43 @@ def main(action):
                 p.require(p.request('GET',ESTATE+'/',timeout=30)[0]>=500)
             else:
                 p.require(code==200 and decision.get('invocation') and p.request('GET',ESTATE+'/',timeout=30)[0]==200)
-                record('published-home-nav-footer',True)
+                record('published-home-nav-footer',lambda:True)
                 # A separate real tenant/context lacking this grant is the
                 # control. An unknown capability is not a missing-grant proof.
                 other=next(e for e in bootstrap['enterprises'] if e['key']=='zuribeans')
                 separate=p.token(other['client_id'],native);code,otherctx,_=p.context(separate,other);p.require(code==200)
                 code,denied,_=p.request('POST',p.CP+'/v1/capabilities/resolve',{'context_id':otherctx['context_id'],
                     'capability_key':'content.entry.resolve','required_contract_version':1,'correlation_id':str(uuid.uuid4())},separate)
-                record('missing-grant',code==200 and denied.get('decision')=='DENIED' and denied.get('reason_code')=='GRANT_NOT_FOUND' and not denied.get('invocation'))
-            record('wrong-audience-token',deny(resolve(cp_token,ctx['context_id']),'AUTHENTICATION_REQUIRED',401))
-            record('wrong-credential',deny(resolve('invalid-credential',ctx['context_id']),'AUTHENTICATION_REQUIRED',401))
+                record('missing-grant',lambda:code==200 and denied.get('decision')=='DENIED' and denied.get('reason_code')=='GRANT_NOT_FOUND' and not denied.get('invocation'))
+            record('wrong-audience-token',lambda:deny(resolve(cp_token,ctx['context_id']),'AUTHENTICATION_REQUIRED',401))
+            record('wrong-credential',lambda:deny(resolve('invalid-credential',ctx['context_id']),'AUTHENTICATION_REQUIRED',401))
             # Actual short lifespan, not an edited signed token.
+            current='expired-caller-token'
             cfg=native['clients'][CONSUMER]['config'];short=dict(cfg,client_credentials_grant_access_token_lifespan='2s')
             p.require(p.api('PUT','/admin/clients/'+CONSUMER,short)[0]==200)
             expired=token();p.require(p.api('PUT','/admin/clients/'+CONSUMER,cfg)[0]==200)
             delay=p.claims(expired)['exp']-time.time()+1;p.require(0<delay<10);time.sleep(delay)
-            record('expired-caller-token',deny(resolve(expired,ctx['context_id']),'AUTHENTICATION_REQUIRED',401))
+            record('expired-caller-token',lambda:deny(resolve(expired,ctx['context_id']),'AUTHENTICATION_REQUIRED',401))
+            current='revoked-caller-token'
             revoked=token();p.require(published(resolve(revoked,ctx['context_id']),'home'))
             p.require(p.request('POST',p.ISSUER+'/oauth2/revoke',{'token':revoked,'client_id':CONSUMER,'client_secret':native['clients'][CONSUMER]['secret']},form=True)[0]==200)
             code,actual,_=status(revoked);p.require(code==200 and actual['active'] is False)
-            record('revoked-caller-token',deny(resolve(revoked,ctx['context_id']),'AUTHENTICATION_REQUIRED',401) and p.claims(revoked)['exp']>time.time())
+            record('revoked-caller-token',lambda:deny(resolve(revoked,ctx['context_id']),'AUTHENTICATION_REQUIRED',401) and p.claims(revoked)['exp']>time.time())
             value['component_checks']['revoked_before_expiry']=True
             fresh=token();p.require(published(resolve(fresh,ctx['context_id']),'home'));value['component_checks']['fresh_after_revoke']=True
+            current='wrong-owner-or-context'
             other=next(e for e in bootstrap['enterprises'] if e['key']=='zuribeans');neighbor_token=p.token(other['client_id'],native)
             code,neighbor,_=p.context(neighbor_token,other);p.require(code==200)
-            record('wrong-owner-or-context',deny(resolve(fresh,neighbor['context_id']),'CONTENT_CONTEXT_REJECTED',403))
-            record('neighbour-tenant',deny(resolve(fresh,ctx['context_id'],tenant=other['tenant_id']),'CONTENT_CONTEXT_REJECTED',403))
+            record('wrong-owner-or-context',lambda:deny(resolve(fresh,neighbor['context_id']),'CONTENT_CONTEXT_REJECTED',403))
+            record('neighbour-tenant',lambda:deny(resolve(fresh,ctx['context_id'],tenant=other['tenant_id']),'CONTENT_CONTEXT_REJECTED',403))
+            current='validator-negatives'
             code,actual,_=p.request('POST',p.CP+'/v1/platform-context/validate',{'context_id':ctx['context_id'],'subject_token':'invalid.subject.bearer'},validator)
-            record('validator-negatives',code==401 and actual.get('code')=='SUBJECT_TOKEN_INVALID' and deny(resolve(fresh,str(uuid.uuid4())),'CONTENT_CONTEXT_REJECTED',403))
+            record('validator-negatives',lambda:code==401 and actual.get('code')=='SUBJECT_TOKEN_INVALID' and deny(resolve(fresh,str(uuid.uuid4())),'CONTENT_CONTEXT_REJECTED',403))
         elif action=='draft':
             _,ctx=context();bearer=token()
-            record('draft-or-preview',deny(resolve(bearer,ctx['context_id'],preview=True),'CONTENT_PREVIEW_NOT_PERMITTED',403) and empty(resolve(bearer,ctx['context_id'])))
+            record('draft-or-preview',lambda:deny(resolve(bearer,ctx['context_id'],preview=True),'CONTENT_PREVIEW_NOT_PERMITTED',403) and empty(resolve(bearer,ctx['context_id'])))
         elif action=='withdraw':
-            _,ctx=context();record('withdrawn-content',empty(resolve(token(),ctx['context_id'])))
+            _,ctx=context();record('withdrawn-content',lambda:empty(resolve(token(),ctx['context_id'])))
         elif action=='outage':
             # Keep a prior, genuinely CP-issued context privately across outage.
             ctx=p.read('cms-last-context.json') if (p.ROOT/'cms-last-context.json').exists() else None
@@ -196,13 +204,13 @@ def main(action):
             result=resolve(token(),ctx['context_id']);p.require(deny(result,'CONTENT_CONTEXT_UNAVAILABLE',503));value['component_checks']['cp_outage_observed']=True;checkpoint(value)
         elif action=='restored':
             p.require(value['component_checks'].get('cp_outage_observed') is True)
-            _,ctx=context();record('dependency-outage-and-restoration',published(resolve(token(),ctx['context_id']),'home'))
+            _,ctx=context();record('dependency-outage-and-restoration',lambda:published(resolve(token(),ctx['context_id']),'home'))
             value['component_checks']['provider_outage_restored']=True
         elif action=='finish':
             _,ctx=context();bearer=token();p.require(published(resolve(bearer,ctx['context_id']),'home'))
             p.require(p.api('DELETE','/admin/clients/'+CONSUMER)[0]==204 and p.api('GET','/admin/clients/'+CONSUMER)[0]==404)
             code,actual,_=status(bearer);p.require(code==200 and actual['active'] is False)
-            record('disabled-caller',deny(resolve(bearer,ctx['context_id']),'AUTHENTICATION_REQUIRED',401) and p.claims(bearer)['exp']>time.time())
+            record('disabled-caller',lambda:deny(resolve(bearer,ctx['context_id']),'AUTHENTICATION_REQUIRED',401) and p.claims(bearer)['exp']>time.time())
             for name in (VALIDATOR,BFF):p.require(p.api('DELETE','/admin/clients/'+name)[0]==204 and p.api('GET','/admin/clients/'+name)[0]==404)
             value['component_checks']['native_clients_deleted']=True;value['component_checks']['native_tokens_inactive']=True
             value['cases']['teardown']={'result':'BLOCKED','reason':'TEARDOWN_PENDING'}

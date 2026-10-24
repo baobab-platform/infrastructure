@@ -1,5 +1,8 @@
 """Source failure contracts only; these results never qualify NAB-03."""
 import copy
+import importlib
+import json
+from types import SimpleNamespace
 import tempfile
 from pathlib import Path
 import unittest
@@ -41,5 +44,18 @@ class CMSContracts(unittest.TestCase):
             self.assertFalse(directory.exists());self.assertFalse(receipt['nab03_qualified'])
             self.assertEqual(receipt['cms']['cases']['teardown']['result'],'PASS')
             self.assertFalse(receipt['protected_acceptance'])
+
+    def test_outage_failure_is_attributed_without_overwriting_publication(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);report=cms_contract.fresh('a'*32)
+            report['cases']['published-home-nav-footer'].update(result='BLOCKED',reason='PROVIDER_NOT_ELIGIBLE')
+            (root/'cms-report.json').write_text(json.dumps(report))
+            with patch.object(probe.p,'ROOT',root),patch.object(probe,'config',return_value=({}, {}, {})):
+                with self.assertRaises(SystemExit):probe.main('outage')
+            retained=json.loads((root/'cms-report.json').read_text())
+            self.assertEqual(retained['cases']['published-home-nav-footer'],report['cases']['published-home-nav-footer'])
+            self.assertEqual(retained['cases']['dependency-outage-and-restoration']['result'],'FAIL')
 
 if __name__=='__main__':unittest.main()

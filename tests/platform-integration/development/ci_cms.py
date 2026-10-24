@@ -23,6 +23,15 @@ def main():
     receipt=dev.read(path);cms_contract.validate(receipt['cms'],run)
     dev.require(receipt['teardown_verified'] and not dev.resources(run) and not dev.run_dir(run).exists(),'DEV05_TEARDOWN_REQUIRED')
     dev.require(not any(r['result']=='FAIL' for r in receipt['cms']['cases'].values()),'DEV05_CASE_FAILED')
+    runtime=receipt['cms']
+    allowed_blocked={'published-home-nav-footer','missing-grant'}
+    dev.require(all(row['result']=='PASS' or (name in allowed_blocked and row['reason'] in
+        {'PROVIDER_NOT_ELIGIBLE','CANONICAL_CAPABILITY_NOT_RESOLVED'}) for name,row in runtime['cases'].items()),'DEV05_UNEXECUTED_CASE')
+    required={'native_cms_published_home_navigation_footer','native_bff_login_session','native_bff_logout_custody',
+        'bff_token_free_session','bff_secure_opaque_cookie','cp_validator_subject_accepted','revoked_before_expiry',
+        'fresh_after_revoke','cp_outage_observed','provider_outage_restored','native_clients_deleted','native_tokens_inactive',
+        'private_state_absent','owned_resources_absent'}
+    dev.require(all(runtime['component_checks'].get(key) is True for key in required),'DEV05_COMPONENT_OBSERVATIONS_INCOMPLETE')
     # BLOCKED is a successful observation of unavailable authority, never a gate
     # PASS. CI may verify this expected condition while nab03_qualified is false.
     dev.write(dev.EVIDENCE/'dev05-cms-suite.json',receipt)
