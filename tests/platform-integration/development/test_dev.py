@@ -30,7 +30,7 @@ class LifecycleTests(unittest.TestCase):
                      'environment': 'development', 'deadline': int(time.time()) + 600,
                      'harness_sha': 'b' * 40, 'sources': dev.load_lock()['sources'],
                      'lock_sha256': 'c' * 64, 'image_ids': {}, 'images': {}, 'tests': False,
-                     'secrets': {'cp_db': 'private-cp', 'iam_db': 'private-iam', 'admin': 'private-admin', 'hook': 'a'*64, 'introspection':'b'*64}}
+                     'secrets': {'cp_db': 'private-cp', 'iam_db': 'private-iam', 'admin': 'private-admin', 'hook': 'a'*64, 'introspection':'b'*64, 'verifier':'c'*64}}
         self.addCleanup(patch.stopall)
         patch.object(dev, 'STATE', self.state).start()
         patch.object(dev, 'EVIDENCE', self.evidence).start()

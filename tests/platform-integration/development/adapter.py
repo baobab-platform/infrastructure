@@ -26,7 +26,11 @@ def unique_transport_lists(raw):
 def configure(directory, state):
     """Derive isolated transport/secret overlays from exact IAM-owned configs."""
     source=directory/'sources/baobab-iam/config/ory'
-    (directory/'introspection.htpasswd').write_text('baobab-dev-introspection:{SHA}'+base64.b64encode(hashlib.sha1(state['secrets']['introspection'].encode()).digest()).decode()+'\n')
+    credentials = {'baobab-dev-introspection': state['secrets']['introspection'],
+                   'baobab-int03c-issuer-verifier': state['secrets']['verifier']}
+    (directory/'introspection.htpasswd').write_text(''.join(
+        name + ':{SHA}' + base64.b64encode(hashlib.sha1(secret.encode()).digest()).decode() + '\n'
+        for name, secret in credentials.items()))
     hydra=(source/'hydra/hydra.yml').read_text().replace('http://127.0.0.1:4444',ISSUER).replace('http://127.0.0.1:3000','https://rp.baobab-dev.test')
     hydra=hydra.replace('local_dev_only_hydra_system_secret_change_me',state['secrets']['admin']).replace('local_dev_only_pairwise_salt_change_me',state['secrets']['hook'])
     hydra=hydra.replace('  access_token: jwt','  access_token: jwt\n  jwt:\n    scope_claim: string')
@@ -60,7 +64,7 @@ def composition(state,directory,images,namespace):
     registry=directory/'sources/shared/contracts/identity/v1/workload-registry.yaml'
     services['cp']={'image':state['images']['cp'],'pull_policy':'never','environment':cp_env,'volumes':[tls+':/tls:ro',host(registry)+':/registry.yaml:ro']}
     services['edge']={'image':images['edge'],'read_only':True,'tmpfs':['/tmp'],'volumes':[host(directory/'nginx.conf')+':/etc/nginx/nginx.conf:ro',host(directory/'introspection.htpasswd')+':/etc/nginx/introspection.htpasswd:ro',tls+':/tls:ro'],'networks':{'lab':{'aliases':['hydra.int03.test','cp.baobab-dev.test','kratos.baobab-dev.test','rp.baobab-dev.test']}}}
-    services['probe']={'image':images['probe'],'user':f'{state["uid"]}:{state["gid"]}','command':['python','/probe.py','serve'],'environment':{'DEV01_RUN_ID':run,'DEV03_HOOK_KEY':secret['hook'],'DEV03_INTROSPECTION_SECRET':secret['introspection']},'volumes':[host(directory)+':/run/dev01',tls+':/tls:ro',host(Path(__file__).parent/'probe.py')+':/probe.py:ro']}
+    services['probe']={'image':images['probe'],'user':f'{state["uid"]}:{state["gid"]}','command':['python','/probe.py','serve'],'environment':{'DEV01_RUN_ID':run,'DEV03_HOOK_KEY':secret['hook'],'DEV03_INTROSPECTION_SECRET':secret['introspection'],'DEV04_VERIFIER_SECRET':secret['verifier']},'volumes':[host(directory)+':/run/dev01',tls+':/tls:ro',*[host(Path(__file__).parent/name)+':/'+name+':ro' for name in ('probe.py','int03c_probe.py','int03c_contract.py')]]}
     for service in services.values(): service.update(labels=labels,restart='no');service.setdefault('networks',['lab'])
     return {'name':state['project'],'services':services,'networks':{'lab':{'internal':True,'labels':labels}},'volumes':{name:{'labels':labels} for name in ('cp-data','hydra-data','kratos-data')}}
 

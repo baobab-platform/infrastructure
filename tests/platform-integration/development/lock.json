@@ -2,10 +2,10 @@
   "schema": "infrastructure.development-lifecycle.v1",
   "profile": "iam-cp-development",
   "authority": "ADR-SHARED-043",
-  "infrastructure_baseline": "631e59dc0787f81bec0fed3516a97572e825d949",
+  "infrastructure_baseline": "ed2fd8ddb6e98edc29820b3e79165b234695876f",
   "sources": {
-    "shared": "33b514d690e468fbcce34275705a08a32647d4ad",
-    "baobab-cp": "05964feeed9636a9210cc669395f3481ce841007",
+    "shared": "6ebd5fd258100fe437837869ab2a1248b2df3988",
+    "baobab-cp": "718caedca3b9203931b399464e21b0f64ffbe879",
     "baobab-iam": "0ad103606b9705fcb33c468ea01b54d8ce76f9ae"
   },
   "images": {

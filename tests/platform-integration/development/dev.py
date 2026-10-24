@@ -21,6 +21,7 @@ import time
 
 sys.dont_write_bytecode = True
 import adapter
+import int03c_contract
 
 BASE = Path(__file__).resolve().parent
 ROOT = BASE.parents[2]
@@ -234,7 +235,7 @@ def prepare(lease=3600):
             'deadline': int(time.time()) + lease, 'lease_seconds': lease, 'harness_sha': source_identity(),
             'lock_sha256': hashlib.sha256((BASE / 'lock.json').read_bytes()).hexdigest(),
             'sources': lock['sources'], 'runtime_images': lock['images'],
-            'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin', 'hook', 'introspection')},
+            'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin', 'hook', 'introspection', 'verifier')},
             'images': {}, 'image_ids': {}, 'tests': False}
     # Durable recovery identity exists BEFORE a clone, build or Docker mutation.
     persist(directory, data, 'PREPARING')
@@ -255,10 +256,12 @@ def prepare(lease=3600):
             require(call(['git', '-C', str(target), 'rev-parse', 'HEAD']) == sha, 'SOURCE_CHECKOUT_MISMATCH')
         cp = source_root / 'baobab-cp'
         shared = source_root / 'shared'
+        data['contract_hashes'] = {}
         for path in ('development/v1/enterprise-profiles.schema.json', 'development/v1/examples/nabhold-group.json',
                      'identity/v1/workload-registry.yaml'):
             require((cp / 'internal/contracts/shared' / path).read_bytes() ==
                     (shared / 'contracts' / path).read_bytes(), 'EMBEDDED_CONTRACT_DRIFT')
+            data['contract_hashes'][path] = hashlib.sha256((shared / 'contracts' / path).read_bytes()).hexdigest()
         tls(directory, data)
         (directory / 'nginx.conf').write_text(adapter.EDGE)
         persist(directory, data, 'PREPARED')
@@ -486,6 +489,31 @@ def qualify(run_id):
     return report
 
 
+
+def qualify_int03c(run_id):
+    directory, state = current(run_id)
+    verify_sources(directory, state)
+    require(state['phase'] == 'TESTED' and not state.get('authority'), 'FRESH_TESTED_PROFILE_REQUIRED')
+    # Invalidate persisted success before any subprocess/read. Preserve valid partial
+    # observations on failure, but a prior PASS can never survive a failed retry.
+    state['int03c'] = int03c_contract.fresh(run_id)
+    persist(directory, state, 'TESTED')
+    (directory / 'int03c-report.json').unlink(missing_ok=True)
+    try:
+        compose(directory, state, 'exec', '-T', 'probe', 'python', '/int03c_probe.py', timeout=180)
+    finally:
+        if (directory / 'int03c-report.json').exists():
+            report = read(directory / 'int03c-report.json')
+            int03c_contract.validate(report, run_id)
+            state['int03c'] = report
+            persist(directory, state, 'TESTED')
+    report = state['int03c']
+    require(all(row['result'] == 'PASS' for name, row in report['cases'].items()
+                if name != 'complete-teardown'), 'DEV04_RUNTIME_CASES_INCOMPLETE')
+    require(report['cases']['complete-teardown']['reason'] == 'TEARDOWN_PENDING', 'DEV04_PROVIDER_TEARDOWN_INCOMPLETE')
+    return report
+
+
 def resources(run_id=None):
     filters = ['--filter', 'label=io.baobab.dev.namespace=' + NAMESPACE]
     if run_id:
@@ -512,6 +540,9 @@ def down(run_id):
         call(['docker', kind, 'rm', *(['-f'] if kind == 'container' else []), resource], timeout=120)
     require(not resources(run_id), 'TEARDOWN_SURVIVORS')
     if state:
+        qualification = state.get('int03c')
+        if qualification:
+            int03c_contract.validate(qualification, run_id)
         report = {'schema': 'infrastructure.dev01.lifecycle.observed.v1', 'run_id': run_id,
                   'harness_sha': state['harness_sha'], 'source_pins': state['sources'],
                   'image_ids': state['image_ids'], 'runtime_images': state.get('runtime_images', {}),
@@ -519,8 +550,23 @@ def down(run_id):
                   'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA' if state['tests'] else 'SOURCE',
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
-                  'authority':state.get('authority'), 'int03c_qualified': False,
+                  'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
+                  'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
+        # Runtime/store/resource removal and private-state destruction precede the
+        # last case and final receipt. Provider absence alone is insufficient.
+        if directory.exists():
+            shutil.rmtree(directory)
+        if qualification:
+            row = qualification['cases']['complete-teardown']
+            for key in ('accepting_runtime_absent', 'owned_resources_absent', 'private_state_absent'):
+                row['assertions'][key] = True
+            if row['reason'] == 'TEARDOWN_PENDING' and all(row['assertions'].values()):
+                row.update(result='PASS', reason='OBSERVED')
+            int03c_contract.validate(qualification, run_id)
+            report['int03c_qualified'] = state['tests'] and all(
+                item['result'] == 'PASS' for item in qualification['cases'].values())
+            report['domain_qualification'] = 'DEV04_INT03C_DEVELOPMENT_ONLY'
         folder = EVIDENCE / ('dev01-' + run_id)
         private_directory(folder)
         pending = folder / '.pending'
@@ -570,7 +616,7 @@ def watch(run_id):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['doctor', 'preflight', 'plan', 'prepare', 'up', 'test',
-                                         'evidence', 'down', 'recover', 'run', 'watch', 'qualify'])
+                                         'evidence', 'down', 'recover', 'run', 'watch', 'qualify', 'qualify-int03c', 'run-int03c'])
     parser.add_argument('--run-id')
     parser.add_argument('--lease-seconds', type=int, default=3600)
     parser.add_argument('--static', action='store_true')
@@ -587,13 +633,16 @@ def main(argv=None):
             recover(args.all)
         elif args.action == 'watch':
             watch(args.run_id)
-        elif args.action == 'run':
+        elif args.action in {'run', 'run-int03c'}:
             run_id = prepare(args.lease_seconds)
             try:
                 with guarded(run_id):
                     up(run_id)
                     test(run_id)
-                    qualify(run_id)
+                    if args.action == 'run-int03c':
+                        qualify_int03c(run_id)
+                    else:
+                        qualify(run_id)
             finally:
                 with guarded(run_id):
                     down(run_id)
@@ -605,6 +654,8 @@ def main(argv=None):
                     up(args.run_id)
                 elif args.action == 'qualify':
                     print(json.dumps(qualify(args.run_id),sort_keys=True))
+                elif args.action == 'qualify-int03c':
+                    print(json.dumps(qualify_int03c(args.run_id), sort_keys=True))
                 elif args.action == 'test':
                     print(json.dumps(test(args.run_id)))
                 elif args.action == 'down':
