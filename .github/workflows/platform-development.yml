@@ -1,4 +1,4 @@
-name: DEV-01 to DEV-05 development qualification
+name: DEV-01 to DEV-06 development qualification
 on:
   pull_request:
     paths:
@@ -94,5 +94,41 @@ jobs:
             tests/platform-integration/evidence/dev03-authority-suite.json
             tests/platform-integration/evidence/dev04-int03c-suite*.json
             tests/platform-integration/evidence/dev05-cms-suite*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  external-api:
+    name: DEV-06 external API-only IAM CP Pulse and zero estates
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned integration CLI
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Start the Codespaces integration container
+        run: tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up --frozen-lockfile --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: Observe real external-client component journey and canonical blockers
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env BAOBAB_ENVIRONMENT=development \
+            python3 -B tests/platform-integration/l4.py run-external development
+      - name: Container recovery
+        if: always()
+        run: tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Independent host recovery
+        if: always()
+        run: python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Retain sanitized completed external receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: dev06-external-api-evidence
+          path: |
+            tests/platform-integration/evidence/dev01-*/completed/*.json
+            tests/platform-integration/evidence/dev06-external-suite*.json
           if-no-files-found: warn
           retention-days: 14
