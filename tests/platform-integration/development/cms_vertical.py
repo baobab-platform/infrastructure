@@ -50,6 +50,18 @@ def package_access(directory,state):
         shutil.rmtree(config)
 
 
+def bff_epoch(run):
+    """Lossless full 128-bit run identity in Nabhold's bounded Redis namespace.
+
+    Nabhold confidential custody accepts an epoch matching
+    ^[a-z][a-z0-9-]{0,31}$. Base32 keeps all bits without truncation.
+    """
+    dev.require(type(run) is str and re.fullmatch(r'[0-9a-f]{32}',run), 'DEV05_RUN_ID_INVALID')
+    epoch='dev'+base64.b32encode(bytes.fromhex(run)).decode('ascii').rstrip('=').lower()
+    dev.require(bool(re.fullmatch(r'[a-z][a-z0-9-]{0,31}',epoch)), 'DEV05_BFF_EPOCH_INVALID')
+    return epoch
+
+
 def lock():
     value=json.loads((BASE/'cms-lock.json').read_text(),object_pairs_hook=dev.unique)
     dev.require(set(value)=={'schema','sources','redis','node','frontend'} and value['schema']=='infrastructure.dev05.sources.v1'
@@ -131,9 +143,7 @@ def up(run):
       'NABHOLD_OIDC_CLIENT_SECRET':secret['bff'],'NABHOLD_OIDC_INTROSPECTION_ENDPOINT':adapter.ISSUER+'/oauth2/introspect/dev05',
       'NABHOLD_OIDC_CP_ORIGIN':'https://cp.baobab-dev.test','NABHOLD_OIDC_TRUST_PROXY':'true',
       'NABHOLD_BFF_STORE_ENABLED':'true','NABHOLD_BFF_STORE_KEYS_JSON':json.dumps({'development':base64.b64encode(bytes.fromhex(secret['session_key'])).decode()}),
-      'NABHOLD_BFF_STORE_ACTIVE_KEY':'development',# The pinned Nabhold confidential store enforces ^[a-z][a-z0-9-]{0,31}$.
-       # Retain 124 run-entropy bits while staying at the 32-character limit.
-       'NABHOLD_BFF_STORE_EPOCH':'d'+run[:31],'NABHOLD_BFF_REDIS_HOST':'redis.baobab-dev.test',
+      'NABHOLD_BFF_STORE_ACTIVE_KEY':'development','NABHOLD_BFF_STORE_EPOCH':bff_epoch(run),'NABHOLD_BFF_REDIS_HOST':'redis.baobab-dev.test',
       'NABHOLD_BFF_REDIS_PORT':'6380','NABHOLD_BFF_REDIS_USERNAME':'nabhold','NABHOLD_BFF_REDIS_PASSWORD':secret['redis'],
       'NABHOLD_BFF_REDIS_CA_PEM':(directory/'tls/ca.pem').read_text(),
       'NABHOLD_CONTENT_SOURCE':'capability','NABHOLD_CONTENT_FALLBACK':'disabled','NABHOLD_CMS_PROOF_ENABLED':'true',
