@@ -87,6 +87,21 @@ def published(result,key):
     return bool(record and record.get('tenant_id')==own['tenant_id'] and record.get('content_key')==key and record.get('publication_state')=='PUBLISHED')
 
 
+def record_failure_class(result, key):
+    """Bounded classification only; never print CMS content, context or IDs."""
+    http, body, _ = result
+    if http != 200:
+        return 'HTTP_DENIED' if http in (400,401,403,404,409,422) else 'HTTP_UNAVAILABLE'
+    if not isinstance(body,dict):return 'INVALID_BODY'
+    record=body.get('record')
+    if record is None:return 'NO_RECORD'
+    if not isinstance(record,dict):return 'INVALID_BODY'
+    if record.get('publication_state')!='PUBLISHED':return 'NOT_PUBLISHED'
+    if record.get('content_key')!=key:return 'WRONG_CONTENT_KEY'
+    if not published(result,key):return 'WRONG_TENANT'
+    return 'UNEXPECTED'
+
+
 def estate_page(expected):
     """Bounded private HTML observation; only booleans enter custody.
 
@@ -186,6 +201,9 @@ def main(action):
             p.require(code==200 and actual['authority_purpose']=='RUNTIME' and actual['organisation_id']==own['organisation_id']);value['component_checks']['cp_validator_subject_accepted']=True
             stage('CMS_RECORDS')
             records=[resolve(bearer,ctx['context_id'],key) for key in ('home','navigation','footer')]
+            for result,key in zip(records,('home','navigation','footer')):
+                if not published(result,key):
+                    print('DEV05_RECORD_DIAGNOSTIC='+key.upper()+'_'+record_failure_class(result,key),flush=True)
             p.require(all(published(result,key) for result,key in zip(records,('home','navigation','footer'))))
             expected=[records[0][1]['record']['data']['headline'],records[2][1]['record']['data']['statement']]
             p.require(all(isinstance(value,str) and value for value in expected))
