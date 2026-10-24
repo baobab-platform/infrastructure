@@ -49,7 +49,7 @@ def read(name): return json.loads((ROOT/name).read_text())
 def request(method,url,data=None,token=None,form=False,basic=None,headers=None,opener=None,timeout=8):
     # Private provider admin planes are the only permitted cleartext origins.
     parsed=urllib.parse.urlsplit(url)
-    require((parsed.scheme=='https' and parsed.hostname in ('hydra.int03.test','kratos.baobab-dev.test','cp.baobab-dev.test','cms.baobab-dev.test','nabhold.baobab-dev.test')) or
+    require((parsed.scheme=='https' and parsed.hostname in ('hydra.int03.test','kratos.baobab-dev.test','cp.baobab-dev.test','cms.baobab-dev.test','nabhold.baobab-dev.test','pulse.baobab-dev.test')) or
             (parsed.scheme=='http' and parsed.netloc in ('hydra:4445','kratos:4434')),'UNTRUSTED_ENDPOINT')
     body=(urllib.parse.urlencode(data).encode() if form else json.dumps(data).encode()) if data is not None else None
     h={'Accept':'application/json',**(headers or {})}
@@ -109,7 +109,7 @@ class Hook(BaseHTTPRequestHandler):
             native=read('native.json');require(client in native['clients'] and session['client_id']==client)
             human=client in ('baobab-dev-human','nabhold-dev-bff');require(grant==(['authorization_code'] if human else ['client_credentials']))
             if human: require(session['id_token']['subject'] in {x['id'] for x in native['humans'].values()})
-            else: require(client in WORKLOADS+('baobab-int03-cms-consumer','baobab-int03-cms-validator') and session['id_token']['subject']==client)
+            else: require(client in WORKLOADS+('baobab-int03-cms-consumer','baobab-int03-cms-validator','baobab-dev-external-api','baobab-dev-pulse-validator') and session['id_token']['subject']==client)
             # Identity normalisation only. No tenant/org/capability/grant claims.
             claims={'actor_type':'human' if human else 'workload','azp':client}
             if human: claims['realm_access']={'roles':['cp:platform-admin']}

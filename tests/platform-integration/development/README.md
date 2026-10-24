@@ -140,3 +140,10 @@ in a fresh run. See [the maintenance and recovery runbook](INT03C.md) for the
 exact seven-case assertions, named verifier permissions, per-case FAIL/BLOCKED
 semantics, evidence custody, source adoption and final teardown ordering.
 Qualification is complete only in the final receipt after host cleanup.
+
+## External API-only profile
+
+DEV-06 uses the same lifecycle with real Pulse/PG17/Qdrant and no CMS or BFF.
+See [INT07.md](INT07.md) for commands, required cases, exact canonical blockers,
+source/image pins, private custody and recovery. Component progress is not
+canonical INT-07 acceptance.
