@@ -14,6 +14,37 @@ import cms_vertical
 import dev
 
 class CMSContracts(unittest.TestCase):
+    def test_issuer_client_readback_uses_native_duration_and_rejects_changed_ttl(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        for changed in (None,probe.CONSUMER,probe.VALIDATOR,probe.BFF):
+            with self.subTest(changed=changed),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp)
+                state={'run_id':'a'*32,'secrets':{key:'private-test-secret' for key in ('cms_consumer','cms_validator','bff')}}
+                created={}
+                def api(method,path,body=None):
+                    name=path.rsplit('/',1)[-1]
+                    if method=='POST':
+                        created[body['client_id']]=copy.deepcopy(body)
+                        return 201,{}
+                    if name not in created:return 404,{}
+                    actual=copy.deepcopy(created[name])
+                    actual['client_credentials_grant_access_token_lifespan']=(
+                        '55s' if name==probe.VALIDATOR else '1m0s')
+                    if name==changed:actual['client_credentials_grant_access_token_lifespan']='1m1s'
+                    return 200,actual
+                with patch.object(probe,'config',return_value=({'clients':{}},{},{})), \
+                     patch.object(probe.p,'read',return_value=state),patch.object(probe.p,'ROOT',root), \
+                     patch.object(probe.p,'api',side_effect=api):
+                    if changed:
+                        with self.assertRaisesRegex(ValueError,'^HYDRA_READBACK$'):probe.clients()
+                        self.assertFalse((root/'native.json').exists())
+                    else:
+                        probe.clients()
+                        self.assertEqual(set(json.loads((root/'native.json').read_text())['clients']),
+                                         {probe.CONSUMER,probe.VALIDATOR,probe.BFF})
+                        self.assertEqual(created[probe.VALIDATOR]['client_credentials_grant_access_token_lifespan'],'55s')
+
     def test_package_access_is_private_scoped_and_removed_on_every_exit(self):
         for failure in ('none','login','build'):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temp:
@@ -171,3 +202,4 @@ class CMSContracts(unittest.TestCase):
             self.assertEqual(retained['cases']['dependency-outage-and-restoration']['result'],'FAIL')
 
 if __name__=='__main__':unittest.main()
+

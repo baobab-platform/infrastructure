@@ -46,11 +46,14 @@ def clients():
           'owner':'baobab-platform/baobab-cms' if name==VALIDATOR else 'baobab-platform/infrastructure'},
           'client_credentials_grant_access_token_lifespan':VALIDATOR_CEILING if name==VALIDATOR else '60s',
           'authorization_code_grant_access_token_lifespan':'120s'}
-        p.require(p.api('GET','/admin/clients/'+name)[0]==404)
-        p.require(p.api('POST','/admin/clients',cfg)[0]==201)
+        p.require(p.api('GET','/admin/clients/'+name)[0]==404,'REFUSE_EXISTING_ISSUER_CLIENT')
+        p.require(p.api('POST','/admin/clients',cfg)[0]==201,'HYDRA_CREATE')
+        # Hydra NullDuration marshals time.Duration.String(): a requested
+        # 60s reads back as 1m0s, while 55s stays 55s. Compare the exact native
+        # representation; never skip or broaden the issuer lifetime check.
         code,actual=p.api('GET','/admin/clients/'+name);p.require(code==200 and actual['metadata']['development_run_id']==state['run_id'] and actual['scope']==scopes
                   and actual.get('client_credentials_grant_access_token_lifespan')==
-                  (VALIDATOR_CEILING if name==VALIDATOR else '60s'))
+                  (VALIDATOR_CEILING if name==VALIDATOR else '1m0s'),'HYDRA_READBACK')
         native['clients'][name]={'secret':secret[key],'config':cfg}
     fd=os.open(p.ROOT/'.native.tmp',os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
     with os.fdopen(fd,'w') as out:json.dump(native,out);out.flush();os.fsync(out.fileno())
@@ -98,7 +101,6 @@ def validator_profile():
     This probe emits only a finite diagnostic class; tokens, subjects and
     timestamps remain private. No claims are fixed, minted or overwritten.
     """
-    cls='UNAVAILABLE'
     try:
         state=p.read('state.json')
         secret=state['secrets']['cms_validator']
@@ -351,3 +353,4 @@ def main(action):
         raise SystemExit('DEV05_PROBE_FAILED') from None
 
 if __name__=='__main__':main(sys.argv[1])
+

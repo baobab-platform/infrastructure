@@ -170,7 +170,9 @@ def up(run):
     dev.write(directory/'compose.json',composition);state['compose_sha256']=hashlib.sha256((directory/'compose.json').read_bytes()).hexdigest();dev.persist(directory,state,'RUNNING')
     print('DEV05_PHASE=PROVIDER_START',flush=True)
     dev.compose(directory,state,'up','-d','--wait','--wait-timeout','120','cms-db','redis','probe','edge',timeout=180)
+    print('DEV05_PHASE=ISSUER_CLIENTS',flush=True)
     dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','clients')
+    print('DEV05_PHASE=CMS_SCHEMA',flush=True)
     dev.compose(directory,state,'exec','-T','cms-db','psql','-U','payload','-d','cms_int03_'+run[:16],'-v','ON_ERROR_STOP=1','-c','CREATE SCHEMA payload AUTHORIZATION payload;')
     print('DEV05_PHASE=CMS_MIGRATIONS',flush=True)
     dev.compose(directory,state,'run','--rm','--no-deps','cms-tool','npm','run','db:migrate',timeout=240)
@@ -255,3 +257,4 @@ def qualify(run):
         if (directory/'cms-report.json').exists():
             report=dev.read(directory/'cms-report.json');cms_contract.validate(report,run);state['cms']=report;dev.persist(directory,state,'TESTED')
     return state['cms']
+

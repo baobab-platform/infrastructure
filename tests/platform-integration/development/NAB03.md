@@ -189,3 +189,11 @@ Actions concurrency is scoped to ref plus exact commit. Each candidate owns a
 fresh runner and nonce-labelled private services; duplicate events for one
 candidate serialize. A superseded setup cannot block execution of its corrected
 revision. No candidate is accepted without its own final checks and teardown.
+
+Hydra v26.2.0 client TTL fields use `x.NullDuration` (`x/sqlx.go`), whose
+JSON serializer calls Go's `time.Duration.String()`. Therefore requested `60s`
+reads back as `1m0s`; the validator's `55s` remains `55s`. Client provisioning
+checks those exact native representations and rejects missing or changed TTLs.
+The `ISSUER_CLIENTS` and `CMS_SCHEMA` phase markers distinguish client readback
+from database preparation without exposing captured commands or provider data.
+
