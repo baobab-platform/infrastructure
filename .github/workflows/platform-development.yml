@@ -17,8 +17,11 @@ on:
 permissions:
   contents: read
   packages: read
+# Every Actions job owns a fresh runner and nonce-labelled private resources.
+# Serialize duplicate events for one candidate, not unrelated source revisions;
+# a stuck superseded devcontainer must not block a corrected development run.
 concurrency:
-  group: dev01-${{ github.ref }}
+  group: dev01-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 jobs:
   source:

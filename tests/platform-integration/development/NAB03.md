@@ -78,3 +78,8 @@ execution and artifact rehash review. Dated assessments and earlier receipts
 remain untouched. Once provider support/real binding are implemented through
 normal owner interfaces, rerun the same inventory; Shared accepts the gate only
 after all original cases, exact-head review/CI and verified cleanup succeed.
+
+Actions concurrency is scoped to ref plus exact commit. Each candidate owns a
+fresh runner and nonce-labelled private services; duplicate events for one
+candidate serialize. A superseded setup cannot block execution of its corrected
+revision. No candidate is accepted without its own final checks and teardown.
