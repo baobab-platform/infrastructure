@@ -20,6 +20,15 @@ class NativeTests(unittest.TestCase):
         for url in (valid.replace(state,'foreign'),valid+'&state='+state,valid+'&code=other',valid+'&error=access_denied',valid+'#fragment',valid.replace('rp.baobab-dev.test','foreign.invalid'),valid.replace('/callback','/foreign')):
             with self.assertRaises(ValueError):self.probe.validate_callback(url,state)
 
+    def test_failure_diagnostics_keep_only_closed_probe_codes(self):
+        import subprocess
+        with patch('subprocess.run',return_value=subprocess.CompletedProcess([],2,'private-body','DEV03_PROVIDER_PROBE_FAILED CP_PROVENANCE_PROPOSE private-secret')):
+            with self.assertRaisesRegex(dev.Refused,'^PROBE_CP_PROVENANCE_PROPOSE$'):
+                dev.call(['docker','exec','owned'])
+        with patch('subprocess.run',return_value=subprocess.CompletedProcess([],2,'','DEV03_PROVIDER_PROBE_FAILED SECRET_VALUE')):
+            with self.assertRaisesRegex(dev.Refused,'^COMMAND_FAILED$'):
+                dev.call(['docker','exec','owned'])
+
     def test_native_planes_and_exact_receipt_obligations(self):
         self.assertEqual(adapter.ISSUER,'https://hydra.int03.test')
         self.assertIn('hydra',dev.load_lock()['images'])

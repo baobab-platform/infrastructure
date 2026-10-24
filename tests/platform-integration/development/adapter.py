@@ -59,6 +59,7 @@ events {}
 http {
  access_log off; error_log /dev/null;
  client_body_temp_path /tmp/client; proxy_temp_path /tmp/proxy;
+ fastcgi_temp_path /tmp/fastcgi; uwsgi_temp_path /tmp/uwsgi; scgi_temp_path /tmp/scgi;
  ssl_protocols TLSv1.3; resolver 127.0.0.11 ipv6=off;
 '''
 for name,upstream in [('hydra.int03.test','hydra:4444'),('kratos.baobab-dev.test','kratos:4433'),('cp.baobab-dev.test','cp:8080')]:

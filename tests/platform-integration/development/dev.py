@@ -122,6 +122,14 @@ def call(args, *, timeout=120, stdin=None, state=None):
                                 ('manifest unknown','IMAGE_UNAVAILABLE'),('invalid config','INVALID_PROVIDER_CONFIGURATION'),
                                 ('field not found','INVALID_PROVIDER_CONFIGURATION'),('permission denied','RUNTIME_PERMISSION_DENIED')):
                 if needle in raw: classification=code;break
+            matched=re.search(r'DEV03_PROVIDER_PROBE_FAILED ([A-Z][A-Z0-9_]{0,80})',result.stderr)
+            known={'NATIVE_PROTOCOL_FAILED','PROVIDER_OBSERVATION_FAILED','KRATOS_CREATE','KRATOS_READBACK',
+                   'HYDRA_CREATE','HYDRA_READBACK','SIGNED_TOKEN_ISSUANCE','REAL_KRATOS_LOGIN','KRATOS_CURRENT_SESSION',
+                   'REAL_AUTHORIZATION_REDIRECT','LOGIN_CHALLENGE_BINDING','CONSENT_BINDING','PKCE_STATE_CALLBACK',
+                   'REAL_SIGNED_HUMAN_TOKEN','REAL_PKCE_MISMATCH_DENIED','CODE_REPLAY_DENIED','CP_PROVENANCE_PROPOSE',
+                   'CP_PROVENANCE_APPROVE','CP_DEACTIVATION_PROPOSE','CP_DISTINCT_CHECKER','REAL_SHORT_LIVED_TOKEN_REQUIRED'}
+            known.update('DEV03_'+name.upper() for name in AUTHORITY_CASES)
+            if matched and matched[1] in known: classification='PROBE_'+matched[1]
             raise Refused(classification)
         return result.stdout.strip()
     except (subprocess.SubprocessError, OSError) as error:
@@ -335,6 +343,17 @@ def up(run_id):
         compose(directory, state, 'up', '-d', 'cp')
         persist(directory, state, 'RUNNING')
     except BaseException:
+        try:
+            logs=compose(directory,state,'logs','--no-color','--tail','40','edge','hydra','kratos','hydra-migrate','kratos-migrate')
+            markers=[]
+            for text,code in (('read-only file system','READ_ONLY_FILESYSTEM'),('unknown flag','PROVIDER_COMMAND_REFUSED'),
+                              ('additional propert','PROVIDER_CONFIG_PROPERTY_REFUSED'),('permission denied','RUNTIME_PERMISSION_DENIED'),
+                              ('connection refused','DEPENDENCY_NOT_READY'),('does not validate','PROVIDER_CONFIG_REFUSED'),
+                              ('error opening config','PROVIDER_CONFIG_UNREADABLE')):
+                if text in logs.lower(): markers.append(code)
+            print('DEV03_STARTUP_CLASSES='+','.join(markers or ['UNCLASSIFIED']),flush=True)
+        except (Refused,OSError):
+            print('DEV03_STARTUP_CLASSES=DIAGNOSTICS_UNAVAILABLE',flush=True)
         down(run_id)
         raise
 
