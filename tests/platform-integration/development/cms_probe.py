@@ -66,7 +66,12 @@ def context():
     code,body,_=p.context(bearer,own);p.require(code==200 and body.get('tenant_id')==own['tenant_id'] and body.get('organisation_id')==own['organisation_id']);return bearer,body
 
 def resolve(bearer,cid,key='home',tenant=None,preview=False):
-    _,bootstrap,own=config();body={'tenant_id':tenant or own['tenant_id'],'content_key':key,
+    _,bootstrap,own=config()
+    # A DIGITAL_ESTATE CMS record is scoped to its CP-issued legal actor as
+    # well as estate, Market, locale and tenant. Do not omit that dimension or
+    # guess a UUID: Shared-043 supplies an exact run-bound synthetic legal ID.
+    body={'tenant_id':tenant or own['tenant_id'],'content_key':key,
+        'legal_entity_id':own['legal_entity_id'],
         'digital_estate_id':own['digital_estate_id'],'market_id':bootstrap['market_ids']['ZA'],'locale':'en-ZA'}
     if preview:body['preview_mode']=True
     return p.request('POST',CMS+'/v1/content/resolve?context_id='+cid,body,bearer)
