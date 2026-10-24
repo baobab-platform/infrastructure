@@ -95,3 +95,35 @@ synthetic parents return ACTOR_NOT_VERIFIED, never verified legal authority.
 The native workflow retains `dev02-fixture-suite.json` only after successful
 recovery and teardown. This is separate from the DEV-01 lifecycle report and
 does not qualify IAM end-to-end, INT-03C, NAB-03 or protected acceptance.
+
+## DEV-03 native authority profile
+
+The selected lifecycle now uses the IAM-owned pinned Hydra/Kratos releases and
+configurations, with isolated transport/secret overlays. Keycloak's historical
+DEV-01 receipts remain historical; its permanent federation allocation is not
+used as a substitute native identity service. Source locks and all runtime
+images remain immutable. No admin API or service port is exposed to the host.
+
+After `test development`, run `qualify development --run-id <run>` once in the
+same private environment. It consumes genuine provider-issued tokens and calls
+actual CP context, capability-resolution and governed provenance/deactivation
+APIs. It mutates only run-owned synthetic identity state, so rerunning requires
+a fresh run. The lifecycle watchdog and `down` still own complete cleanup.
+
+The private protocol driver authenticates a real Kratos password session and
+handles real Hydra login/consent challenges, OAuth authorization code + S256
+PKCE, state binding and code replay. It consumes access tokens verified by CP;
+it is not an estate BFF or an OIDC ID-token consumer. Its authenticated token hook
+normalises only actor/client identity for the closed disposable clients. It is
+not IAM's registered canonical provider hook, does not fabricate CP authority,
+and does not qualify or promote PARTIAL provider support. Issuer roles never
+replace CP's canonical grants, mappings, lease or independent maker/checker.
+
+The exact sixteen-case report includes independently introspected revocation
+while the bearer is unexpired and CP-only deactivation while the issuer still
+reports active. Missing capability grants deny without hand-written bindings.
+Protocol negatives use actual provider transactions, not altered signed claims.
+No token, password, session, auth code, response body or OTP is published. The
+sanitized authority suite is emitted only after verified teardown. DEV-04's
+seven cases, NAB-03, native-provider certification and protected acceptance
+remain false and separately governed.

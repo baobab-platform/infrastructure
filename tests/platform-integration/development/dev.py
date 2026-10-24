@@ -129,7 +129,7 @@ def load_lock():
             and data['max_lease_seconds'] == 3600 and SHA.fullmatch(data['infrastructure_baseline']), 'LOCK_POLICY')
     require(set(data['sources']) == {'shared', 'baobab-cp', 'baobab-iam'}
             and all(isinstance(v, str) and SHA.fullmatch(v) for v in data['sources'].values()), 'SOURCE_PIN_REQUIRED')
-    require(set(data['images']) == {'postgres', 'probe', 'edge'} and all(
+    require(set(data['images']) == {'postgres', 'probe', 'edge', 'hydra', 'kratos'} and all(
         isinstance(v, str) and '@sha256:' in v and DIGEST.fullmatch(v) for v in data['images'].values()), 'IMAGE_DIGEST_REQUIRED')
     check_dockerfile(BASE / 'iam.Dockerfile')
     return data
@@ -156,7 +156,7 @@ def doctor(static=False):
         call(['docker', 'compose', 'version'], timeout=20)
     return {'profile': data['profile'], 'sources': data['sources'], 'services': sorted(adapter.SERVICES),
             'images': data['images'], 'static_only': static, 'protected_acceptance': False,
-            'scope': 'NATIVE_KEYCLOAK_CP_BOOTSTRAP_LIFECYCLE_ONLY',
+            'scope': 'NATIVE_ORY_CP_DEVELOPMENT_AUTHORITY_CHAIN',
             'other_engine_capabilities': 'NOT_STARTED', 'cms_required': False}
 
 
@@ -192,7 +192,7 @@ def tls(directory, state):
         ['req', '-newkey', 'rsa:2048', '-nodes', '-subj', '/CN=baobab-dev.test',
          '-keyout', str(folder / 'edge.key'), '-out', str(directory / 'edge.csr')],
     ]
-    (directory / 'edge.ext').write_text('subjectAltName=DNS:iam.baobab-dev.test,DNS:cp.baobab-dev.test\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n')
+    (directory / 'edge.ext').write_text('subjectAltName=DNS:hydra.int03.test,DNS:kratos.baobab-dev.test,DNS:cp.baobab-dev.test,DNS:rp.baobab-dev.test\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n')
     for command in commands:
         call(['openssl', *command], state=state)
     call(['openssl', 'x509', '-req', '-in', str(directory / 'edge.csr'), '-CA', str(folder / 'ca.pem'),
@@ -217,7 +217,7 @@ def prepare(lease=3600):
             'deadline': int(time.time()) + lease, 'lease_seconds': lease, 'harness_sha': source_identity(),
             'lock_sha256': hashlib.sha256((BASE / 'lock.json').read_bytes()).hexdigest(),
             'sources': lock['sources'], 'runtime_images': lock['images'],
-            'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin')},
+            'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin', 'hook', 'introspection')},
             'images': {}, 'image_ids': {}, 'tests': False}
     # Durable recovery identity exists BEFORE a clone, build or Docker mutation.
     persist(directory, data, 'PREPARING')
@@ -276,8 +276,7 @@ def up(run_id):
     lock = load_lock()
     persist(directory, state, 'BUILDING')
     try:
-        for name, repo, dockerfile in [('iam', 'baobab-iam', BASE / 'iam.Dockerfile'),
-                                      ('cp', 'baobab-cp', directory / 'sources/baobab-cp/Dockerfile.development')]:
+        for name, repo, dockerfile in [('cp', 'baobab-cp', directory / 'sources/baobab-cp/Dockerfile.development')]:
             image = state['project'] + '-' + name
             check_dockerfile(dockerfile)
             state['images'][name] = image
@@ -289,12 +288,13 @@ def up(run_id):
             state['image_ids'][name] = call(['docker', 'image', 'inspect', image, '--format', '{{.Id}}'])
             require(DIGEST.fullmatch(state['image_ids'][name]), 'BUILT_IMAGE_DIGEST_REQUIRED')
             persist(directory, state, 'BUILDING')
+        adapter.configure(directory, state)
         write(directory / 'compose.json', adapter.composition(state, directory, lock['images'], NAMESPACE))
         state['compose_sha256'] = hashlib.sha256((directory / 'compose.json').read_bytes()).hexdigest()
         persist(directory, state, 'STARTING')
         compose(directory, state, 'config', '--quiet')
         compose(directory, state, 'up', '-d', '--wait', '--wait-timeout', '240',
-                'iam', 'cp-db', 'edge', 'probe', timeout=300)
+                'hydra', 'kratos', 'cp-db', 'edge', 'probe', timeout=300)
         database = 'baobab_dev_' + run_id
         # Infrastructure creates/marks its fresh store only. All canonical
         # state and migrations are owned by the CP command below, never SQL.
@@ -306,7 +306,9 @@ def up(run_id):
             try:
                 compose(directory, state, 'exec', '-T', 'probe', 'python', '-c',
                         "import ssl,urllib.request; c=ssl.create_default_context(cafile='/tls/ca.pem'); "
-                        "r=urllib.request.urlopen('https://iam.baobab-dev.test/realms/baobab/.well-known/openid-configuration',context=c,timeout=3); "
+                        "r=urllib.request.urlopen('https://hydra.int03.test/.well-known/openid-configuration',context=c,timeout=3); "
+                        "assert r.status==200; "
+                        "r=urllib.request.urlopen('https://kratos.baobab-dev.test/health/ready',context=c,timeout=3); "
                         "assert r.status==200", timeout=8)
                 ready = True
                 break
@@ -393,7 +395,7 @@ def test(run_id):
     else:
         raise Refused('IAM_CP_HEALTH_FAILED')
     require(bootstrap(directory, state) == read(directory / 'bootstrap.json'), 'BOOTSTRAP_REPLAY_MISMATCH')
-    for name in adapter.SERVICES:
+    for name in adapter.SERVICES - adapter.MIGRATIONS:
         container = compose(directory, state, 'ps', '-q', name)
         require(re.fullmatch(r'[0-9a-f]{12,64}', container), 'CONTAINER_NOT_RUNNING')
         actual = json.loads(call(['docker', 'inspect', container]))[0]
@@ -414,6 +416,25 @@ def test(run_id):
     state['tests'] = True
     persist(directory, state, 'TESTED')
     return {'lifecycle_checks': 'PASS', 'domain_qualification': 'NOT_EXECUTED', 'fixture_checks': fixture_checks}
+
+
+AUTHORITY_CASES = {'actual_signed_issuer_and_cp_context','wrong_sibling_tenant_denied','wrong_external_tenant_denied',
+ 'wrong_audience_denied','absent_capability_grant_denied','expired_issuer_token_denied','issuer_revocation_while_unexpired',
+ 'fresh_credential_after_revoke_succeeds','real_kratos_hydra_pkce_distinct_humans','same_principal_provenance_approval_denied',
+ 'same_principal_deactivation_approval_denied','cp_principal_deactivation_while_unexpired','cp_denial_independent_of_issuer_status','wrong_pkce_denied_by_issuer','wrong_state_denied_by_relying_party','authorization_code_replay_denied'}
+
+def qualify(run_id):
+    directory,state=current(run_id)
+    verify_sources(directory,state)
+    require(state['phase']=='TESTED','TESTED_PROFILE_REQUIRED')
+    compose(directory,state,'exec','-T','probe','python','/probe.py','authority',timeout=180)
+    report=read(directory/'authority.json')
+    require(set(report)=={'schema','checks','synthetic_only','canonical_provider_qualified','int03c_qualified','nab03_qualified','protected_acceptance'}
+            and report['schema']=='infrastructure.dev03.authority-observed.v1'
+            and set(report['checks'])==AUTHORITY_CASES and all(v is True for v in report['checks'].values())
+            and report['synthetic_only'] is True and all(report[k] is False for k in
+            ('canonical_provider_qualified','int03c_qualified','nab03_qualified','protected_acceptance')),'DEV03_REPORT_INVALID')
+    return report
 
 
 def resources(run_id=None):
@@ -499,7 +520,7 @@ def watch(run_id):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['doctor', 'preflight', 'plan', 'prepare', 'up', 'test',
-                                         'evidence', 'down', 'recover', 'run', 'watch'])
+                                         'evidence', 'down', 'recover', 'run', 'watch', 'qualify'])
     parser.add_argument('--run-id')
     parser.add_argument('--lease-seconds', type=int, default=3600)
     parser.add_argument('--static', action='store_true')
@@ -531,6 +552,8 @@ def main(argv=None):
             with guarded(args.run_id):
                 if args.action == 'up':
                     up(args.run_id)
+                elif args.action == 'qualify':
+                    print(json.dumps(qualify(args.run_id),sort_keys=True))
                 elif args.action == 'test':
                     print(json.dumps(test(args.run_id)))
                 elif args.action == 'down':

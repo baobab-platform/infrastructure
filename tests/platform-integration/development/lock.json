@@ -2,16 +2,18 @@
   "schema": "infrastructure.development-lifecycle.v1",
   "profile": "iam-cp-development",
   "authority": "ADR-SHARED-043",
-  "infrastructure_baseline": "1445195e5304accaf38b29617dc223d12680cd03",
+  "infrastructure_baseline": "631e59dc0787f81bec0fed3516a97572e825d949",
   "sources": {
-    "shared": "a22782949fe5e761ae14cf37c8ebe76172d2b78a",
-    "baobab-cp": "6ed4c63f4e28b3370c4f83c097f22d2308f4d474",
+    "shared": "33b514d690e468fbcce34275705a08a32647d4ad",
+    "baobab-cp": "8ee3c9048248db3ef616553178a82162b4a5dd95",
     "baobab-iam": "0ad103606b9705fcb33c468ea01b54d8ce76f9ae"
   },
   "images": {
     "postgres": "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
     "probe": "python@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c",
-    "edge": "nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de"
+    "edge": "nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
+    "hydra": "oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9",
+    "kratos": "oryd/kratos:v26.2.0@sha256:2a13bb8d362c7a7ae33bd7c0f5168aee46921f15c916a06346db91c06dc76643"
   },
   "max_lease_seconds": 3600,
   "synthetic_only": true,
