@@ -107,12 +107,12 @@ def guarded(run_id, nonblocking=False):
         os.close(handle)
 
 
-def call(args, *, timeout=120, stdin=None, state=None):
+def call(args, *, timeout=120, stdin=None, state=None, env=None):
     if state is not None:
         timeout = min(timeout, state['deadline'] - time.time())
         require(timeout > 0, 'LEASE_EXPIRED')
     try:
-        result = subprocess.run(args, input=stdin, text=True, capture_output=True,
+        result = subprocess.run(args, input=stdin, env=env, text=True, capture_output=True,
                                 check=False, timeout=timeout)
         if result.returncode != 0:
             # Closed diagnostics only: never print command arguments, env or logs.

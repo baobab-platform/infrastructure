@@ -1,4 +1,4 @@
-name: DEV-01 to DEV-04 development qualification
+name: DEV-01 to DEV-05 development qualification
 on:
   pull_request:
     paths:
@@ -65,11 +65,13 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           DEV05_NPM_TOKEN: ${{ github.token }}
+          DEV05_REGISTRY_USERNAME: ${{ github.actor }}
         run: |
           tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
             --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
             --remote-env BAOBAB_ENVIRONMENT=development \
             --remote-env "DEV05_NPM_TOKEN=$DEV05_NPM_TOKEN" \
+            --remote-env "DEV05_REGISTRY_USERNAME=$DEV05_REGISTRY_USERNAME" \
             python3 -B tests/platform-integration/development/ci_cms.py
       - name: Recover through the shared development CLI
         if: always()

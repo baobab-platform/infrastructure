@@ -2,6 +2,7 @@
 import copy
 import importlib
 import json
+import os
 from types import SimpleNamespace
 import tempfile
 from pathlib import Path
@@ -12,6 +13,31 @@ import cms_vertical
 import dev
 
 class CMSContracts(unittest.TestCase):
+    def test_package_access_is_private_scoped_and_removed_on_every_exit(self):
+        for failure in ('none','login','build'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temp:
+                directory=Path(temp)
+                def command(args,**kwargs):
+                    self.assertEqual(args[:3],['docker','login','ghcr.io'])
+                    self.assertEqual(kwargs['stdin'],'private-package-fixture')
+                    self.assertNotIn('DEV05_NPM_TOKEN',kwargs['env'])
+                    self.assertEqual(kwargs['env']['DOCKER_CONFIG'],str(directory/'build-docker-config'))
+                    self.assertEqual((directory/'build-docker-config').stat().st_mode & 0o777,0o700)
+                    if failure=='login':raise dev.Refused('IMAGE_UNAVAILABLE')
+                with patch.dict(os.environ,{'DEV05_NPM_TOKEN':'private-package-fixture','DEV05_REGISTRY_USERNAME':'test-owner'}), patch.object(dev,'call',side_effect=command) as call:
+                    def build():
+                        with cms_vertical.package_access(directory,{}) as (env,tokenfile):
+                            self.assertEqual(tokenfile.read_text(),'private-package-fixture')
+                            self.assertEqual(tokenfile.stat().st_mode & 0o777,0o600)
+                            self.assertEqual(env['DOCKER_CONFIG'],str(directory/'build-docker-config'))
+                            if failure=='build':raise dev.Refused('COMMAND_FAILED')
+                    if failure=='none':build()
+                    else:
+                        with self.assertRaises(dev.Refused):build()
+                    call.assert_called_once()
+                self.assertFalse((directory/'package-token').exists())
+                self.assertFalse((directory/'build-docker-config').exists())
+
     def test_original_inventory_cannot_omit_or_promote_a_blocker(self):
         run='a'*32;report=cms_contract.fresh(run)
         self.assertEqual(len(report['cases']),14)

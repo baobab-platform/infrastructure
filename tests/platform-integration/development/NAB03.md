@@ -4,7 +4,8 @@ Use `BAOBAB_ENVIRONMENT=development python3 -B tests/platform-integration/l4.py
 run-cms development` in the integration devcontainer. Source and image locks in
 `lock.json` and `cms-lock.json` must be reviewed immutable identities. Package
 installation additionally requires a read-only `DEV05_NPM_TOKEN` accepted by
-GitHub Packages. Actions supplies its repository package-read token through a
+GitHub Packages, plus `DEV05_REGISTRY_USERNAME` for that token's GitHub actor.
+Actions supplies its repository package-read token through a
 private BuildKit secret; it is deleted after the build and never enters layers,
 reports or runtime environments. Local operators supply their own scoped read
 credential. No credentials are requested from or sent to a browser.

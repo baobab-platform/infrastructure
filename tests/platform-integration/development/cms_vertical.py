@@ -4,10 +4,13 @@ CMS and estate processes consume actual CP-issued references. No provider,
 certification, ACTIVE binding or entitlement is synthesized by this adapter.
 """
 import base64
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import re
+import shutil
 from pathlib import Path
 import time
 import sys
@@ -22,6 +25,29 @@ VALIDATOR='baobab-int03-cms-validator'
 BFF='nabhold-dev-bff'
 CMS='https://cms.baobab-dev.test'
 ESTATE='https://nabhold.baobab-dev.test'
+
+
+@contextmanager
+def package_access(directory,state):
+    """One build's GHCR/npm access; never alter the operator's Docker login."""
+    token=os.environ.get('DEV05_NPM_TOKEN','')
+    username=os.environ.get('DEV05_REGISTRY_USERNAME','')
+    dev.require(bool(token) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}',username),
+        'DEV05_PACKAGE_READ_REQUIRED')
+    config=directory/'build-docker-config';tokenfile=directory/'package-token'
+    config.mkdir(mode=0o700)
+    try:
+        tokenfile.write_text(token);tokenfile.chmod(0o600)
+        # Both login and BuildKit must use the same isolated credential store.
+        # The npm credential reaches BuildKit only through its secret mount.
+        build_env={key:value for key,value in os.environ.items() if key!='DEV05_NPM_TOKEN'}
+        build_env['DOCKER_CONFIG']=str(config)
+        dev.call(['docker','login','ghcr.io','--username',username,'--password-stdin'],
+            stdin=token,env=build_env,state=state,timeout=60)
+        yield build_env,tokenfile
+    finally:
+        tokenfile.unlink(missing_ok=True)
+        shutil.rmtree(config)
 
 
 def lock():
@@ -70,16 +96,13 @@ def up(run):
         dev.persist(directory,state,'RUNNING')
     print('DEV05_PHASE=ESTATE_IMAGE',flush=True)
     image=state['project']+'-nabhold';state['images']['nabhold']=image;dev.persist(directory,state,'RUNNING')
-    package_token=os.environ.get('DEV05_NPM_TOKEN','');dev.require(bool(package_token),'DEV05_PACKAGE_READ_REQUIRED')
-    tokenfile=directory/'package-token';tokenfile.write_text(package_token);tokenfile.chmod(0o600)
-    try:
+    with package_access(directory,state) as (build_env,tokenfile):
         args=['docker','build','--tag',image,'--file',str(BASE/'nabhold.Dockerfile'),
           '--build-context','nabhold_git='+str(directory/'sources/nabhold/.git'),
           '--build-arg','LAB_UID='+str(state['uid']),'--build-arg','LAB_GID='+str(state['gid']),
           '--secret','id=npm_token,src='+str(tokenfile)]
         for key,val in {**dev.labels(state),'org.opencontainers.image.revision':state['sources']['nabhold']}.items():args+=['--label',key+'='+val]
-        dev.call([*args,str(directory/'sources/nabhold')],timeout=1800,state=state)
-    finally:tokenfile.unlink(missing_ok=True)
+        dev.call([*args,str(directory/'sources/nabhold')],timeout=1800,state=state,env=build_env)
     state['image_ids']['nabhold']=dev.call(['docker','image','inspect',image,'--format','{{.Id}}'])
     dev.persist(directory,state,'RUNNING')
     bootstrap=dev.read(directory/'bootstrap.json');own=next(e for e in bootstrap['enterprises'] if e['key']=='nabhold')
