@@ -15,6 +15,7 @@ import native_probe as p
 import cms_contract
 
 CONSUMER='baobab-int03-cms-consumer';VALIDATOR='baobab-int03-cms-validator';BFF='nabhold-dev-bff'
+VALIDATOR_CEILING='55s'  # Conservative issuer TTL; unchanged validation max is 60s.
 CMS='https://cms.baobab-dev.test';ESTATE='https://nabhold.baobab-dev.test'
 
 def stage(name):
@@ -43,10 +44,13 @@ def clients():
           'token_endpoint_auth_method':'client_secret_basic' if human else 'client_secret_post',
           'redirect_uris':[ESTATE+'/api/auth/callback'] if human else [],'metadata':{'environment':'development','development_run_id':state['run_id'],
           'owner':'baobab-platform/baobab-cms' if name==VALIDATOR else 'baobab-platform/infrastructure'},
-          'client_credentials_grant_access_token_lifespan':'60s','authorization_code_grant_access_token_lifespan':'120s'}
+          'client_credentials_grant_access_token_lifespan':VALIDATOR_CEILING if name==VALIDATOR else '60s',
+          'authorization_code_grant_access_token_lifespan':'120s'}
         p.require(p.api('GET','/admin/clients/'+name)[0]==404)
         p.require(p.api('POST','/admin/clients',cfg)[0]==201)
-        code,actual=p.api('GET','/admin/clients/'+name);p.require(code==200 and actual['metadata']['development_run_id']==state['run_id'] and actual['scope']==scopes)
+        code,actual=p.api('GET','/admin/clients/'+name);p.require(code==200 and actual['metadata']['development_run_id']==state['run_id'] and actual['scope']==scopes
+                  and actual.get('client_credentials_grant_access_token_lifespan')==
+                  (VALIDATOR_CEILING if name==VALIDATOR else '60s'))
         native['clients'][name]={'secret':secret[key],'config':cfg}
     fd=os.open(p.ROOT/'.native.tmp',os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
     with os.fdopen(fd,'w') as out:json.dump(native,out);out.flush();os.fsync(out.fileno())
@@ -117,9 +121,11 @@ def validator_profile():
             elif claims.get('owner') not in (None,'baobab-platform/baobab-cms'):cls='OWNER_MISMATCH'
             elif claims.get('environment') not in (None,'development'):cls='ENVIRONMENT_MISMATCH'
             elif not isinstance(claims.get('sub'),str) or not 0<len(claims['sub'])<=255:cls='SUBJECT_MISMATCH'
-            elif type(claims.get('exp')) is not int or type(token_response.get('expires_in')) is not int or (
-                    not 0<claims['exp']-received<=300 or not 0<token_response['expires_in']<=300 or
-                    claims['exp']-received>token_response['expires_in']):cls='TIME_MISMATCH'
+            elif type(claims.get('iat')) is not int or type(claims.get('exp')) is not int or (
+                    type(token_response.get('expires_in')) is not int or
+                    claims['iat']>int(received) or not 0<claims['exp']-claims['iat']<=60 or
+                    not 0<claims['exp']-received<=60 or not 0<token_response['expires_in']<=60 or
+                    claims['exp']-received>min(60,token_response['expires_in']+5)):cls='TIME_MISMATCH'
             else:cls='READY'
     except Exception:
         cls='UNAVAILABLE'
