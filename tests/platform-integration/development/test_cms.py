@@ -101,6 +101,20 @@ class CMSContracts(unittest.TestCase):
             self.assertEqual(receipt['cms']['cases']['teardown']['result'],'PASS')
             self.assertFalse(receipt['protected_acceptance'])
 
+    def test_native_delivery_request_preserves_cp_issued_legal_scope(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        own={'tenant_id':'tn_dev','legal_entity_id':'DEV-0123456789ab-NABHOLD',
+             'digital_estate_id':'11111111-1111-4111-8111-111111111111'}
+        bootstrap={'market_ids':{'ZA':'mkt_devfixtureza'}}
+        with patch.object(probe,'config',return_value=({},bootstrap,own)), \
+             patch.object(probe.p,'request',return_value=(200,{},None)) as request:
+            probe.resolve('synthetic-bearer','22222222-2222-4222-8222-222222222222')
+            body=request.call_args.args[2]
+            self.assertEqual(body['legal_entity_id'],own['legal_entity_id'])
+            self.assertEqual(body['tenant_id'],own['tenant_id'])
+            self.assertEqual(body['digital_estate_id'],own['digital_estate_id'])
+            self.assertEqual(body['market_id'],bootstrap['market_ids']['ZA'])
     def test_outage_failure_is_attributed_without_overwriting_publication(self):
         with patch('ssl.create_default_context',return_value=SimpleNamespace()):
             probe=importlib.import_module('cms_probe')
