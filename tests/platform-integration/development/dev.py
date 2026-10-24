@@ -257,6 +257,13 @@ def compose(directory, state, *args, timeout=180):
     return call(['docker', 'compose', '-f', str(path), '-p', state['project'], *args], timeout=timeout, state=state)
 
 
+def verify_sources(directory, state):
+    for repo, sha in state['sources'].items():
+        source = directory / 'sources' / repo
+        require(call(['git', '-C', str(source), 'rev-parse', 'HEAD']) == sha
+                and not call(['git', '-C', str(source), 'status', '--porcelain']), 'DEPENDENCY_SOURCE_DRIFT')
+
+
 def labels(state):
     return {'io.baobab.dev.namespace': NAMESPACE, 'io.baobab.dev.run': state['run_id'],
             'io.baobab.dev.deadline': str(state['deadline'])}
@@ -264,6 +271,7 @@ def labels(state):
 
 def up(run_id):
     directory, state = current(run_id)
+    verify_sources(directory, state)
     require(state['phase'] == 'PREPARED', 'RECOVER_BEFORE_RETRY')
     lock = load_lock()
     persist(directory, state, 'BUILDING')
@@ -343,6 +351,7 @@ def bootstrap(directory, state):
 
 def test(run_id):
     directory, state = current(run_id)
+    verify_sources(directory, state)
     require(state['phase'] in {'RUNNING', 'TESTED'}, 'RUNNING_PROFILE_REQUIRED')
     # Clear a former success before probing; failure cannot preserve old green.
     state['tests'] = False
@@ -468,6 +477,8 @@ def main(argv=None):
     parser.add_argument('--all', action='store_true', help='recover every run owned by this checkout/user')
     args = parser.parse_args(argv)
     try:
+        require(not args.static or args.action in {'doctor', 'preflight', 'plan'}, 'STATIC_CANNOT_MUTATE')
+        require(not args.all or args.action == 'recover', 'ALL_REQUIRES_RECOVERY')
         if args.action in {'doctor', 'preflight', 'plan'}:
             print(json.dumps(doctor(static=args.static), sort_keys=True))
         elif args.action == 'prepare':

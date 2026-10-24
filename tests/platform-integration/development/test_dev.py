@@ -1,5 +1,4 @@
 """DEV-01 source/recovery contracts. Mocks here are never runtime evidence."""
-import copy
 import json
 import os
 from pathlib import Path
@@ -158,6 +157,28 @@ class LifecycleTests(unittest.TestCase):
         dev.write(self.directory / 'state.json', self.data)
         with patch.dict(os.environ, {'BAOBAB_ENVIRONMENT': 'development'}):
             with self.assertRaises(dev.Refused):
+                dev.current(self.run_id)
+
+    def test_dependency_source_drift_is_checked_before_build_or_test(self):
+        def actual(args, **_):
+            repo = Path(args[2]).name
+            return self.data['sources'][repo] if args[-1] == 'HEAD' else ' M altered-source'
+        with patch.object(dev, 'call', side_effect=actual):
+            with self.assertRaisesRegex(dev.Refused, 'DEPENDENCY_SOURCE_DRIFT'):
+                dev.verify_sources(self.directory, self.data)
+
+    def test_static_option_cannot_start_a_runtime(self):
+        with patch.object(dev, 'prepare') as prepare:
+            self.assertEqual(dev.main(['run', '--static']), 2)
+        prepare.assert_not_called()
+
+    def test_missing_watchdog_does_not_admit_an_active_lease(self):
+        import hashlib
+        self.data['lock_sha256'] = hashlib.sha256((dev.BASE / 'lock.json').read_bytes()).hexdigest()
+        dev.write(self.directory / 'state.json', self.data)
+        with patch.dict(os.environ, {'BAOBAB_ENVIRONMENT': 'development'}), \
+             patch.object(dev, 'source_identity', return_value=self.data['harness_sha']):
+            with self.assertRaisesRegex(dev.Refused, 'WATCHDOG_REQUIRED'):
                 dev.current(self.run_id)
 
 

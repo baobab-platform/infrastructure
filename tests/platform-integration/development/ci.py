@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Real Docker lifecycle and crash-recovery drills; not INT-03C qualification."""
-import json
 import secrets
 import sys
 import time
@@ -20,6 +19,7 @@ def main():
     try:
         # A real owned resource survives simulated interrupted startup; recovery
         # uses its durable ownership ledger, not a guessed canonical CP record.
+        print('DEV01_STAGE=INTERRUPTED_STARTUP', flush=True)
         interrupted = dev.prepare()
         directory, state = dev.current(interrupted)
         orphan(interrupted, state['deadline'])
@@ -28,12 +28,16 @@ def main():
         dev.require(not directory.exists() and not dev.resources(interrupted), 'INTERRUPTED_STARTUP_SURVIVED')
         checks['interrupted_startup_recovered'] = True
 
+        print('DEV01_STAGE=FRESH_START', flush=True)
         run_id = dev.prepare()
         with dev.guarded(run_id):
+            print('DEV01_STAGE=UP', flush=True)
             dev.up(run_id)
+            print('DEV01_STAGE=TEST', flush=True)
             dev.test(run_id)
             checks['fresh_real_iam_cp_bootstrap_and_replay'] = True
             directory, state = dev.current(run_id)
+            print('DEV01_STAGE=FAILED_HEALTH', flush=True)
             dev.compose(directory, state, 'stop', 'cp')
             try:
                 dev.test(run_id)
@@ -46,6 +50,7 @@ def main():
             checks['recovery_retested'] = True
             # Loss of the compose/env handle must not defeat ownership cleanup.
             (directory / 'compose.json').unlink()
+            print('DEV01_STAGE=TEARDOWN_WITHOUT_COMPOSE', flush=True)
             dev.down(run_id)
         dev.require(not directory.exists() and not dev.resources(run_id), 'RUN_SURVIVED')
         checks['teardown_without_compose_verified'] = True
@@ -70,5 +75,6 @@ def main():
 if __name__ == '__main__':
     try:
         raise SystemExit(main())
-    except Exception:
-        raise SystemExit('DEV01_REAL_LIFECYCLE_FAILED; private state retained when cleanup fails')
+    except Exception as error:
+        code = str(error) if isinstance(error, dev.Refused) else 'INVALID_OR_UNAVAILABLE_STATE'
+        raise SystemExit('DEV01_REAL_LIFECYCLE_FAILED ' + code + '; private state retained when cleanup fails')
