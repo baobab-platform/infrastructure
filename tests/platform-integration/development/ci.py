@@ -40,7 +40,7 @@ def main():
             print('DEV01_STAGE=FAILED_HEALTH', flush=True)
             dev.compose(directory, state, 'stop', 'cp')
             try:
-                dev.test(run_id)
+                dev.test(run_id, health_attempts=1)
             except dev.Refused:
                 checks['failed_health_rejected'] = True
             else:
@@ -49,6 +49,8 @@ def main():
             fixture_checks = dev.test(run_id)['fixture_checks']
             source_pins = dict(state['sources'])
             checks['recovery_retested'] = True
+            print('DEV03_STAGE=NATIVE_AUTHORITY_CHAIN',flush=True)
+            authority=dev.qualify(run_id)
             # Loss of the compose/env handle must not defeat ownership cleanup.
             (directory / 'compose.json').unlink()
             print('DEV01_STAGE=TEARDOWN_WITHOUT_COMPOSE', flush=True)
@@ -73,6 +75,12 @@ def main():
             'scope': 'DEV02_NON_AUTHORISING_SCOPE_AND_LIFECYCLE', 'fixture_checks': fixture_checks,
             'teardown_verified': True, 'int03c_qualified': False, 'nab03_qualified': False,
             'protected_acceptance': False, 'production_authorized': False})
+        dev.write(dev.EVIDENCE / 'dev03-authority-suite.json', {
+            'schema':'infrastructure.dev03.authority-suite.v1','harness_sha':dev.source_identity(),
+            'source_pins':source_pins,'evidence_class':'REAL_COMPONENT_SYNTHETIC_DATA',
+            'authority':authority,'teardown_verified':True,'int03c_qualified':False,
+            'nab03_qualified':False,'protected_acceptance':False,'production_authorized':False})
+        print('DEV03_REAL_ISSUER_CP_AUTHORITY_PASS')
         print('DEV02_REAL_POSTGRES_FIXTURES_PASS')
         print('DEV01_REAL_LIFECYCLE_AND_RECOVERY_PASS')
         return 0

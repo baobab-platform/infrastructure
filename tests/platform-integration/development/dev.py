@@ -113,7 +113,24 @@ def call(args, *, timeout=120, stdin=None, state=None):
     try:
         result = subprocess.run(args, input=stdin, text=True, capture_output=True,
                                 check=False, timeout=timeout)
-        require(result.returncode == 0, 'COMMAND_FAILED')
+        if result.returncode != 0:
+            # Closed diagnostics only: never print command arguments, env or logs.
+            raw=(result.stdout+result.stderr).lower()
+            classification='COMMAND_FAILED'
+            for needle,code in (('toomanyrequests','IMAGE_RATE_LIMITED'),('429 too many','IMAGE_RATE_LIMITED'),
+                                ('failed to resolve source metadata','IMAGE_UNAVAILABLE'),('failed to fetch oauth token','IMAGE_UNAVAILABLE'),
+                                ('manifest unknown','IMAGE_UNAVAILABLE'),('invalid config','INVALID_PROVIDER_CONFIGURATION'),
+                                ('field not found','INVALID_PROVIDER_CONFIGURATION'),('permission denied','RUNTIME_PERMISSION_DENIED')):
+                if needle in raw: classification=code;break
+            matched=re.search(r'DEV03_PROVIDER_PROBE_FAILED ([A-Z][A-Z0-9_]{0,80})',result.stderr)
+            known={'NATIVE_PROTOCOL_FAILED','PROVIDER_OBSERVATION_FAILED','KRATOS_CREATE','KRATOS_READBACK',
+                   'HYDRA_CREATE','HYDRA_READBACK','SIGNED_TOKEN_ISSUANCE','REAL_KRATOS_LOGIN','KRATOS_CURRENT_SESSION',
+                   'REAL_AUTHORIZATION_REDIRECT','LOGIN_CHALLENGE_BINDING','CONSENT_BINDING','PKCE_STATE_CALLBACK',
+                   'REAL_SIGNED_HUMAN_TOKEN','REAL_PKCE_MISMATCH_DENIED','CODE_REPLAY_DENIED','CP_PROVENANCE_PROPOSE',
+                   'CP_PROVENANCE_APPROVE','CP_DEACTIVATION_PROPOSE','CP_DISTINCT_CHECKER','REAL_SHORT_LIVED_TOKEN_REQUIRED'}
+            known.update('DEV03_'+name.upper() for name in AUTHORITY_CASES)
+            if matched and matched[1] in known: classification='PROBE_'+matched[1]
+            raise Refused(classification)
         return result.stdout.strip()
     except (subprocess.SubprocessError, OSError) as error:
         raise Refused('COMMAND_UNAVAILABLE_OR_TIMED_OUT') from error
@@ -129,7 +146,7 @@ def load_lock():
             and data['max_lease_seconds'] == 3600 and SHA.fullmatch(data['infrastructure_baseline']), 'LOCK_POLICY')
     require(set(data['sources']) == {'shared', 'baobab-cp', 'baobab-iam'}
             and all(isinstance(v, str) and SHA.fullmatch(v) for v in data['sources'].values()), 'SOURCE_PIN_REQUIRED')
-    require(set(data['images']) == {'postgres', 'probe', 'edge'} and all(
+    require(set(data['images']) == {'postgres', 'probe', 'edge', 'hydra', 'kratos'} and all(
         isinstance(v, str) and '@sha256:' in v and DIGEST.fullmatch(v) for v in data['images'].values()), 'IMAGE_DIGEST_REQUIRED')
     check_dockerfile(BASE / 'iam.Dockerfile')
     return data
@@ -156,7 +173,7 @@ def doctor(static=False):
         call(['docker', 'compose', 'version'], timeout=20)
     return {'profile': data['profile'], 'sources': data['sources'], 'services': sorted(adapter.SERVICES),
             'images': data['images'], 'static_only': static, 'protected_acceptance': False,
-            'scope': 'NATIVE_KEYCLOAK_CP_BOOTSTRAP_LIFECYCLE_ONLY',
+            'scope': 'NATIVE_ORY_CP_DEVELOPMENT_AUTHORITY_CHAIN',
             'other_engine_capabilities': 'NOT_STARTED', 'cms_required': False}
 
 
@@ -192,7 +209,7 @@ def tls(directory, state):
         ['req', '-newkey', 'rsa:2048', '-nodes', '-subj', '/CN=baobab-dev.test',
          '-keyout', str(folder / 'edge.key'), '-out', str(directory / 'edge.csr')],
     ]
-    (directory / 'edge.ext').write_text('subjectAltName=DNS:iam.baobab-dev.test,DNS:cp.baobab-dev.test\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n')
+    (directory / 'edge.ext').write_text('subjectAltName=DNS:hydra.int03.test,DNS:kratos.baobab-dev.test,DNS:cp.baobab-dev.test,DNS:rp.baobab-dev.test\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n')
     for command in commands:
         call(['openssl', *command], state=state)
     call(['openssl', 'x509', '-req', '-in', str(directory / 'edge.csr'), '-CA', str(folder / 'ca.pem'),
@@ -217,7 +234,7 @@ def prepare(lease=3600):
             'deadline': int(time.time()) + lease, 'lease_seconds': lease, 'harness_sha': source_identity(),
             'lock_sha256': hashlib.sha256((BASE / 'lock.json').read_bytes()).hexdigest(),
             'sources': lock['sources'], 'runtime_images': lock['images'],
-            'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin')},
+            'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin', 'hook', 'introspection')},
             'images': {}, 'image_ids': {}, 'tests': False}
     # Durable recovery identity exists BEFORE a clone, build or Docker mutation.
     persist(directory, data, 'PREPARING')
@@ -257,7 +274,12 @@ def compose(directory, state, *args, timeout=180):
     return call(['docker', 'compose', '-f', str(path), '-p', state['project'], *args], timeout=timeout, state=state)
 
 
+NATIVE_FILES={'hydra.yml','kratos/kratos.yml','kratos/identity.schema.json','introspection.htpasswd'}
+
 def verify_sources(directory, state):
+    if state.get('phase') in {'RUNNING','TESTED'}:
+        anchors=state.get('native_config_hashes',{})
+        require(set(anchors)==NATIVE_FILES and all(hashlib.sha256((directory/path).read_bytes()).hexdigest()==digest for path,digest in anchors.items()),'NATIVE_CONFIGURATION_DRIFT')
     for repo, sha in state['sources'].items():
         source = directory / 'sources' / repo
         require(call(['git', '-C', str(source), 'rev-parse', 'HEAD']) == sha
@@ -276,8 +298,8 @@ def up(run_id):
     lock = load_lock()
     persist(directory, state, 'BUILDING')
     try:
-        for name, repo, dockerfile in [('iam', 'baobab-iam', BASE / 'iam.Dockerfile'),
-                                      ('cp', 'baobab-cp', directory / 'sources/baobab-cp/Dockerfile.development')]:
+        print('DEV03_PHASE=CP_IMAGE',flush=True)
+        for name, repo, dockerfile in [('cp', 'baobab-cp', directory / 'sources/baobab-cp/Dockerfile.development')]:
             image = state['project'] + '-' + name
             check_dockerfile(dockerfile)
             state['images'][name] = image
@@ -289,12 +311,16 @@ def up(run_id):
             state['image_ids'][name] = call(['docker', 'image', 'inspect', image, '--format', '{{.Id}}'])
             require(DIGEST.fullmatch(state['image_ids'][name]), 'BUILT_IMAGE_DIGEST_REQUIRED')
             persist(directory, state, 'BUILDING')
+        print('DEV03_PHASE=ORY_CONFIG',flush=True)
+        adapter.configure(directory, state)
+        state['native_config_hashes']={path:hashlib.sha256((directory/path).read_bytes()).hexdigest() for path in NATIVE_FILES}
         write(directory / 'compose.json', adapter.composition(state, directory, lock['images'], NAMESPACE))
         state['compose_sha256'] = hashlib.sha256((directory / 'compose.json').read_bytes()).hexdigest()
         persist(directory, state, 'STARTING')
         compose(directory, state, 'config', '--quiet')
+        print('DEV03_PHASE=ORY_START',flush=True)
         compose(directory, state, 'up', '-d', '--wait', '--wait-timeout', '240',
-                'iam', 'cp-db', 'edge', 'probe', timeout=300)
+                'hydra', 'kratos', 'cp-db', 'edge', 'probe', timeout=300)
         database = 'baobab_dev_' + run_id
         # Infrastructure creates/marks its fresh store only. All canonical
         # state and migrations are owned by the CP command below, never SQL.
@@ -302,17 +328,18 @@ def up(run_id):
                 '-v', 'ON_ERROR_STOP=1', '-c', f"COMMENT ON DATABASE {database} IS 'baobab.disposable-development.v1'")
         # Native IAM reads require actual readiness, not a container-start flag.
         ready = False
-        for _ in range(90):
+        for attempt in range(90):
             try:
-                compose(directory, state, 'exec', '-T', 'probe', 'python', '-c',
-                        "import ssl,urllib.request; c=ssl.create_default_context(cafile='/tls/ca.pem'); "
-                        "r=urllib.request.urlopen('https://iam.baobab-dev.test/realms/baobab/.well-known/openid-configuration',context=c,timeout=3); "
-                        "assert r.status==200", timeout=8)
-                ready = True
-                break
+                status=json.loads(compose(directory,state,'exec','-T','probe','python','/probe.py','provider-ready',timeout=12))
+                require(set(status)=={'hydra','kratos'} and all(type(value) is int and 0<=value<600 for value in status.values()),'READINESS_SHAPE')
+                if all(value==200 for value in status.values()): ready=True;break
+                if attempt % 15==0: print('DEV03_READINESS='+json.dumps(status,sort_keys=True),flush=True)
             except Refused:
-                time.sleep(2)
+                # A transient or malformed probe cannot advance readiness.
+                pass
+            time.sleep(2)
         require(ready, 'IAM_HEALTH_UNAVAILABLE')
+        print('DEV03_PHASE=NATIVE_IDENTITIES',flush=True)
         compose(directory, state, 'exec', '-T', 'probe', 'python', '/probe.py', 'subjects')
         result = bootstrap(directory, state)
         write(directory / 'bootstrap.json', result)
@@ -320,6 +347,25 @@ def up(run_id):
         compose(directory, state, 'up', '-d', 'cp')
         persist(directory, state, 'RUNNING')
     except BaseException:
+        try:
+            raw=compose(directory,state,'ps','--all','--format','json')
+            values=json.loads(raw) if raw.startswith('[') else [json.loads(line) for line in raw.splitlines()]
+            for item in values:
+                name=item.get('Service');phase=item.get('State');code=item.get('ExitCode')
+                if name in adapter.SERVICES and phase in {'running','exited','created','restarting','dead'} and type(code) is int:
+                    print('DEV03_CONTAINER='+name+':'+phase+':'+str(code),flush=True)
+            logs=compose(directory,state,'logs','--no-color','--tail','40','edge','hydra','kratos','hydra-migrate','kratos-migrate')
+            markers=[]
+            for text,code in (('read-only file system','READ_ONLY_FILESYSTEM'),('unknown flag','PROVIDER_COMMAND_REFUSED'),
+                              ('additional propert','PROVIDER_CONFIG_PROPERTY_REFUSED'),('permission denied','RUNTIME_PERMISSION_DENIED'),
+                              ('connection refused','DEPENDENCY_NOT_READY'),('does not validate','PROVIDER_CONFIG_REFUSED'),
+                              ('error opening config','PROVIDER_CONFIG_UNREADABLE')):
+                if text in logs.lower(): markers.append(code)
+            paths=set(re.findall(r'\b(?:oauth2|serve|urls|secrets|strategies|ttl|session|identity|hashers|selfservice|courier)(?:\.[a-z_]{1,40}){0,5}',logs))
+            print('DEV03_CONFIG_PATHS='+','.join(sorted(paths)),flush=True)
+            print('DEV03_STARTUP_CLASSES='+','.join(markers or ['UNCLASSIFIED']),flush=True)
+        except (Refused,OSError):
+            print('DEV03_STARTUP_CLASSES=DIAGNOSTICS_UNAVAILABLE',flush=True)
         down(run_id)
         raise
 
@@ -377,14 +423,15 @@ def validate_fixture_report(value, run_id):
             == sorted(inventory), 'DEV02_INVENTORY_OR_OUTCOME_INVALID')
 
 
-def test(run_id):
+def test(run_id, health_attempts=45):
     directory, state = current(run_id)
     verify_sources(directory, state)
     require(state['phase'] in {'RUNNING', 'TESTED'}, 'RUNNING_PROFILE_REQUIRED')
     # Clear a former success before probing; failure cannot preserve old green.
     state['tests'] = False
     persist(directory, state, 'RUNNING')
-    for _ in range(45):
+    require(type(health_attempts) is int and 1 <= health_attempts <= 45, 'HEALTH_ATTEMPT_BOUND')
+    for _ in range(health_attempts):
         try:
             compose(directory, state, 'exec', '-T', 'probe', 'python', '/probe.py', 'health', timeout=20)
             break
@@ -393,7 +440,7 @@ def test(run_id):
     else:
         raise Refused('IAM_CP_HEALTH_FAILED')
     require(bootstrap(directory, state) == read(directory / 'bootstrap.json'), 'BOOTSTRAP_REPLAY_MISMATCH')
-    for name in adapter.SERVICES:
+    for name in adapter.SERVICES - adapter.MIGRATIONS:
         container = compose(directory, state, 'ps', '-q', name)
         require(re.fullmatch(r'[0-9a-f]{12,64}', container), 'CONTAINER_NOT_RUNNING')
         actual = json.loads(call(['docker', 'inspect', container]))[0]
@@ -414,6 +461,29 @@ def test(run_id):
     state['tests'] = True
     persist(directory, state, 'TESTED')
     return {'lifecycle_checks': 'PASS', 'domain_qualification': 'NOT_EXECUTED', 'fixture_checks': fixture_checks}
+
+
+AUTHORITY_CASES = {'actual_signed_issuer_and_cp_context','wrong_sibling_tenant_denied','wrong_external_tenant_denied',
+ 'wrong_audience_denied','absent_capability_grant_denied','expired_issuer_token_denied','issuer_revocation_while_unexpired',
+ 'fresh_credential_after_revoke_succeeds','real_kratos_hydra_pkce_distinct_humans','same_principal_provenance_approval_denied',
+ 'same_principal_deactivation_approval_denied','cp_principal_deactivation_while_unexpired','cp_denial_independent_of_issuer_status','wrong_pkce_denied_by_issuer','wrong_state_denied_by_relying_party','authorization_code_replay_denied'}
+
+def qualify(run_id):
+    directory,state=current(run_id)
+    verify_sources(directory,state)
+    require(state['phase']=='TESTED','TESTED_PROFILE_REQUIRED')
+    state['authority']=None
+    persist(directory,state,'TESTED')
+    compose(directory,state,'exec','-T','probe','python','/probe.py','authority',timeout=180)
+    report=read(directory/'authority.json')
+    require(set(report)=={'schema','checks','synthetic_only','canonical_provider_qualified','int03c_qualified','nab03_qualified','protected_acceptance'}
+            and report['schema']=='infrastructure.dev03.authority-observed.v1'
+            and set(report['checks'])==AUTHORITY_CASES and all(v is True for v in report['checks'].values())
+            and report['synthetic_only'] is True and all(report[k] is False for k in
+            ('canonical_provider_qualified','int03c_qualified','nab03_qualified','protected_acceptance')),'DEV03_REPORT_INVALID')
+    state['authority']=report
+    persist(directory,state,'TESTED')
+    return report
 
 
 def resources(run_id=None):
@@ -445,10 +515,11 @@ def down(run_id):
         report = {'schema': 'infrastructure.dev01.lifecycle.observed.v1', 'run_id': run_id,
                   'harness_sha': state['harness_sha'], 'source_pins': state['sources'],
                   'image_ids': state['image_ids'], 'runtime_images': state.get('runtime_images', {}),
-                  'lock_sha256': state['lock_sha256'],
+                  'lock_sha256': state['lock_sha256'], 'native_config_hashes':state.get('native_config_hashes',{}),
                   'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA' if state['tests'] else 'SOURCE',
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
-                  'domain_qualification': 'NOT_EXECUTED', 'int03c_qualified': False,
+                  'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
+                  'authority':state.get('authority'), 'int03c_qualified': False,
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         folder = EVIDENCE / ('dev01-' + run_id)
         private_directory(folder)
@@ -499,7 +570,7 @@ def watch(run_id):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['doctor', 'preflight', 'plan', 'prepare', 'up', 'test',
-                                         'evidence', 'down', 'recover', 'run', 'watch'])
+                                         'evidence', 'down', 'recover', 'run', 'watch', 'qualify'])
     parser.add_argument('--run-id')
     parser.add_argument('--lease-seconds', type=int, default=3600)
     parser.add_argument('--static', action='store_true')
@@ -522,6 +593,7 @@ def main(argv=None):
                 with guarded(run_id):
                     up(run_id)
                     test(run_id)
+                    qualify(run_id)
             finally:
                 with guarded(run_id):
                     down(run_id)
@@ -531,6 +603,8 @@ def main(argv=None):
             with guarded(args.run_id):
                 if args.action == 'up':
                     up(args.run_id)
+                elif args.action == 'qualify':
+                    print(json.dumps(qualify(args.run_id),sort_keys=True))
                 elif args.action == 'test':
                     print(json.dumps(test(args.run_id)))
                 elif args.action == 'down':

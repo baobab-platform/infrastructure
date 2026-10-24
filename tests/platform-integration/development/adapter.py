@@ -1,110 +1,89 @@
-"""Closed IAM/CP lifecycle adapter. This is not a DEV-14 descriptor parser.
-
-Only owner-native setup is allowed: native IAM subjects, a fresh marked DB,
-and CP's separate development command. No SQL creates canonical CP records.
-"""
+"""DEV-03 isolated native Ory/CP composition; no canonical provider activation."""
 import os
+import base64
+import hashlib
 from pathlib import Path
 
-ISSUER = 'https://iam.baobab-dev.test/realms/baobab'
-SERVICES = {'iam-db', 'cp-db', 'iam', 'cp', 'edge', 'probe'}
-
+ISSUER = 'https://hydra.int03.test'
+SERVICES = {'hydra-db','kratos-db','cp-db','hydra-migrate','kratos-migrate','hydra','kratos','cp','edge','probe'}
+MIGRATIONS = {'hydra-migrate','kratos-migrate'}
 
 def host(path):
-    """Translate bind sources for Docker-outside-of-Docker Codespaces."""
-    local = os.environ.get('LOCAL_WORKSPACE_FOLDER')
-    container = os.environ.get('CONTAINER_WORKSPACE_FOLDER')
-    if bool(local) != bool(container):
-        raise ValueError('INCOMPLETE_WORKSPACE_MAPPING')
-    if local:
-        relative = Path(path).resolve().relative_to(Path(container).resolve())
-        return str(Path(local) / relative)
+    local, container = os.environ.get('LOCAL_WORKSPACE_FOLDER'), os.environ.get('CONTAINER_WORKSPACE_FOLDER')
+    if bool(local) != bool(container): raise ValueError('INCOMPLETE_WORKSPACE_MAPPING')
+    if local: return str(Path(local) / Path(path).resolve().relative_to(Path(container).resolve()))
     return str(path)
 
+def unique_transport_lists(raw):
+    # Two distinct loopback UI origins collapse into one isolated RP origin.
+    # Kratos requires unique CORS/return-URL entries even for native API use.
+    lines=[]
+    for line in raw.splitlines():
+        if lines and line==lines[-1] and line.lstrip().startswith('- https://rp.baobab-dev.test'): continue
+        lines.append(line)
+    return '\n'.join(lines)+'\n'
 
-def composition(state, directory, images, namespace):
-    run_id = state['run_id']
-    project = state['project']
-    labels = {'io.baobab.dev.namespace': namespace, 'io.baobab.dev.run': run_id,
-              'io.baobab.dev.deadline': str(state['deadline'])}
-    secrets = state['secrets']
-    cp_db = 'baobab_dev_' + run_id
-    db = lambda name, user, password, volume: {
-        'image': images['postgres'], 'environment': {'POSTGRES_DB': name, 'POSTGRES_USER': user,
-                                                   'POSTGRES_PASSWORD': password},
-        'volumes': [volume + ':/var/lib/postgresql/data'],
-        'healthcheck': {'test': ['CMD-SHELL', f'pg_isready -U {user} -d {name}'],
-                        'interval': '3s', 'timeout': '3s', 'retries': 40}}
-    registry = directory / 'sources/shared/contracts/identity/v1/workload-registry.yaml'
-    tls = host(directory / 'tls')
-    services = {
-        'iam-db': db('baobab_iam', 'baobab_iam', secrets['iam_db'], 'iam-data'),
-        'cp-db': db(cp_db, 'baobab_dev', secrets['cp_db'], 'cp-data'),
-        'iam': {'image': state['images']['iam'], 'pull_policy': 'never',
-                'command': ['start', '--import-realm', '--http-enabled=true',
-                            '--hostname=https://iam.baobab-dev.test', '--hostname-strict=false'],
-                'environment': {'KC_DB': 'postgres', 'KC_DB_URL': 'jdbc:postgresql://iam-db:5432/baobab_iam',
-                                'KC_DB_USERNAME': 'baobab_iam', 'KC_DB_PASSWORD': secrets['iam_db'],
-                                'KC_BOOTSTRAP_ADMIN_USERNAME': 'dev01-admin',
-                                'KC_BOOTSTRAP_ADMIN_PASSWORD': secrets['admin'], 'KC_PROXY_HEADERS': 'xforwarded'},
-                'depends_on': {'iam-db': {'condition': 'service_healthy'}}},
-        'cp': {'image': state['images']['cp'], 'pull_policy': 'never',
-               'environment': {'DATABASE_URL': f'postgres://baobab_dev:{secrets["cp_db"]}@cp-db:5432/{cp_db}?sslmode=disable',
-                               'BAOBAB_ENVIRONMENT': 'development', 'HTTP_ADDRESS': ':8080',
-                               'ADMIN_OIDC_ISSUER': ISSUER, 'WORKLOAD_OIDC_ISSUER': ISSUER,
-                               'ADMIN_OIDC_AUDIENCE': 'baobab-control-plane',
-                               'WORKLOAD_OIDC_AUDIENCE': 'baobab-control-plane',
-                               'WORKLOAD_REGISTRY_FILE': '/registry.yaml', 'SSL_CERT_FILE': '/tls/ca.pem'},
-               'volumes': [tls + ':/tls:ro', host(registry) + ':/registry.yaml:ro']},
-        'edge': {'image': images['edge'], 'read_only': True, 'tmpfs': ['/tmp'],
-                 'volumes': [host(directory / 'nginx.conf') + ':/etc/nginx/nginx.conf:ro', tls + ':/tls:ro'],
-                 'networks': {'lab': {'aliases': ['iam.baobab-dev.test', 'cp.baobab-dev.test']}}},
-        'probe': {'image': images['probe'], 'user': f'{state["uid"]}:{state["gid"]}',
-                  'command': ['sleep', 'infinity'],
-                  'environment': {'DEV01_ADMIN_PASSWORD': secrets['admin'], 'DEV01_RUN_ID': run_id},
-                  'volumes': [host(directory) + ':/run/dev01', tls + ':/tls:ro',
-                              host(Path(__file__).resolve().parent / 'probe.py') + ':/probe.py:ro']},
-    }
-    for service in services.values():
-        service.update(labels=labels, restart='no')
-        service.setdefault('networks', ['lab'])
-    return {'name': project, 'services': services,
-            'networks': {'lab': {'internal': True, 'labels': labels}},
-            'volumes': {name: {'labels': labels} for name in ('iam-data', 'cp-data')}}
+def configure(directory, state):
+    """Derive isolated transport/secret overlays from exact IAM-owned configs."""
+    source=directory/'sources/baobab-iam/config/ory'
+    (directory/'introspection.htpasswd').write_text('baobab-dev-introspection:{SHA}'+base64.b64encode(hashlib.sha1(state['secrets']['introspection'].encode()).digest()).decode()+'\n')
+    hydra=(source/'hydra/hydra.yml').read_text().replace('http://127.0.0.1:4444',ISSUER).replace('http://127.0.0.1:3000','https://rp.baobab-dev.test')
+    hydra=hydra.replace('local_dev_only_hydra_system_secret_change_me',state['secrets']['admin']).replace('local_dev_only_pairwise_salt_change_me',state['secrets']['hook'])
+    hydra=hydra.replace('  access_token: jwt','  access_token: jwt\n  jwt:\n    scope_claim: string')
+    hydra=hydra.replace('  expose_internal_errors: false', '  expose_internal_errors: false\n  allowed_top_level_claims: [actor_type, azp, realm_access]\n  mirror_top_level_claims: false\n  token_hook:\n    url: http://probe:8090/token-hook\n    auth:\n      type: api_key\n      config:\n        in: header\n        name: X-DEV03-Hook-Key\n        value: '+state['secrets']['hook'])
+    hydra+='\nttl:\n  access_token: 2m\n'
+    (directory/'hydra.yml').write_text(hydra)
+    kratos=(source/'kratos/kratos.yml').read_text().replace('http://127.0.0.1:4433/','https://kratos.baobab-dev.test/').replace('http://127.0.0.1:4434/','http://kratos:4434/').replace('http://127.0.0.1:4455','https://rp.baobab-dev.test').replace('http://127.0.0.1:3000','https://rp.baobab-dev.test')
+    kratos=unique_transport_lists(kratos)
+    for value in ('local_dev_only_cookie_secret_32b','local_dev_only_cipher_secret_32b'): kratos=kratos.replace(value,state['secrets']['hook'][:32])
+    config=directory/'kratos';config.mkdir(mode=0o755)
+    (config/'kratos.yml').write_text(kratos)
+    (config/'identity.schema.json').write_bytes((source/'kratos/identity.schema.json').read_bytes())
+    for path in (directory/'introspection.htpasswd', directory/'hydra.yml', config/'kratos.yml', config/'identity.schema.json'): path.chmod(0o644)  # enclosing run root stays 0700
 
+def composition(state,directory,images,namespace):
+    run=state['run_id']; secret=state['secrets']; tls=host(directory/'tls')
+    labels={'io.baobab.dev.namespace':namespace,'io.baobab.dev.run':run,'io.baobab.dev.deadline':str(state['deadline'])}
+    def database(name,user,password,volume):
+        return {'image':images['postgres'],'environment':{'POSTGRES_DB':name,'POSTGRES_USER':user,'POSTGRES_PASSWORD':password},'volumes':[volume+':/var/lib/postgresql/data'],'healthcheck':{'test':['CMD-SHELL',f'pg_isready -U {user} -d {name}'],'interval':'3s','timeout':'3s','retries':40}}
+    services={'cp-db':database('baobab_dev_'+run,'baobab_dev',secret['cp_db'],'cp-data')}
+    for provider in ('hydra','kratos'):
+        services[provider+'-db']=database(provider,provider,secret['iam_db'],provider+'-data')
+        volumes=[host(directory/'hydra.yml')+':/etc/config/hydra/hydra.yml:ro'] if provider=='hydra' else [host(directory/'kratos')+':/etc/config/kratos:ro']
+        cfg='/etc/config/'+provider+'/'+provider+'.yml'
+        env={'DSN':f'postgres://{provider}:{secret["iam_db"]}@{provider}-db:5432/{provider}?sslmode=disable'}
+        services[provider+'-migrate']={'image':images[provider],'environment':env,'volumes':volumes,'command':['-c',cfg,'migrate','sql','-e','--yes'],'depends_on':{provider+'-db':{'condition':'service_healthy'}}}
+        services[provider]={'image':images[provider],'environment':env,'volumes':volumes,'command':(['serve','all'] if provider=='hydra' else ['serve'])+['-c',cfg,'--dev'],'depends_on':{provider+'-migrate':{'condition':'service_completed_successfully'}}}
+    cp_env={'DATABASE_URL':f'postgres://baobab_dev:{secret["cp_db"]}@cp-db:5432/baobab_dev_{run}?sslmode=disable','BAOBAB_ENVIRONMENT':'development','HTTP_ADDRESS':':8080','ADMIN_OIDC_ISSUER':ISSUER,'WORKLOAD_OIDC_ISSUER':ISSUER,'ADMIN_OIDC_AUDIENCE':'baobab-control-plane','WORKLOAD_OIDC_AUDIENCE':'baobab-control-plane','WORKLOAD_REGISTRY_FILE':'/registry.yaml','SSL_CERT_FILE':'/tls/ca.pem','INT03C_CP_PRINCIPAL_DEACTIVATION_ENABLED':'true'}
+    for actor in ('ADMIN','WORKLOAD'):
+        cp_env.update({actor+'_INTROSPECTION_ENDPOINT':ISSUER+'/oauth2/introspect',actor+'_INTROSPECTION_CLIENT_ID':'baobab-dev-introspection',actor+'_INTROSPECTION_CLIENT_SECRET':secret['introspection']})
+    registry=directory/'sources/shared/contracts/identity/v1/workload-registry.yaml'
+    services['cp']={'image':state['images']['cp'],'pull_policy':'never','environment':cp_env,'volumes':[tls+':/tls:ro',host(registry)+':/registry.yaml:ro']}
+    services['edge']={'image':images['edge'],'read_only':True,'tmpfs':['/tmp'],'volumes':[host(directory/'nginx.conf')+':/etc/nginx/nginx.conf:ro',host(directory/'introspection.htpasswd')+':/etc/nginx/introspection.htpasswd:ro',tls+':/tls:ro'],'networks':{'lab':{'aliases':['hydra.int03.test','cp.baobab-dev.test','kratos.baobab-dev.test','rp.baobab-dev.test']}}}
+    services['probe']={'image':images['probe'],'user':f'{state["uid"]}:{state["gid"]}','command':['python','/probe.py','serve'],'environment':{'DEV01_RUN_ID':run,'DEV03_HOOK_KEY':secret['hook'],'DEV03_INTROSPECTION_SECRET':secret['introspection']},'volumes':[host(directory)+':/run/dev01',tls+':/tls:ro',host(Path(__file__).parent/'probe.py')+':/probe.py:ro']}
+    for service in services.values(): service.update(labels=labels,restart='no');service.setdefault('networks',['lab'])
+    return {'name':state['project'],'services':services,'networks':{'lab':{'internal':True,'labels':labels}},'volumes':{name:{'labels':labels} for name in ('cp-data','hydra-data','kratos-data')}}
 
-EDGE = '''pid /tmp/nginx.pid;
+EDGE='''pid /tmp/nginx.pid;
 events {}
 http {
-  access_log off;
-  error_log /dev/null;
-  client_body_temp_path /tmp/client;
-  proxy_temp_path /tmp/proxy;
-  fastcgi_temp_path /tmp/fastcgi;
-  uwsgi_temp_path /tmp/uwsgi;
-  scgi_temp_path /tmp/scgi;
-  ssl_protocols TLSv1.3;
-  resolver 127.0.0.11 ipv6=off;
-  server {
-    listen 443 ssl;
-    server_name iam.baobab-dev.test;
-    ssl_certificate /tls/edge.pem;
-    ssl_certificate_key /tls/edge.key;
-    location / {
-      set $upstream http://iam:8080;
-      proxy_pass $upstream;
-      proxy_set_header Host iam.baobab-dev.test;
-      proxy_set_header X-Forwarded-Host iam.baobab-dev.test;
-      proxy_set_header X-Forwarded-Proto https;
-      proxy_set_header X-Forwarded-Port 443;
-    }
-  }
-  server {
-    listen 443 ssl;
-    server_name cp.baobab-dev.test;
-    ssl_certificate /tls/edge.pem;
-    ssl_certificate_key /tls/edge.key;
-    location / { set $upstream http://cp:8080; proxy_pass $upstream; }
-  }
-}
+ access_log off; error_log /dev/null;
+ client_body_temp_path /tmp/client; proxy_temp_path /tmp/proxy;
+ fastcgi_temp_path /tmp/fastcgi; uwsgi_temp_path /tmp/uwsgi; scgi_temp_path /tmp/scgi;
+ ssl_protocols TLSv1.3; resolver 127.0.0.11 ipv6=off;
 '''
+for name,upstream in [('hydra.int03.test','hydra:4444'),('kratos.baobab-dev.test','kratos:4433'),('cp.baobab-dev.test','cp:8080')]:
+    introspection=''' location = /oauth2/introspect {
+ limit_except POST { deny all; }
+ auth_basic "DEV03 private introspection"; auth_basic_user_file /etc/nginx/introspection.htpasswd;
+ set $introspector http://hydra:4445; proxy_pass $introspector/admin/oauth2/introspect;
+ proxy_set_header Authorization "";
+ }
+''' if name=='hydra.int03.test' else ''
+    EDGE+=''' server { listen 443 ssl; server_name '''+name+''';
+ ssl_certificate /tls/edge.pem; ssl_certificate_key /tls/edge.key;
+'''+introspection+''' location / { set $upstream http://'''+upstream+'''; proxy_pass $upstream;
+ proxy_set_header Host '''+name+'''; proxy_set_header X-Forwarded-Proto https; }
+ }
+'''
+EDGE+='}\n'
