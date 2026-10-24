@@ -16,6 +16,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  packages: read
 concurrency:
   group: dev01-${{ github.ref }}
   cancel-in-progress: false
@@ -57,6 +58,15 @@ jobs:
             --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
             --remote-env BAOBAB_ENVIRONMENT=development \
             python3 -B tests/platform-integration/development/ci_int03c.py
+      - name: Observe DEV-05 native CMS and BFF with precise canonical blockers
+        env:
+          DEV05_NPM_TOKEN: ${{ github.token }}
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env BAOBAB_ENVIRONMENT=development \
+            --remote-env "DEV05_NPM_TOKEN=$DEV05_NPM_TOKEN" \
+            python3 -B tests/platform-integration/development/ci_cms.py
       - name: Recover through the shared development CLI
         if: always()
         run: |
@@ -77,5 +87,6 @@ jobs:
             tests/platform-integration/evidence/dev02-fixture-suite.json
             tests/platform-integration/evidence/dev03-authority-suite.json
             tests/platform-integration/evidence/dev04-int03c-suite*.json
+            tests/platform-integration/evidence/dev05-cms-suite*.json
           if-no-files-found: warn
           retention-days: 14

@@ -210,7 +210,7 @@ def tls(directory, state):
         ['req', '-newkey', 'rsa:2048', '-nodes', '-subj', '/CN=baobab-dev.test',
          '-keyout', str(folder / 'edge.key'), '-out', str(directory / 'edge.csr')],
     ]
-    (directory / 'edge.ext').write_text('subjectAltName=DNS:hydra.int03.test,DNS:kratos.baobab-dev.test,DNS:cp.baobab-dev.test,DNS:rp.baobab-dev.test\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n')
+    (directory / 'edge.ext').write_text('subjectAltName=DNS:hydra.int03.test,DNS:kratos.baobab-dev.test,DNS:cp.baobab-dev.test,DNS:rp.baobab-dev.test,DNS:cms.baobab-dev.test,DNS:nabhold.baobab-dev.test,DNS:redis.baobab-dev.test\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n')
     for command in commands:
         call(['openssl', *command], state=state)
     call(['openssl', 'x509', '-req', '-in', str(directory / 'edge.csr'), '-CA', str(folder / 'ca.pem'),
@@ -550,7 +550,7 @@ def down(run_id):
                   'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA' if state['tests'] else 'SOURCE',
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
-                  'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
+                  'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         folder = EVIDENCE / ('dev01-' + run_id)
@@ -595,6 +595,16 @@ def publish_receipt(folder, run_id):
         report['int03c_qualified'] = report['lifecycle_passed'] and all(
             item['result'] == 'PASS' for item in qualification['cases'].values())
         report['domain_qualification'] = 'DEV04_INT03C_DEVELOPMENT_ONLY'
+    if report.get('cms'):
+        import cms_contract
+        cms = cms_contract.validate(report['cms'], run_id)
+        cms['component_checks'].update(private_state_absent=True, owned_resources_absent=True)
+        if cms['cases']['teardown']['reason'] == 'TEARDOWN_PENDING' and cms['component_checks'].get('native_clients_deleted') and cms['component_checks'].get('native_tokens_inactive'):
+            cms['cases']['teardown'] = {'result':'PASS','reason':'OBSERVED'}
+        cms['nab03_qualified'] = all(row['result']=='PASS' for row in cms['cases'].values()) and not cms['component_checks'].get('provider_declared_partial', True)
+        cms_contract.validate(cms, run_id)
+        report['nab03_qualified'] = cms['nab03_qualified']
+        report['domain_qualification'] = 'DEV05_NATIVE_CMS_DEVELOPMENT_ONLY'
     write(pending / 'receipt.json', report)
     write(pending / 'receipt.sha256.json',
           {'sha256': hashlib.sha256((pending / 'receipt.json').read_bytes()).hexdigest()})
@@ -643,7 +653,7 @@ def watch(run_id):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['doctor', 'preflight', 'plan', 'prepare', 'up', 'test',
-                                         'evidence', 'down', 'recover', 'run', 'watch', 'qualify', 'qualify-int03c', 'run-int03c'])
+                                         'evidence', 'down', 'recover', 'run', 'watch', 'qualify', 'qualify-int03c', 'run-int03c', 'run-cms'])
     parser.add_argument('--run-id')
     parser.add_argument('--lease-seconds', type=int, default=3600)
     parser.add_argument('--static', action='store_true')
@@ -660,6 +670,16 @@ def main(argv=None):
             recover(args.all)
         elif args.action == 'watch':
             watch(args.run_id)
+        elif args.action == 'run-cms':
+            import cms_vertical
+            run_id = cms_vertical.prepare()
+            try:
+                with guarded(run_id):
+                    cms_vertical.up(run_id)
+                    cms_vertical.qualify(run_id)
+            finally:
+                with guarded(run_id): down(run_id)
+            print('DEV05_COMPLETED_RECEIPT ' + run_id)
         elif args.action in {'run', 'run-int03c'}:
             run_id = prepare(args.lease_seconds)
             try:
