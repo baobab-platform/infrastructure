@@ -131,7 +131,9 @@ def up(run):
       'NABHOLD_OIDC_CLIENT_SECRET':secret['bff'],'NABHOLD_OIDC_INTROSPECTION_ENDPOINT':adapter.ISSUER+'/oauth2/introspect/dev05',
       'NABHOLD_OIDC_CP_ORIGIN':'https://cp.baobab-dev.test','NABHOLD_OIDC_TRUST_PROXY':'true',
       'NABHOLD_BFF_STORE_ENABLED':'true','NABHOLD_BFF_STORE_KEYS_JSON':json.dumps({'development':base64.b64encode(bytes.fromhex(secret['session_key'])).decode()}),
-      'NABHOLD_BFF_STORE_ACTIVE_KEY':'development','NABHOLD_BFF_STORE_EPOCH':'dev'+run,'NABHOLD_BFF_REDIS_HOST':'redis.baobab-dev.test',
+      'NABHOLD_BFF_STORE_ACTIVE_KEY':'development',# The pinned Nabhold confidential store enforces ^[a-z][a-z0-9-]{0,31}$.
+       # Retain 124 run-entropy bits while staying at the 32-character limit.
+       'NABHOLD_BFF_STORE_EPOCH':'d'+run[:31],'NABHOLD_BFF_REDIS_HOST':'redis.baobab-dev.test',
       'NABHOLD_BFF_REDIS_PORT':'6380','NABHOLD_BFF_REDIS_USERNAME':'nabhold','NABHOLD_BFF_REDIS_PASSWORD':secret['redis'],
       'NABHOLD_BFF_REDIS_CA_PEM':(directory/'tls/ca.pem').read_text(),
       'NABHOLD_CONTENT_SOURCE':'capability','NABHOLD_CONTENT_FALLBACK':'disabled','NABHOLD_CMS_PROOF_ENABLED':'true',
