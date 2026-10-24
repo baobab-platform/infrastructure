@@ -87,6 +87,45 @@ def published(result,key):
     return bool(record and record.get('tenant_id')==own['tenant_id'] and record.get('content_key')==key and record.get('publication_state')=='PUBLISHED')
 
 
+
+def validator_profile():
+    """Independent observed IAM claims, never a replacement for CMS getToken.
+
+    This probe emits only a finite diagnostic class; tokens, subjects and
+    timestamps remain private. No claims are fixed, minted or overwritten.
+    """
+    cls='UNAVAILABLE'
+    try:
+        state=p.read('state.json')
+        secret=state['secrets']['cms_validator']
+        issue={'grant_type':'client_credentials','client_id':VALIDATOR,'client_secret':secret,
+               'audience':'baobab-control-plane','scope':'context:validate'}
+        code,token_response,_=p.request('POST',p.ISSUER+'/oauth2/token',issue,form=True)
+        received=time.time()
+        if code!=200 or not isinstance(token_response,dict) or not token_response.get('access_token'):
+            cls='ISSUANCE_REFUSED'
+        else:
+            current={'token':token_response['access_token'],'client_id':VALIDATOR,'client_secret':secret}
+            code,claims,_=p.request('POST',p.ISSUER+'/oauth2/introspect/dev05',current,form=True)
+            if code!=200 or not isinstance(claims,dict):cls='INTROSPECTION_REFUSED'
+            elif claims.get('active') is not True:cls='INACTIVE'
+            elif claims.get('iss')!=p.ISSUER:cls='ISSUER_MISMATCH'
+            elif claims.get('client_id')!=VALIDATOR:cls='CLIENT_MISMATCH'
+            elif claims.get('actor_type')!='workload':cls='ACTOR_MISMATCH'
+            elif claims.get('scope')!='context:validate':cls='SCOPE_MISMATCH'
+            elif claims.get('aud') not in ('baobab-control-plane',['baobab-control-plane']):cls='AUDIENCE_MISMATCH'
+            elif claims.get('owner') not in (None,'baobab-platform/baobab-cms'):cls='OWNER_MISMATCH'
+            elif claims.get('environment') not in (None,'development'):cls='ENVIRONMENT_MISMATCH'
+            elif not isinstance(claims.get('sub'),str) or not 0<len(claims['sub'])<=255:cls='SUBJECT_MISMATCH'
+            elif type(claims.get('exp')) is not int or type(token_response.get('expires_in')) is not int or (
+                    not 0<claims['exp']-received<=300 or not 0<token_response['expires_in']<=300 or
+                    claims['exp']-received>token_response['expires_in']):cls='TIME_MISMATCH'
+            else:cls='READY'
+    except Exception:
+        cls='UNAVAILABLE'
+    print('DEV05_VALIDATOR_PROFILE='+cls,flush=True)
+
+
 def record_failure_class(result, key):
     """Bounded classification only; never print CMS content, context or IDs."""
     http, body, _ = result
@@ -213,6 +252,7 @@ def main(action):
             code,actual,_=p.request('POST',p.CP+'/v1/platform-context/validate',{'context_id':ctx['context_id'],'subject_token':bearer},validator)
             p.require(code==200 and actual['authority_purpose']=='RUNTIME' and actual['organisation_id']==own['organisation_id']);value['component_checks']['cp_validator_subject_accepted']=True
             stage('CMS_RECORDS')
+            validator_profile()
             records=[resolve(bearer,ctx['context_id'],key) for key in ('home','navigation','footer')]
             for result,key in zip(records,('home','navigation','footer')):
                 if not published(result,key):
