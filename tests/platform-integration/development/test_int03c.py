@@ -95,6 +95,14 @@ class Int03CTests(unittest.TestCase):
                         self.assertIs(receipt['production_authorized'], False)
                         if complete_provider: contract.validate(receipt['int03c'], RUN, complete=True)
 
+    def test_issuer_proof_ceiling_has_headroom_below_verified_limit(self):
+        with patch('ssl.create_default_context', return_value=SimpleNamespace()):
+            probe = importlib.import_module('int03c_probe')
+        # Fail if someone reverts to an exactly-60s Hydra client config,
+        # which intermittently issues a >60s request-to-expiry lifetime.
+        self.assertEqual(probe.p.PROOF_LIFESPAN, '55s')
+        self.assertLess(int(probe.p.PROOF_LIFESPAN[:-1]), 60)
+
     def test_provider_lifetime_readback_is_bound_to_actual_token(self):
         with patch('ssl.create_default_context', return_value=SimpleNamespace()):
             probe = importlib.import_module('int03c_probe')
