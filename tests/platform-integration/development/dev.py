@@ -122,6 +122,10 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                 if line in {'DEV05_PROBE_STAGE='+name for name in ('BFF_LOGIN','BFF_KRATOS_FLOW','BFF_KRATOS_LOGIN','BFF_INITIATE','BFF_PKCE','BFF_AUTHORIZE','BFF_CALLBACK',
                         'BFF_SESSION','BFF_LOGOUT','CMS_CONTEXT','CMS_RECORDS','CANONICAL_RESOLUTION')}:
                     print(line,flush=True)
+                # Only static keys/reason classes may cross the native CMS
+                # runner boundary; actual responses and identity data stay private.
+                if re.fullmatch(r'DEV05_RECORD_DIAGNOSTIC=(HOME|NAVIGATION|FOOTER)_(HTTP_DENIED|HTTP_UNAVAILABLE|INVALID_BODY|NO_RECORD|NOT_PUBLISHED|WRONG_CONTENT_KEY|WRONG_TENANT|UNEXPECTED)',line):
+                    print(line,flush=True)
                 if line.startswith('DEV04_BINDING='):
                     try:
                         value = json.loads(line[len('DEV04_BINDING='):], object_pairs_hook=unique)
