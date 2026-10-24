@@ -17,6 +17,10 @@ import cms_contract
 CONSUMER='baobab-int03-cms-consumer';VALIDATOR='baobab-int03-cms-validator';BFF='nabhold-dev-bff'
 CMS='https://cms.baobab-dev.test';ESTATE='https://nabhold.baobab-dev.test'
 
+def stage(name):
+    # Fixed source-owned markers only; OAuth values/bodies stay in private state.
+    print('DEV05_PROBE_STAGE='+name,flush=True)
+
 def checkpoint(report):
     fd=os.open(p.ROOT/'.cms-report.tmp',os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
     with os.fdopen(fd,'w') as out:json.dump(report,out);out.flush();os.fsync(out.fileno())
@@ -96,6 +100,7 @@ def estate_page(expected):
 
 
 def bff(report):
+    stage('BFF_LOGIN')
     native,bootstrap,_=config();human=native['humans']['maker']
     code,flow,_=p.request('GET',p.KRATOS+'/self-service/login/api');p.require(code==200)
     code,logged,_=p.request('POST',p.KRATOS+'/self-service/login?flow='+flow['id'],{'method':'password','identifier':human['email'],'password':human['password']});p.require(code==200)
@@ -105,6 +110,7 @@ def bff(report):
     p.require(code in (302,303) and location)
     authorization=urllib.parse.urlsplit(location);fields=urllib.parse.parse_qs(authorization.query)
     p.require(set(fields['scope'][0].split())=={'openid','authority:self'} and fields['code_challenge_method']==['S256'] and fields.get('nonce'))
+    stage('BFF_AUTHORIZE')
     code,_,location=p.request('GET',location,opener=opener)
     for _ in range(10):
         p.require(code in (302,303) and location)
@@ -122,11 +128,13 @@ def bff(report):
             code,accepted=p.api('PUT','/admin/oauth2/auth/requests/consent/accept?consent_challenge='+challenge,{'grant_scope':actual['requested_scope'],'grant_access_token_audience':['baobab-control-plane'],'remember':False})
             p.require(code==200);location=accepted['redirect_to']
         elif url.netloc=='nabhold.baobab-dev.test' and url.path=='/api/auth/callback':
+            stage('BFF_CALLBACK')
             code,_,_=p.request('GET',location,opener=opener,timeout=30);p.require(code==200);break
         else:
             p.require(url.netloc=='hydra.int03.test')
         code,_,location=p.request('GET',location,opener=opener)
     else:raise ValueError('DEV05_BFF_CALLBACK_FAILED')
+    stage('BFF_SESSION')
     code,identity,_=p.request('GET',ESTATE+'/api/auth/session',opener=opener)
     p.require(code==200 and identity['principalId']==bootstrap['maker_id'])
     report['component_checks']['native_bff_login_session']=True
@@ -134,7 +142,7 @@ def bff(report):
     cookies=[c for c in jar if c.name=='__Host-nabhold-session']
     p.require(len(cookies)==1 and cookies[0].secure and cookies[0].path=='/' and not cookies[0].domain_specified and cookies[0].has_nonstandard_attr('HttpOnly') and str(cookies[0].get_nonstandard_attr('SameSite')).lower()=='strict' and re.fullmatch(r'[A-Za-z0-9_-]{43}',cookies[0].value))
     report['component_checks']['bff_secure_opaque_cookie']=True
-    old=cookies[0]
+    stage('BFF_LOGOUT');old=cookies[0]
     code,_,_=p.request('POST',ESTATE+'/api/auth/logout',{'csrfToken':identity['csrfToken']},form=True,headers={'Origin':ESTATE},opener=opener)
     p.require(code==303);jar.set_cookie(old)
     p.require(p.request('GET',ESTATE+'/api/auth/session',opener=opener)[0]==401)
@@ -162,16 +170,18 @@ def main(action):
         native,bootstrap,own=config()
         if action=='initial':
             p.require(not (p.ROOT/'cms-started').exists());p.write('cms-started',{})
-            bff(value);cp_token,ctx=context();bearer=token()
+            bff(value);stage('CMS_CONTEXT');cp_token,ctx=context();bearer=token()
             code,actual,_=status(bearer);p.require(code==200 and actual['active'] is True);value['component_checks']['issuer_readback_active']=True
             validator=token(VALIDATOR,'baobab-control-plane','context:validate')
             code,actual,_=p.request('POST',p.CP+'/v1/platform-context/validate',{'context_id':ctx['context_id'],'subject_token':bearer},validator)
             p.require(code==200 and actual['authority_purpose']=='RUNTIME' and actual['organisation_id']==own['organisation_id']);value['component_checks']['cp_validator_subject_accepted']=True
+            stage('CMS_RECORDS')
             records=[resolve(bearer,ctx['context_id'],key) for key in ('home','navigation','footer')]
             p.require(all(published(result,key) for result,key in zip(records,('home','navigation','footer'))))
             expected=[records[0][1]['record']['data']['headline'],records[2][1]['record']['data']['statement']]
             p.require(all(isinstance(value,str) and value for value in expected))
             value['component_checks']['native_cms_published_home_navigation_footer']=True
+            stage('CANONICAL_RESOLUTION')
             code,decision,_=p.request('POST',p.CP+'/v1/capabilities/resolve',{'context_id':ctx['context_id'],'capability_key':'content.entry.resolve','required_contract_version':1,'correlation_id':str(uuid.uuid4())},cp_token)
             declaration=(p.ROOT/'sources/baobab-cms/.baobab/capability-provider.yaml').read_text()
             partial='implementation_status: PARTIAL' in declaration
