@@ -46,7 +46,8 @@ def main():
             else:
                 raise dev.Refused('STOPPED_COMPONENT_PASSED')
             dev.compose(directory, state, 'up', '-d', 'cp')
-            dev.test(run_id)
+            fixture_checks = dev.test(run_id)['fixture_checks']
+            source_pins = dict(state['sources'])
             checks['recovery_retested'] = True
             # Loss of the compose/env handle must not defeat ownership cleanup.
             (directory / 'compose.json').unlink()
@@ -66,6 +67,13 @@ def main():
             'checks': checks, 'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA',
             'scope': 'DEV01_LIFECYCLE_ONLY', 'int03c_qualified': False, 'nab03_qualified': False,
             'protected_acceptance': False, 'production_authorized': False})
+        dev.write(dev.EVIDENCE / 'dev02-fixture-suite.json', {
+            'schema': 'infrastructure.dev02.fixture-suite.v1', 'harness_sha': dev.source_identity(),
+            'source_pins': source_pins, 'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA',
+            'scope': 'DEV02_NON_AUTHORISING_SCOPE_AND_LIFECYCLE', 'fixture_checks': fixture_checks,
+            'teardown_verified': True, 'int03c_qualified': False, 'nab03_qualified': False,
+            'protected_acceptance': False, 'production_authorized': False})
+        print('DEV02_REAL_POSTGRES_FIXTURES_PASS')
         print('DEV01_REAL_LIFECYCLE_AND_RECOVERY_PASS')
         return 0
     finally:

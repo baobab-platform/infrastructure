@@ -137,6 +137,30 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual(service['labels']['io.baobab.dev.run'], self.run_id)
         self.assertNotIn('BAOBAB_DEV_BOOTSTRAP_ENABLED', c['services']['cp']['environment'])
 
+    def test_fixture_report_rejects_incomplete_outcomes_and_authority(self):
+        import copy
+        outcomes = {'valid_scoped': 'ACTOR_NOT_VERIFIED', 'missing': 'NO_APPLICABLE_MANDATE',
+                    'stale': 'REVOKED_OR_EXPIRED', 'revoked': 'REVOKED_OR_EXPIRED',
+                    'wrong_market': 'NO_APPLICABLE_MANDATE', 'pending': 'NO_APPLICABLE_MANDATE'}
+        outcomes.update({'boundary_wrong_' + key: 'NO_APPLICABLE_MANDATE'
+                         for key in ('role', 'activity', 'capability', 'tenant', 'organisation', 'market')})
+        report = {'schema': 'baobab.development-fixture-checks.v1', 'run_id': self.run_id,
+                  'synthetic_only': True, 'official_actor_verified': False,
+                  'provider_permissions_granted': False, 'protected_acceptance': False,
+                  'scope': 'DEV02_NON_AUTHORISING_SCOPE_AND_LIFECYCLE',
+                  'observations': [{'enterprise': e, 'case': case, 'policy_outcome': outcome, 'passed': True}
+                                   for e in ('zuribeans', 'equator-estate') for case, outcome in outcomes.items()]}
+        dev.validate_fixture_report(report, self.run_id)
+        for mutation in (lambda r: r['observations'].pop(),
+                         lambda r: r['observations'].__setitem__(0, r['observations'][1]),
+                         lambda r: r['observations'][0].update(policy_outcome='AUTHORIZED'),
+                         lambda r: r.update(official_actor_verified=True),
+                         lambda r: r.update(run_id='b' * 32)):
+            altered = copy.deepcopy(report)
+            mutation(altered)
+            with self.assertRaises(dev.Refused):
+                dev.validate_fixture_report(altered, self.run_id)
+
     def test_codespaces_mount_mapping_is_explicit(self):
         with patch.dict(os.environ, {'LOCAL_WORKSPACE_FOLDER': '/host/project',
                                    'CONTAINER_WORKSPACE_FOLDER': '/workspaces/project'}):

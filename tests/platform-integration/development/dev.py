@@ -324,7 +324,7 @@ def up(run_id):
         raise
 
 
-def bootstrap(directory, state):
+def bootstrap(directory, state, check_fixtures=False):
     subjects = read(directory / 'subjects.json')
     require(set(subjects) == {'maker', 'checker'} and subjects['maker'] != subjects['checker'], 'IAM_SUBJECT_READBACK_REQUIRED')
     remaining = min(state['lease_seconds'], int(state['deadline'] - time.time()) - 15)
@@ -337,9 +337,12 @@ def bootstrap(directory, state):
                   '-e', 'BAOBAB_DEV_BOOTSTRAP_ENABLED=true', '--entrypoint', '/development-bootstrap', 'cp',
                   '--run-id', state['run_id'], '--issuer', adapter.ISSUER,
                   '--maker-subject', subjects['maker'], '--checker-subject', subjects['checker'],
-                  '--lease', str(state['bootstrap_lease']) + 's')
+                  '--lease', str(state['bootstrap_lease']) + 's', *(['--check-fixtures'] if check_fixtures else []))
     value = json.loads(raw, object_pairs_hook=unique)
-    require(value['schema'] == 'baobab.development-bootstrap.v1' and value['run_id'] == state['run_id']
+    if check_fixtures:
+        validate_fixture_report(value, state['run_id'])
+        return value
+    require(value['schema'] == 'baobab.development-bootstrap.v1' and value.get('fixture_version') == 2 and value['run_id'] == state['run_id']
             and value['synthetic_only'] is True and value['protected_acceptance'] is False
             and value['maker_id'] != value['checker_id'] and len(value['enterprises']) == 5, 'CP_BOOTSTRAP_RESULT_INVALID')
     require(datetime.fromisoformat(value['expires_at'].replace('Z', '+00:00')).timestamp() <= state['deadline'],
@@ -347,6 +350,31 @@ def bootstrap(directory, state):
     external = [e for e in value['enterprises'] if e['key'] == 'external-client']
     require(len(external) == 1 and not external[0].get('digital_estate_id'), 'EXTERNAL_CLIENT_ESTATE_FORBIDDEN')
     return value
+
+
+def validate_fixture_report(value, run_id):
+    require(set(value) == {'schema', 'run_id', 'synthetic_only', 'official_actor_verified',
+                           'provider_permissions_granted', 'protected_acceptance', 'scope', 'observations'},
+            'DEV02_REPORT_FIELDS_INVALID')
+    expected = {
+        'valid_scoped': 'ACTOR_NOT_VERIFIED', 'missing': 'NO_APPLICABLE_MANDATE',
+        'stale': 'REVOKED_OR_EXPIRED', 'revoked': 'REVOKED_OR_EXPIRED',
+        'wrong_market': 'NO_APPLICABLE_MANDATE', 'pending': 'NO_APPLICABLE_MANDATE',
+        **{'boundary_wrong_' + field: 'NO_APPLICABLE_MANDATE'
+           for field in ('role', 'activity', 'capability', 'tenant', 'organisation', 'market')},
+    }
+    inventory = [(enterprise, case, outcome) for enterprise in ('zuribeans', 'equator-estate')
+                 for case, outcome in expected.items()]
+    require(value.get('schema') == 'baobab.development-fixture-checks.v1'
+            and value.get('run_id') == run_id and value.get('synthetic_only') is True
+            and value.get('scope') == 'DEV02_NON_AUTHORISING_SCOPE_AND_LIFECYCLE'
+            and all(value.get(key) is False for key in ('official_actor_verified',
+                    'provider_permissions_granted', 'protected_acceptance')), 'DEV02_REPORT_INVALID')
+    observations = value.get('observations', [])
+    require(len(observations) == 24 and all(set(row) == {'enterprise', 'case', 'policy_outcome', 'passed'}
+            and row.get('passed') is True for row in observations)
+            and sorted((row.get('enterprise'), row.get('case'), row.get('policy_outcome')) for row in observations)
+            == sorted(inventory), 'DEV02_INVENTORY_OR_OUTCOME_INVALID')
 
 
 def test(run_id):
@@ -382,9 +410,10 @@ def test(run_id):
             expected = call(['docker', 'image', 'inspect', image, '--format', '{{.Id}}'])
         if expected:
             require(actual['Image'] == expected, 'RUNTIME_IMAGE_MISMATCH')
+    fixture_checks = bootstrap(directory, state, check_fixtures=True)
     state['tests'] = True
     persist(directory, state, 'TESTED')
-    return {'lifecycle_checks': 'PASS', 'domain_qualification': 'NOT_EXECUTED'}
+    return {'lifecycle_checks': 'PASS', 'domain_qualification': 'NOT_EXECUTED', 'fixture_checks': fixture_checks}
 
 
 def resources(run_id=None):
