@@ -127,3 +127,8 @@ No token, password, session, auth code, response body or OTP is published. The
 sanitized authority suite is emitted only after verified teardown. DEV-04's
 seven cases, NAB-03, native-provider certification and protected acceptance
 remain false and separately governed.
+
+`run development` executes the lifecycle and native authority qualifier, then
+always tears down the run. Successful authority observations are retained in the
+completed private receipt; a failed additional attempt clears the former
+authority success before probing and cannot preserve stale green evidence.

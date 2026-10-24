@@ -328,18 +328,15 @@ def up(run_id):
                 '-v', 'ON_ERROR_STOP=1', '-c', f"COMMENT ON DATABASE {database} IS 'baobab.disposable-development.v1'")
         # Native IAM reads require actual readiness, not a container-start flag.
         ready = False
-        for _ in range(90):
+        for attempt in range(90):
             try:
-                compose(directory, state, 'exec', '-T', 'probe', 'python', '-c',
-                        "import ssl,urllib.request; c=ssl.create_default_context(cafile='/tls/ca.pem'); "
-                        "r=urllib.request.urlopen('https://hydra.int03.test/.well-known/openid-configuration',context=c,timeout=3); "
-                        "assert r.status==200; "
-                        "r=urllib.request.urlopen('https://kratos.baobab-dev.test/health/ready',context=c,timeout=3); "
-                        "assert r.status==200", timeout=8)
-                ready = True
-                break
+                status=json.loads(compose(directory,state,'exec','-T','probe','python','/probe.py','provider-ready',timeout=12))
+                require(set(status)=={'hydra','kratos'} and all(type(value) is int and 0<=value<600 for value in status.values()),'READINESS_SHAPE')
+                if all(value==200 for value in status.values()): ready=True;break
+                if attempt % 15==0: print('DEV03_READINESS='+json.dumps(status,sort_keys=True),flush=True)
             except Refused:
-                time.sleep(2)
+                pass
+            time.sleep(2)
         require(ready, 'IAM_HEALTH_UNAVAILABLE')
         print('DEV03_PHASE=NATIVE_IDENTITIES',flush=True)
         compose(directory, state, 'exec', '-T', 'probe', 'python', '/probe.py', 'subjects')
@@ -473,6 +470,8 @@ def qualify(run_id):
     directory,state=current(run_id)
     verify_sources(directory,state)
     require(state['phase']=='TESTED','TESTED_PROFILE_REQUIRED')
+    state['authority']=None
+    persist(directory,state,'TESTED')
     compose(directory,state,'exec','-T','probe','python','/probe.py','authority',timeout=180)
     report=read(directory/'authority.json')
     require(set(report)=={'schema','checks','synthetic_only','canonical_provider_qualified','int03c_qualified','nab03_qualified','protected_acceptance'}
@@ -480,6 +479,8 @@ def qualify(run_id):
             and set(report['checks'])==AUTHORITY_CASES and all(v is True for v in report['checks'].values())
             and report['synthetic_only'] is True and all(report[k] is False for k in
             ('canonical_provider_qualified','int03c_qualified','nab03_qualified','protected_acceptance')),'DEV03_REPORT_INVALID')
+    state['authority']=report
+    persist(directory,state,'TESTED')
     return report
 
 
@@ -515,7 +516,8 @@ def down(run_id):
                   'lock_sha256': state['lock_sha256'], 'native_config_hashes':state.get('native_config_hashes',{}),
                   'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA' if state['tests'] else 'SOURCE',
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
-                  'domain_qualification': 'NOT_EXECUTED', 'int03c_qualified': False,
+                  'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
+                  'authority':state.get('authority'), 'int03c_qualified': False,
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         folder = EVIDENCE / ('dev01-' + run_id)
         private_directory(folder)
@@ -589,6 +591,7 @@ def main(argv=None):
                 with guarded(run_id):
                     up(run_id)
                     test(run_id)
+                    qualify(run_id)
             finally:
                 with guarded(run_id):
                     down(run_id)

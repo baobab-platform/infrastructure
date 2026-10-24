@@ -29,6 +29,19 @@ class NativeTests(unittest.TestCase):
             with self.assertRaisesRegex(dev.Refused,'^COMMAND_FAILED$'):
                 dev.call(['docker','exec','owned'])
 
+    def test_qualification_retains_success_but_clears_it_before_failure(self):
+        report={'schema':'infrastructure.dev03.authority-observed.v1','checks':{name:True for name in dev.AUTHORITY_CASES},
+                'synthetic_only':True,'canonical_provider_qualified':False,'int03c_qualified':False,'nab03_qualified':False,'protected_acceptance':False}
+        state={'phase':'TESTED','authority':{'old':'receipt'}}
+        with patch.object(dev,'current',return_value=(Path('/private'),state)), patch.object(dev,'verify_sources'), \
+             patch.object(dev,'compose'),patch.object(dev,'read',return_value=report),patch.object(dev,'persist'):
+            self.assertEqual(dev.qualify('a'*32),report)
+            self.assertEqual(state['authority'],report)
+        with patch.object(dev,'current',return_value=(Path('/private'),state)), patch.object(dev,'verify_sources'), \
+             patch.object(dev,'compose',side_effect=dev.Refused('OBSERVED_FAILURE')),patch.object(dev,'persist'):
+            with self.assertRaises(dev.Refused): dev.qualify('a'*32)
+            self.assertIsNone(state['authority'])
+
     def test_collapsed_ui_origins_remain_unique(self):
         raw='allowed_origins:\n  - https://rp.baobab-dev.test\n  - https://rp.baobab-dev.test\n'
         self.assertEqual(adapter.unique_transport_lists(raw).count('  - https://rp.baobab-dev.test'),1)

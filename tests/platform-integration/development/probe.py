@@ -42,7 +42,7 @@ def write(name,value):
 
 def read(name): return json.loads((ROOT/name).read_text())
 
-def request(method,url,data=None,token=None,form=False,basic=None,headers=None,opener=None):
+def request(method,url,data=None,token=None,form=False,basic=None,headers=None,opener=None,timeout=8):
     # Private provider admin planes are the only permitted cleartext origins.
     parsed=urllib.parse.urlsplit(url)
     require((parsed.scheme=='https' and parsed.hostname in ('hydra.int03.test','kratos.baobab-dev.test','cp.baobab-dev.test')) or
@@ -54,7 +54,7 @@ def request(method,url,data=None,token=None,form=False,basic=None,headers=None,o
     if basic: h['Authorization']='Basic '+base64.b64encode((basic[0]+':'+basic[1]).encode()).decode()
     req=urllib.request.Request(url,body,h,method=method)
     client=opener or urllib.request.build_opener(NoRedirect(),urllib.request.HTTPSHandler(context=TLS))
-    try: response=client.open(req,timeout=8)
+    try: response=client.open(req,timeout=timeout)
     except urllib.error.HTTPError as error: response=error
     raw=response.read(65537);require(len(raw)<=65536,'BOUNDED_RESPONSE')
     kind=response.headers.get('Content-Type','')
@@ -109,9 +109,19 @@ class Hook(BaseHTTPRequestHandler):
             self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(raw)
         except Exception: self.send_response(403);self.end_headers()
 
+def provider_ready():
+    observed={'hydra':0,'kratos':0}
+    try: observed['hydra']=request('GET',ISSUER+'/.well-known/openid-configuration',timeout=3)[0]
+    except (OSError,ValueError): pass
+    for path in ('/admin/health/ready','/health/ready'):
+        try: observed['kratos']=request('GET','http://kratos:4434'+path,timeout=3)[0]
+        except (OSError,ValueError): continue
+        if observed['kratos']==200: break
+    return observed
+
 def health():
     code,body,_=request('GET',ISSUER+'/.well-known/openid-configuration');require(code==200 and body['issuer']==ISSUER)
-    require(request('GET',KRATOS+'/health/ready')[0]==200)
+    require(provider_ready()['kratos']==200)
     require(request('GET',CP+'/healthz')[0]==200)
     print('REAL_IAM_CP_HEALTH_OBSERVED')
 
@@ -192,14 +202,17 @@ def authority():
     def check(name,ok): require(ok,'DEV03_'+name.upper());observed[name]=True
     a=next(e for e in bootstrap['enterprises'] if e['key']=='zuribeans');external=next(e for e in bootstrap['enterprises'] if e['key']=='external-client');sibling=next(e for e in bootstrap['enterprises'] if e['key']=='thamani')
     name=a['client_id'];credential=native['clients'][name]
-    bearer=token(name,native);check('actual_signed_issuer_and_cp_context',context(bearer,a)[0]==200)
+    bearer=token(name,native);positive_status,positive,_=context(bearer,a)
+    check('actual_signed_issuer_and_cp_context',positive_status==200 and positive.get('tenant_id')==a['tenant_id'] and positive.get('organisation_id')==a['organisation_id'] and positive.get('country_code')=='ZA')
     check('wrong_sibling_tenant_denied',context(bearer,sibling)[0]==403)
     check('wrong_external_tenant_denied',context(bearer,external)[0]==403)
     wrong=dict(credential['config']);wrong['audience']=['baobab-erp']
     require(api('PUT','/admin/clients/'+name,wrong)[0]==200)
     code,body,_=request('POST',ISSUER+'/oauth2/token',{'grant_type':'client_credentials','scope':'context:resolve','audience':'baobab-erp'},form=True,basic=(name,credential['secret']))
     require(code==200);wrong_token=body['access_token'];require(api('PUT','/admin/clients/'+name,credential['config'])[0]==200)
-    check('wrong_audience_denied',claims(wrong_token)['sub']==claims(bearer)['sub'] and context(wrong_token,a)[0]==401)
+    wrong_claims=claims(wrong_token);audiences=wrong_claims.get('aud',[])
+    if isinstance(audiences,str): audiences=[audiences]
+    check('wrong_audience_denied',wrong_claims['sub']==claims(bearer)['sub'] and 'baobab-erp' in audiences and 'baobab-control-plane' not in audiences and context(wrong_token,a)[0]==401)
     code,resolved,_=context(bearer,a);require(code==200)
     status,decision,_=request('POST',CP+'/v1/capabilities/resolve',{'context_id':resolved['context_id'],'capability_key':'content.entry.resolve','required_contract_version':1,'correlation_id':str(uuid.uuid4())},bearer)
     check('absent_capability_grant_denied',status==200 and decision['decision']=='DENIED' and decision.get('reason_code') in ('CAPABILITY_UNKNOWN','GRANT_NOT_FOUND') and not decision.get('invocation') and not decision.get('grant_id'))
@@ -244,6 +257,7 @@ if __name__=='__main__':
     try:
         action=sys.argv[1]
         if action=='serve': ThreadingHTTPServer(('0.0.0.0',8090),Hook).serve_forever()
+        elif action=='provider-ready': print(json.dumps(provider_ready()))
         elif action=='subjects': subjects()
         elif action=='health': health()
         elif action=='authority': authority()
