@@ -10,7 +10,7 @@ import dev
 class NativeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        spec=importlib.util.spec_from_file_location('native_probe',Path(__file__).with_name('probe.py'))
+        spec=importlib.util.spec_from_file_location('native_probe',Path(__file__).with_name('native_probe.py'))
         cls.probe=importlib.util.module_from_spec(spec)
         with patch('ssl.create_default_context',return_value=SimpleNamespace()):spec.loader.exec_module(cls.probe)
 

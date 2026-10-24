@@ -21,6 +21,7 @@ import time
 
 sys.dont_write_bytecode = True
 import adapter
+import int03c_contract
 
 BASE = Path(__file__).resolve().parent
 ROOT = BASE.parents[2]
@@ -234,7 +235,7 @@ def prepare(lease=3600):
             'deadline': int(time.time()) + lease, 'lease_seconds': lease, 'harness_sha': source_identity(),
             'lock_sha256': hashlib.sha256((BASE / 'lock.json').read_bytes()).hexdigest(),
             'sources': lock['sources'], 'runtime_images': lock['images'],
-            'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin', 'hook', 'introspection')},
+            'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin', 'hook', 'introspection', 'verifier')},
             'images': {}, 'image_ids': {}, 'tests': False}
     # Durable recovery identity exists BEFORE a clone, build or Docker mutation.
     persist(directory, data, 'PREPARING')
@@ -255,10 +256,12 @@ def prepare(lease=3600):
             require(call(['git', '-C', str(target), 'rev-parse', 'HEAD']) == sha, 'SOURCE_CHECKOUT_MISMATCH')
         cp = source_root / 'baobab-cp'
         shared = source_root / 'shared'
+        data['contract_hashes'] = {}
         for path in ('development/v1/enterprise-profiles.schema.json', 'development/v1/examples/nabhold-group.json',
                      'identity/v1/workload-registry.yaml'):
             require((cp / 'internal/contracts/shared' / path).read_bytes() ==
                     (shared / 'contracts' / path).read_bytes(), 'EMBEDDED_CONTRACT_DRIFT')
+            data['contract_hashes'][path] = hashlib.sha256((shared / 'contracts' / path).read_bytes()).hexdigest()
         tls(directory, data)
         (directory / 'nginx.conf').write_text(adapter.EDGE)
         persist(directory, data, 'PREPARED')
@@ -330,7 +333,7 @@ def up(run_id):
         ready = False
         for attempt in range(90):
             try:
-                status=json.loads(compose(directory,state,'exec','-T','probe','python','/probe.py','provider-ready',timeout=12))
+                status=json.loads(compose(directory,state,'exec','-T','probe','python','/native_probe.py','provider-ready',timeout=12))
                 require(set(status)=={'hydra','kratos'} and all(type(value) is int and 0<=value<600 for value in status.values()),'READINESS_SHAPE')
                 if all(value==200 for value in status.values()): ready=True;break
                 if attempt % 15==0: print('DEV03_READINESS='+json.dumps(status,sort_keys=True),flush=True)
@@ -340,7 +343,7 @@ def up(run_id):
             time.sleep(2)
         require(ready, 'IAM_HEALTH_UNAVAILABLE')
         print('DEV03_PHASE=NATIVE_IDENTITIES',flush=True)
-        compose(directory, state, 'exec', '-T', 'probe', 'python', '/probe.py', 'subjects')
+        compose(directory, state, 'exec', '-T', 'probe', 'python', '/native_probe.py', 'subjects')
         result = bootstrap(directory, state)
         write(directory / 'bootstrap.json', result)
         # Up never registers or activates a domain provider.
@@ -433,7 +436,7 @@ def test(run_id, health_attempts=45):
     require(type(health_attempts) is int and 1 <= health_attempts <= 45, 'HEALTH_ATTEMPT_BOUND')
     for _ in range(health_attempts):
         try:
-            compose(directory, state, 'exec', '-T', 'probe', 'python', '/probe.py', 'health', timeout=20)
+            compose(directory, state, 'exec', '-T', 'probe', 'python', '/native_probe.py', 'health', timeout=20)
             break
         except Refused:
             time.sleep(2)
@@ -474,7 +477,7 @@ def qualify(run_id):
     require(state['phase']=='TESTED','TESTED_PROFILE_REQUIRED')
     state['authority']=None
     persist(directory,state,'TESTED')
-    compose(directory,state,'exec','-T','probe','python','/probe.py','authority',timeout=180)
+    compose(directory,state,'exec','-T','probe','python','/native_probe.py','authority',timeout=180)
     report=read(directory/'authority.json')
     require(set(report)=={'schema','checks','synthetic_only','canonical_provider_qualified','int03c_qualified','nab03_qualified','protected_acceptance'}
             and report['schema']=='infrastructure.dev03.authority-observed.v1'
@@ -483,6 +486,31 @@ def qualify(run_id):
             ('canonical_provider_qualified','int03c_qualified','nab03_qualified','protected_acceptance')),'DEV03_REPORT_INVALID')
     state['authority']=report
     persist(directory,state,'TESTED')
+    return report
+
+
+
+def qualify_int03c(run_id):
+    directory, state = current(run_id)
+    verify_sources(directory, state)
+    require(state['phase'] == 'TESTED' and not state.get('authority'), 'FRESH_TESTED_PROFILE_REQUIRED')
+    # Invalidate persisted success before any subprocess/read. Preserve valid partial
+    # observations on failure, but a prior PASS can never survive a failed retry.
+    state['int03c'] = int03c_contract.fresh(run_id)
+    persist(directory, state, 'TESTED')
+    (directory / 'int03c-report.json').unlink(missing_ok=True)
+    try:
+        compose(directory, state, 'exec', '-T', 'probe', 'python', '/int03c_probe.py', timeout=180)
+    finally:
+        if (directory / 'int03c-report.json').exists():
+            report = read(directory / 'int03c-report.json')
+            int03c_contract.validate(report, run_id)
+            state['int03c'] = report
+            persist(directory, state, 'TESTED')
+    report = state['int03c']
+    require(all(row['result'] == 'PASS' for name, row in report['cases'].items()
+                if name != 'complete-teardown'), 'DEV04_RUNTIME_CASES_INCOMPLETE')
+    require(report['cases']['complete-teardown']['reason'] == 'TEARDOWN_PENDING', 'DEV04_PROVIDER_TEARDOWN_INCOMPLETE')
     return report
 
 
@@ -512,6 +540,9 @@ def down(run_id):
         call(['docker', kind, 'rm', *(['-f'] if kind == 'container' else []), resource], timeout=120)
     require(not resources(run_id), 'TEARDOWN_SURVIVORS')
     if state:
+        qualification = state.get('int03c')
+        if qualification:
+            int03c_contract.validate(qualification, run_id)
         report = {'schema': 'infrastructure.dev01.lifecycle.observed.v1', 'run_id': run_id,
                   'harness_sha': state['harness_sha'], 'source_pins': state['sources'],
                   'image_ids': state['image_ids'], 'runtime_images': state.get('runtime_images', {}),
@@ -519,26 +550,68 @@ def down(run_id):
                   'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA' if state['tests'] else 'SOURCE',
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
-                  'authority':state.get('authority'), 'int03c_qualified': False,
+                  'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
+                  'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         folder = EVIDENCE / ('dev01-' + run_id)
         private_directory(folder)
         pending = folder / '.pending'
-        if pending.exists():
-            private_directory(pending)
-            shutil.rmtree(pending)
         private_directory(pending)
+        # Phase 1: fsync a sanitized recovery candidate BEFORE destroying the
+        # private run. It is not uploaded or authoritative; no final-case PASS.
         write(pending / 'receipt.json', report)
-        write(pending / 'receipt.sha256.json',
-              {'sha256': hashlib.sha256((pending / 'receipt.json').read_bytes()).hexdigest()})
-        os.rename(pending, folder / 'completed')
+    else:
+        folder = EVIDENCE / ('dev01-' + run_id)
     if directory.exists():
         shutil.rmtree(directory)
+    if (folder / '.pending/receipt.json').exists():
+        publish_receipt(folder, run_id)
+
+
+def publish_receipt(folder, run_id):
+    """Phase 2, replayable after process/host interruption without private state.
+
+    A candidate lives outside the run's secret tree. Recovery re-observes host
+    absence, completes only the host-owned assertions, rewrites/hash-checks the
+    final bytes and atomically renames them into custody. Nothing under .pending
+    is published by Actions. A write/rename failure keeps the recovery candidate.
+    """
+    private_directory(folder)
+    pending = folder / '.pending'
+    private_directory(pending)
+    report = read(pending / 'receipt.json')
+    require(report.get('run_id') == run_id and report.get('schema') ==
+            'infrastructure.dev01.lifecycle.observed.v1', 'PENDING_RECEIPT_IDENTITY_INVALID')
+    require(not run_dir(run_id).exists() and not resources(run_id), 'TEARDOWN_SURVIVORS')
+    qualification = report.get('int03c')
+    if qualification:
+        int03c_contract.validate(qualification, run_id)
+        row = qualification['cases']['complete-teardown']
+        for key in ('accepting_runtime_absent', 'owned_resources_absent', 'private_state_absent'):
+            row['assertions'][key] = True
+        if row['reason'] == 'TEARDOWN_PENDING' and all(row['assertions'].values()):
+            row.update(result='PASS', reason='OBSERVED')
+        int03c_contract.validate(qualification, run_id)
+        report['int03c_qualified'] = report['lifecycle_passed'] and all(
+            item['result'] == 'PASS' for item in qualification['cases'].values())
+        report['domain_qualification'] = 'DEV04_INT03C_DEVELOPMENT_ONLY'
+    write(pending / 'receipt.json', report)
+    write(pending / 'receipt.sha256.json',
+          {'sha256': hashlib.sha256((pending / 'receipt.json').read_bytes()).hexdigest()})
+    os.rename(pending, folder / 'completed')
+    handle = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(handle)
+    finally:
+        os.close(handle)
 
 
 def recover(all_runs=False):
     private_directory(STATE)
     ids = {path.name for path in STATE.iterdir() if NONCE.fullmatch(path.name)}
+    pending_ids = {path.name[6:] for path in EVIDENCE.glob('dev01-*')
+                   if NONCE.fullmatch(path.name[6:]) and (path / '.pending/receipt.json').exists()}
+    ids.update(pending_ids)
     owned = resources()
     ids.update(labels['io.baobab.dev.run'] for _, _, labels in owned)
     for run_id in sorted(ids):
@@ -546,7 +619,7 @@ def recover(all_runs=False):
         state_path = run_dir(run_id) / 'state.json'
         if state_path.exists():
             deadlines.append(read(state_path)['deadline'])
-        if all_runs or (deadlines and min(deadlines) <= time.time()):
+        if all_runs or (run_id in pending_ids and not state_path.exists()) or (deadlines and min(deadlines) <= time.time()):
             with guarded(run_id):
                 down(run_id)
 
@@ -570,7 +643,7 @@ def watch(run_id):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['doctor', 'preflight', 'plan', 'prepare', 'up', 'test',
-                                         'evidence', 'down', 'recover', 'run', 'watch', 'qualify'])
+                                         'evidence', 'down', 'recover', 'run', 'watch', 'qualify', 'qualify-int03c', 'run-int03c'])
     parser.add_argument('--run-id')
     parser.add_argument('--lease-seconds', type=int, default=3600)
     parser.add_argument('--static', action='store_true')
@@ -587,13 +660,16 @@ def main(argv=None):
             recover(args.all)
         elif args.action == 'watch':
             watch(args.run_id)
-        elif args.action == 'run':
+        elif args.action in {'run', 'run-int03c'}:
             run_id = prepare(args.lease_seconds)
             try:
                 with guarded(run_id):
                     up(run_id)
                     test(run_id)
-                    qualify(run_id)
+                    if args.action == 'run-int03c':
+                        qualify_int03c(run_id)
+                    else:
+                        qualify(run_id)
             finally:
                 with guarded(run_id):
                     down(run_id)
@@ -605,6 +681,8 @@ def main(argv=None):
                     up(args.run_id)
                 elif args.action == 'qualify':
                     print(json.dumps(qualify(args.run_id),sort_keys=True))
+                elif args.action == 'qualify-int03c':
+                    print(json.dumps(qualify_int03c(args.run_id), sort_keys=True))
                 elif args.action == 'test':
                     print(json.dumps(test(args.run_id)))
                 elif args.action == 'down':

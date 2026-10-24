@@ -76,7 +76,8 @@ def subjects():
     require(ids['maker']!=ids['checker'],'DISTINCT_REAL_IDENTITIES')
     clients=list(WORKLOADS)+['baobab-dev-human','baobab-dev-introspection']
     for name in clients:
-        secret=os.environ['DEV03_INTROSPECTION_SECRET'] if name=='baobab-dev-introspection' else secrets.token_urlsafe(32)
+        secret=(os.environ['DEV03_INTROSPECTION_SECRET'] if name=='baobab-dev-introspection' else
+                os.environ['DEV04_VERIFIER_SECRET'] if name=='baobab-int03c-issuer-verifier' else secrets.token_urlsafe(32))
         human=name=='baobab-dev-human'
         proof=name.startswith('baobab-int03c-')
         config={'client_id':name,'client_secret':secret,'grant_types':['authorization_code'] if human else ['client_credentials'],

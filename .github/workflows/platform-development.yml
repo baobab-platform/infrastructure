@@ -1,4 +1,4 @@
-name: DEV-01 ordinary development lifecycle
+name: DEV-01 to DEV-04 development qualification
 on:
   pull_request:
     paths:
@@ -51,6 +51,12 @@ jobs:
             --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
             --remote-env BAOBAB_ENVIRONMENT=development \
             python3 -B tests/platform-integration/development/ci.py
+      - name: Observe original seven INT-03C cases in a fresh isolated run
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env BAOBAB_ENVIRONMENT=development \
+            python3 -B tests/platform-integration/development/ci_int03c.py
       - name: Recover through the shared development CLI
         if: always()
         run: |
@@ -70,5 +76,6 @@ jobs:
             tests/platform-integration/evidence/dev01-lifecycle-suite.json
             tests/platform-integration/evidence/dev02-fixture-suite.json
             tests/platform-integration/evidence/dev03-authority-suite.json
+            tests/platform-integration/evidence/dev04-int03c-suite*.json
           if-no-files-found: warn
           retention-days: 14

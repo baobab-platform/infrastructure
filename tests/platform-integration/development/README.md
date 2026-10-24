@@ -73,8 +73,8 @@ Only sanitized receipts and hashes in `evidence/dev01-*/completed` are uploaded.
 No private state, credentials, subjects, DSNs, raw subprocess logs or bootstrap
 document is an artifact. The lifecycle receipt can pass only after actual probes,
 bootstrap replay, image/network checks and independently queried empty teardown.
-Source tests remain SOURCE. Seven-case INT-03C and fourteen-case NAB-03 acceptance
-are always false here; those require DEV-03/04/05's actual auth/domain assertions.
+Source tests remain SOURCE. The DEV-01/02/03 receipts do not qualify seven-case INT-03C or fourteen-case
+NAB-03. The separate DEV-04 path below qualifies only its own fresh run.
 
 `development/ci.py` additionally drills interrupted startup with an actual owned
 volume, failed health followed by restoration/retest, loss of Compose state and
@@ -124,11 +124,19 @@ while the bearer is unexpired and CP-only deactivation while the issuer still
 reports active. Missing capability grants deny without hand-written bindings.
 Protocol negatives use actual provider transactions, not altered signed claims.
 No token, password, session, auth code, response body or OTP is published. The
-sanitized authority suite is emitted only after verified teardown. DEV-04's
-seven cases, NAB-03, native-provider certification and protected acceptance
-remain false and separately governed.
+sanitized authority suite is emitted only after verified teardown. DEV-03 receipts retain INT-03C false; the fresh DEV-04 qualifier below records
+its own original seven cases. NAB-03, native-provider certification and protected
+acceptance remain separate.
 
 `run development` executes the lifecycle and native authority qualifier, then
 always tears down the run. Successful authority observations are retained in the
 completed private receipt; a failed additional attempt clears the former
 authority success before probing and cannot preserve stale green evidence.
+
+## DEV-04 original seven-case qualifier
+
+Use `run-int03c development` or the staged `qualify-int03c development` action
+in a fresh run. See [the maintenance and recovery runbook](INT03C.md) for the
+exact seven-case assertions, named verifier permissions, per-case FAIL/BLOCKED
+semantics, evidence custody, source adoption and final teardown ordering.
+Qualification is complete only in the final receipt after host cleanup.
