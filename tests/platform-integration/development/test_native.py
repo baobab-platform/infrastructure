@@ -23,6 +23,9 @@ class NativeTests(unittest.TestCase):
     def test_native_planes_and_exact_receipt_obligations(self):
         self.assertEqual(adapter.ISSUER,'https://hydra.int03.test')
         self.assertIn('hydra',dev.load_lock()['images'])
+        self.assertIn('location = /oauth2/introspect',adapter.EDGE)
+        self.assertIn('auth_basic_user_file',adapter.EDGE)
+        self.assertIn('$introspector/admin/oauth2/introspect',adapter.EDGE)
         self.assertIn('kratos',dev.load_lock()['images'])
         self.assertEqual(len(dev.AUTHORITY_CASES),16)
         self.assertIn('issuer_revocation_while_unexpired',dev.AUTHORITY_CASES)

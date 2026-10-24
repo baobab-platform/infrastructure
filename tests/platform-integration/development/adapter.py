@@ -1,5 +1,7 @@
 """DEV-03 isolated native Ory/CP composition; no canonical provider activation."""
 import os
+import base64
+import hashlib
 from pathlib import Path
 
 ISSUER = 'https://hydra.int03.test'
@@ -15,6 +17,7 @@ def host(path):
 def configure(directory, state):
     """Derive isolated transport/secret overlays from exact IAM-owned configs."""
     source=directory/'sources/baobab-iam/config/ory'
+    (directory/'introspection.htpasswd').write_text('baobab-dev-introspection:{SHA}'+base64.b64encode(hashlib.sha1(state['secrets']['introspection'].encode()).digest()).decode()+'\n')
     hydra=(source/'hydra/hydra.yml').read_text().replace('http://127.0.0.1:4444',ISSUER).replace('http://127.0.0.1:3000','https://rp.baobab-dev.test')
     hydra=hydra.replace('local_dev_only_hydra_system_secret_change_me',state['secrets']['admin']).replace('local_dev_only_pairwise_salt_change_me',state['secrets']['hook'])
     hydra=hydra.replace('  access_token: jwt','  access_token: jwt\n  jwt:\n    scope_claim: string')
@@ -26,6 +29,7 @@ def configure(directory, state):
     config=directory/'kratos';config.mkdir(mode=0o755)
     (config/'kratos.yml').write_text(kratos)
     (config/'identity.schema.json').write_bytes((source/'kratos/identity.schema.json').read_bytes())
+    for path in (directory/'introspection.htpasswd', directory/'hydra.yml', config/'kratos.yml', config/'identity.schema.json'): path.chmod(0o644)  # enclosing run root stays 0700
 
 def composition(state,directory,images,namespace):
     run=state['run_id']; secret=state['secrets']; tls=host(directory/'tls')
@@ -45,7 +49,7 @@ def composition(state,directory,images,namespace):
         cp_env.update({actor+'_INTROSPECTION_ENDPOINT':ISSUER+'/oauth2/introspect',actor+'_INTROSPECTION_CLIENT_ID':'baobab-dev-introspection',actor+'_INTROSPECTION_CLIENT_SECRET':secret['introspection']})
     registry=directory/'sources/shared/contracts/identity/v1/workload-registry.yaml'
     services['cp']={'image':state['images']['cp'],'pull_policy':'never','environment':cp_env,'volumes':[tls+':/tls:ro',host(registry)+':/registry.yaml:ro']}
-    services['edge']={'image':images['edge'],'read_only':True,'tmpfs':['/tmp'],'volumes':[host(directory/'nginx.conf')+':/etc/nginx/nginx.conf:ro',tls+':/tls:ro'],'networks':{'lab':{'aliases':['hydra.int03.test','cp.baobab-dev.test','kratos.baobab-dev.test','rp.baobab-dev.test']}}}
+    services['edge']={'image':images['edge'],'read_only':True,'tmpfs':['/tmp'],'volumes':[host(directory/'nginx.conf')+':/etc/nginx/nginx.conf:ro',host(directory/'introspection.htpasswd')+':/etc/nginx/introspection.htpasswd:ro',tls+':/tls:ro'],'networks':{'lab':{'aliases':['hydra.int03.test','cp.baobab-dev.test','kratos.baobab-dev.test','rp.baobab-dev.test']}}}
     services['probe']={'image':images['probe'],'user':f'{state["uid"]}:{state["gid"]}','command':['python','/probe.py','serve'],'environment':{'DEV01_RUN_ID':run,'DEV03_HOOK_KEY':secret['hook'],'DEV03_INTROSPECTION_SECRET':secret['introspection']},'volumes':[host(directory)+':/run/dev01',tls+':/tls:ro',host(Path(__file__).parent/'probe.py')+':/probe.py:ro']}
     for service in services.values(): service.update(labels=labels,restart='no');service.setdefault('networks',['lab'])
     return {'name':state['project'],'services':services,'networks':{'lab':{'internal':True,'labels':labels}},'volumes':{name:{'labels':labels} for name in ('cp-data','hydra-data','kratos-data')}}
@@ -58,9 +62,16 @@ http {
  ssl_protocols TLSv1.3; resolver 127.0.0.11 ipv6=off;
 '''
 for name,upstream in [('hydra.int03.test','hydra:4444'),('kratos.baobab-dev.test','kratos:4433'),('cp.baobab-dev.test','cp:8080')]:
+    introspection=''' location = /oauth2/introspect {
+ limit_except POST { deny all; }
+ auth_basic "DEV03 private introspection"; auth_basic_user_file /etc/nginx/introspection.htpasswd;
+ set $introspector http://hydra:4445; proxy_pass $introspector/admin/oauth2/introspect;
+ proxy_set_header Authorization "";
+ }
+''' if name=='hydra.int03.test' else ''
     EDGE+=''' server { listen 443 ssl; server_name '''+name+''';
  ssl_certificate /tls/edge.pem; ssl_certificate_key /tls/edge.key;
- location / { set $upstream http://'''+upstream+'''; proxy_pass $upstream;
+'''+introspection+''' location / { set $upstream http://'''+upstream+'''; proxy_pass $upstream;
  proxy_set_header Host '''+name+'''; proxy_set_header X-Forwarded-Proto https; }
  }
 '''
