@@ -274,7 +274,12 @@ def compose(directory, state, *args, timeout=180):
     return call(['docker', 'compose', '-f', str(path), '-p', state['project'], *args], timeout=timeout, state=state)
 
 
+NATIVE_FILES={'hydra.yml','kratos/kratos.yml','kratos/identity.schema.json','introspection.htpasswd'}
+
 def verify_sources(directory, state):
+    if state.get('phase') in {'RUNNING','TESTED'}:
+        anchors=state.get('native_config_hashes',{})
+        require(set(anchors)==NATIVE_FILES and all(hashlib.sha256((directory/path).read_bytes()).hexdigest()==digest for path,digest in anchors.items()),'NATIVE_CONFIGURATION_DRIFT')
     for repo, sha in state['sources'].items():
         source = directory / 'sources' / repo
         require(call(['git', '-C', str(source), 'rev-parse', 'HEAD']) == sha
@@ -308,6 +313,7 @@ def up(run_id):
             persist(directory, state, 'BUILDING')
         print('DEV03_PHASE=ORY_CONFIG',flush=True)
         adapter.configure(directory, state)
+        state['native_config_hashes']={path:hashlib.sha256((directory/path).read_bytes()).hexdigest() for path in NATIVE_FILES}
         write(directory / 'compose.json', adapter.composition(state, directory, lock['images'], NAMESPACE))
         state['compose_sha256'] = hashlib.sha256((directory / 'compose.json').read_bytes()).hexdigest()
         persist(directory, state, 'STARTING')
@@ -344,6 +350,12 @@ def up(run_id):
         persist(directory, state, 'RUNNING')
     except BaseException:
         try:
+            raw=compose(directory,state,'ps','--all','--format','json')
+            values=json.loads(raw) if raw.startswith('[') else [json.loads(line) for line in raw.splitlines()]
+            for item in values:
+                name=item.get('Service');phase=item.get('State');code=item.get('ExitCode')
+                if name in adapter.SERVICES and phase in {'running','exited','created','restarting','dead'} and type(code) is int:
+                    print('DEV03_CONTAINER='+name+':'+phase+':'+str(code),flush=True)
             logs=compose(directory,state,'logs','--no-color','--tail','40','edge','hydra','kratos','hydra-migrate','kratos-migrate')
             markers=[]
             for text,code in (('read-only file system','READ_ONLY_FILESYSTEM'),('unknown flag','PROVIDER_COMMAND_REFUSED'),
@@ -351,6 +363,8 @@ def up(run_id):
                               ('connection refused','DEPENDENCY_NOT_READY'),('does not validate','PROVIDER_CONFIG_REFUSED'),
                               ('error opening config','PROVIDER_CONFIG_UNREADABLE')):
                 if text in logs.lower(): markers.append(code)
+            paths=set(re.findall(r'\b(?:oauth2|serve|urls|secrets|strategies|ttl|session|identity|hashers|selfservice|courier)(?:\.[a-z_]{1,40}){0,5}',logs))
+            print('DEV03_CONFIG_PATHS='+','.join(sorted(paths)),flush=True)
             print('DEV03_STARTUP_CLASSES='+','.join(markers or ['UNCLASSIFIED']),flush=True)
         except (Refused,OSError):
             print('DEV03_STARTUP_CLASSES=DIAGNOSTICS_UNAVAILABLE',flush=True)
@@ -498,7 +512,7 @@ def down(run_id):
         report = {'schema': 'infrastructure.dev01.lifecycle.observed.v1', 'run_id': run_id,
                   'harness_sha': state['harness_sha'], 'source_pins': state['sources'],
                   'image_ids': state['image_ids'], 'runtime_images': state.get('runtime_images', {}),
-                  'lock_sha256': state['lock_sha256'],
+                  'lock_sha256': state['lock_sha256'], 'native_config_hashes':state.get('native_config_hashes',{}),
                   'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA' if state['tests'] else 'SOURCE',
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
                   'domain_qualification': 'NOT_EXECUTED', 'int03c_qualified': False,
