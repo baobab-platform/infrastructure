@@ -104,6 +104,11 @@ class Int03CTests(unittest.TestCase):
                   'scope': 'context:resolve', 'aud': ['baobab-control-plane']}
         with patch.object(probe.p, 'claims', return_value=claims):
             self.assertTrue(probe.bound(actual, 'private-test-bearer'))
+        signing_claims = {**claims, 'exp': now + 58}
+        requested = {**actual, 'iat': now - 2, 'exp': now + 58}
+        with patch.object(probe.p, 'claims', return_value=signing_claims):
+            self.assertTrue(probe.bound(requested, 'private-test-bearer'))
+        with patch.object(probe.p, 'claims', return_value=claims):
             for altered in ({**actual, 'iat': now - 1}, {**actual, 'exp': now + 600},
                             {**actual, 'active': False}, {**actual, 'scope': 'context:resolve changeset:approve'}):
                 self.assertFalse(probe.bound(altered, 'private-test-bearer'))

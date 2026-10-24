@@ -32,6 +32,8 @@ def main():
         'fresh_after_revoke','cp_outage_observed','provider_outage_restored','native_clients_deleted','native_tokens_inactive',
         'private_state_absent','owned_resources_absent'}
     dev.require(all(runtime['component_checks'].get(key) is True for key in required),'DEV05_COMPONENT_OBSERVATIONS_INCOMPLETE')
+    if runtime['cases']['published-home-nav-footer']['result']=='BLOCKED':
+        dev.require(runtime['component_checks'].get('estate_canonical_path_unavailable') is True,'DEV05_ESTATE_BLOCKER_UNOBSERVED')
     # BLOCKED is a successful observation of unavailable authority, never a gate
     # PASS. CI may verify this expected condition while nab03_qualified is false.
     dev.write(dev.EVIDENCE/'dev05-cms-suite.json',receipt)

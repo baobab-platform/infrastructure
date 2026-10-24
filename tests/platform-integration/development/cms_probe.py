@@ -1,5 +1,7 @@
 """Private actual CMS/Nabhold protocol driver. No provider activation is inferred."""
 import http.cookiejar
+import html
+import urllib.error
 import json
 import os
 import re
@@ -76,6 +78,23 @@ def published(result,key):
     return bool(record and record.get('tenant_id')==own['tenant_id'] and record.get('content_key')==key and record.get('publication_state')=='PUBLISHED')
 
 
+def estate_page(expected):
+    """Bounded private HTML observation; only booleans enter custody.
+
+    Next may commit an HTML error response before an async failure is rendered,
+    so HTTP 500 alone cannot prove fail-closed content or a real published page.
+    """
+    opener=urllib.request.build_opener(p.NoRedirect(),urllib.request.HTTPSHandler(context=p.TLS))
+    request=urllib.request.Request(ESTATE+'/',headers={'Accept':'text/html'})
+    try:response=opener.open(request,timeout=45)
+    except urllib.error.HTTPError as error:response=error
+    with response:
+        code=response.status;raw=response.read(1024*1024+1)
+    p.require(len(raw)<=1024*1024)
+    text=raw.decode('utf-8','strict')
+    return code,all(html.escape(value) in text for value in expected)
+
+
 def bff(report):
     native,bootstrap,_=config();human=native['humans']['maker']
     code,flow,_=p.request('GET',p.KRATOS+'/self-service/login/api');p.require(code==200)
@@ -148,7 +167,10 @@ def main(action):
             validator=token(VALIDATOR,'baobab-control-plane','context:validate')
             code,actual,_=p.request('POST',p.CP+'/v1/platform-context/validate',{'context_id':ctx['context_id'],'subject_token':bearer},validator)
             p.require(code==200 and actual['authority_purpose']=='RUNTIME' and actual['organisation_id']==own['organisation_id']);value['component_checks']['cp_validator_subject_accepted']=True
-            p.require(all(published(resolve(bearer,ctx['context_id'],key),key) for key in ('home','navigation','footer')))
+            records=[resolve(bearer,ctx['context_id'],key) for key in ('home','navigation','footer')]
+            p.require(all(published(result,key) for result,key in zip(records,('home','navigation','footer'))))
+            expected=[records[0][1]['record']['data']['headline'],records[2][1]['record']['data']['statement']]
+            p.require(all(isinstance(value,str) and value for value in expected))
             value['component_checks']['native_cms_published_home_navigation_footer']=True
             code,decision,_=p.request('POST',p.CP+'/v1/capabilities/resolve',{'context_id':ctx['context_id'],'capability_key':'content.entry.resolve','required_contract_version':1,'correlation_id':str(uuid.uuid4())},cp_token)
             declaration=(p.ROOT/'sources/baobab-cms/.baobab/capability-provider.yaml').read_text()
@@ -160,9 +182,11 @@ def main(action):
                 value['cases']['published-home-nav-footer']={'result':'BLOCKED','reason':'PROVIDER_NOT_ELIGIBLE'}
                 value['cases']['missing-grant']={'result':'BLOCKED','reason':'CANONICAL_CAPABILITY_NOT_RESOLVED'}
                 # The actual estate must fail closed rather than serve defaults.
-                p.require(p.request('GET',ESTATE+'/',timeout=30)[0]>=500)
+                _,visible=estate_page(expected);p.require(not visible)
+                value['component_checks']['estate_canonical_path_unavailable']=True
             else:
-                p.require(code==200 and decision.get('invocation') and p.request('GET',ESTATE+'/',timeout=30)[0]==200)
+                p.require(code==200 and decision.get('invocation'))
+                estate_status,visible=estate_page(expected);p.require(estate_status==200 and visible)
                 record('published-home-nav-footer',lambda:True)
                 # A separate real tenant/context lacking this grant is the
                 # control. An unknown capability is not a missing-grant proof.

@@ -43,9 +43,14 @@ def bound(actual, bearer, audience='baobab-control-plane'):
         'scope_bound': set(actual.get('scope', '').split()) == {'context:resolve'},
         'integer_times': type(c.get('exp')) is int and type(c.get('iat')) is int,
         'expiry_bound': actual.get('exp') == c.get('exp'),
-        'issued_at_bound': actual.get('iat') == c.get('iat'),
+        # Hydra introspection uses accessRequest.RequestedAt; its signed JWT
+        # uses Claims.IssuedAt=time.Now at signing (v26.2.0 oauth2/handler.go).
+        # Both must be integer, ordered and independently <=60s to ONE expiry.
+        'issued_at_bound': type(actual.get('iat')) is int and type(c.get('iat')) is int
+                           and actual['iat'] <= c['iat'],
     }
-    checks['lifetime_bounded'] = checks['integer_times'] and 0 < c['exp'] - c['iat'] <= 60
+    checks['lifetime_bounded'] = (checks['integer_times'] and checks['issued_at_bound']
+        and 0 < c['exp'] - c['iat'] <= 60 and 0 < c['exp'] - actual['iat'] <= 60)
     checks['current_time_bound'] = checks['integer_times'] and c['iat'] <= time.time() < c['exp']
     if not all(checks.values()):
         # Only fixed field-level booleans and a bounded relative lifetime leave

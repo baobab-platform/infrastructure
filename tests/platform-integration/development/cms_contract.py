@@ -28,4 +28,4 @@ COMPONENTS={'native_cms_published_home_navigation_footer','native_bff_login_sess
  'bff_token_free_session','bff_secure_opaque_cookie','provider_declared_partial','canonical_capability_denied',
  'issuer_readback_active','cp_validator_subject_accepted','wrong_audience_active','revoked_before_expiry',
  'fresh_after_revoke','disabled_principal_before_expiry','native_clients_deleted','native_tokens_inactive',
- 'private_state_absent','owned_resources_absent','provider_outage_restored','cp_outage_observed'}
+ 'private_state_absent','owned_resources_absent','provider_outage_restored','cp_outage_observed','estate_canonical_path_unavailable'}

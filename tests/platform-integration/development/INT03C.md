@@ -135,3 +135,24 @@ provider readbacks → host resource removal/empty inventory → durable sanitiz
 pending candidate → private-state removal → final empty readback and atomic
 completed receipt. `.pending` is never uploaded. Roll back by recovering owned runs and restoring
 previous reviewed pins; never edit old evidence or enable protected bootstrap.
+
+
+### Native timing semantics (DEV-05 revalidation)
+
+At the pinned Hydra v26.2.0, `oauth2/handler.go` constructs introspection `iat`
+from `resp.GetAccessRequester().GetRequestedAt().Unix()` while the JWT session's
+`Claims.IssuedAt` is set to signing-time `time.Now().UTC()`:
+https://github.com/ory/hydra/blob/v26.2.0/oauth2/handler.go
+They can legitimately differ while both refer to the same native bearer.
+A failed current-profile observation showed all other bindings/expiry matching
+and a 58-second JWT lifetime; strict equality of these distinct clocks was an
+invalid qualifier assumption, not a permission to increase token lifetime.
+
+The qualifier now requires integer, ordered request/signing times, future
+expiry, exact issuer-status/JWT expiry equality and **both** request-to-expiry
+and signing-to-expiry lifetimes in (0,60] seconds. Missing/rebound/future times,
+wrong subject/client/audience/scope, inactive status and excessive lifetimes
+still deny. A regression covers a real-shaped two-second signing delay; an
+older request that extends either lifetime beyond 60 seconds remains rejected.
+Diagnostics expose only fixed binding booleans and a bounded relative lifetime,
+never tokens, absolute timestamps, subjects, provider bodies or credentials.
