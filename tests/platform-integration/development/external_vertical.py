@@ -87,7 +87,7 @@ def up(run):
     # The fixture controller uses the owner's actual repositories. It is not
     # an HTTP replacement, an authority stub or a fabricated vector server.
     services['pulse-tool']={'image':image,'user':str(state['uid'])+':'+str(state['gid']),'entrypoint':['python'],'environment':env,
-      'volumes':[tls+':/tls:ro',adapter.host(fixtures)+':/run/l4:ro',adapter.host(BASE.parent/'int02/pulse_native.py')+':/pulse_native.py:ro']}
+      'volumes':[tls+':/tls:ro',adapter.host(fixtures)+':/run/l4:ro',adapter.host(BASE.parent/'int02/pulse_native.py')+':/pulse_native.py:ro',adapter.host(BASE/'external_validator.py')+':/external_validator.py:ro']}
     services['pulse']={'image':image,'environment':env,'volumes':[tls+':/tls:ro']}
     services['probe']['volumes'] += [adapter.host(BASE/name)+':/'+name+':ro' for name in ('external_probe.py','external_contract.py')]
     services['edge']['networks']['lab']['aliases']+=['pulse.baobab-dev.test']
@@ -125,6 +125,13 @@ def qualify(run):
     report['cases']['zero-estates']={'result':'PASS','reason':'OBSERVED'}
     dev.write(directory/'external-report.json',report)
     try:
+        direct=dev.compose(directory,state,'exec','-T','probe','python','/external_probe.py','authority-input',timeout=30)
+        if direct in {'DEV06_DIRECT_CP=READY','DEV06_DIRECT_CP=REFUSED'}:print(direct,flush=True)
+        observed=json.loads(dev.compose(directory,state,'run','--rm','--no-deps','pulse-tool','/external_validator.py',timeout=30).splitlines()[-1])
+        stages={'TOKEN','CONTEXT','READY'}
+        reasons={'UNKNOWN','OBSERVED','TOKEN_TRANSPORT','TOKEN_PROFILE','VALIDATOR_AUTHENTICATION','CONTEXT_UNAVAILABLE','CONTEXT_DENIED','CONTEXT_UNKNOWN','CONTEXT_IDENTITY','CONTEXT_TENANT','CONTEXT_UNBOUNDED','CONTEXT_EXPIRY'}
+        if set(observed)=={'stage','reason'} and observed['stage'] in stages and observed['reason'] in reasons:
+            print('DEV06_OWNER_AUTHORITY='+observed['stage']+':'+observed['reason'],flush=True)
         dev.compose(directory,state,'exec','-T','probe','python','/external_probe.py','initial',timeout=180)
         dev.compose(directory,state,'stop','cp')
         try:dev.compose(directory,state,'exec','-T','probe','python','/external_probe.py','outage',timeout=30)

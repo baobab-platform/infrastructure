@@ -70,6 +70,14 @@ def status(bearer):
 
 def main(action):
     if action=='clients':clients();return
+    if action=='authority-input':
+        _,ctx=context();bearer=token();validator=token(VALIDATOR,'baobab-control-plane','context:validate')
+        code,body,_=p.request('POST',p.CP+'/v1/platform-context/validate',{'context_id':ctx['context_id'],'subject_token':bearer},validator)
+        print('DEV06_DIRECT_CP='+('READY' if code==200 else 'REFUSED'),flush=True)
+        target=p.ROOT/'pulse-fixtures/authority.json'
+        fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        with os.fdopen(fd,'w') as out:json.dump({'context_id':ctx['context_id'],'subject':CLIENT,'token':bearer},out)
+        return
     if action=='health':
         print(json.dumps({'pulse':p.request('GET',PULSE+'/readyz')[0]}));return
     run=os.environ['DEV01_RUN_ID'];path=p.ROOT/'external-report.json'
