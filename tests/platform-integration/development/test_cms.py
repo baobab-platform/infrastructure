@@ -38,6 +38,23 @@ class CMSContracts(unittest.TestCase):
                 self.assertFalse((directory/'package-token').exists())
                 self.assertFalse((directory/'build-docker-config').exists())
 
+    def test_fixture_failure_classification_is_closed_and_never_leaks_logs(self):
+        # The CMS candidate emits a fixed phase identifier instead of raw
+        # Payload/SQL/tenant material. Unknown or forged labels remain opaque.
+        for stderr, expected in (
+            ('CMS_INT03_STAGE_FAILED=CONTENT_SEED\\nprivate db secret', 'CMS_FIXTURE_CONTENT_SEED'),
+            ('CMS_INT03_STAGE_FAILED=NOT_REVIEWED\\n', 'COMMAND_FAILED'),
+            ('CMS_INT03_STAGE_FAILED=CONTENT_SEED secret=abc\\n', 'COMMAND_FAILED'),
+        ):
+            with self.subTest(stderr=stderr.splitlines()[0]):
+                completed=SimpleNamespace(returncode=1,stdout='',stderr=stderr)
+                with patch.object(dev.subprocess,'run',return_value=completed):
+                    with self.assertRaises(dev.Refused) as caught:
+                        dev.call(['docker','compose','run','cms-tool','node','--import','tsx',
+                                  'scripts/qualification/int03-fixture.ts','seed'])
+                self.assertEqual(str(caught.exception),expected)
+                self.assertNotIn('secret',str(caught.exception))
+
     def test_original_inventory_cannot_omit_or_promote_a_blocker(self):
         run='a'*32;report=cms_contract.fresh(run)
         self.assertEqual(len(report['cases']),14)
