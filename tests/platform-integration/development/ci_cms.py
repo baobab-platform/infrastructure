@@ -32,4 +32,6 @@ def main():
 
 if __name__=='__main__':
     try:main()
-    except Exception:raise SystemExit('DEV05_RUNTIME_FAILED_PRIVATE_RECOVERY_RETAINED') from None
+    except Exception as error:
+        code = str(error) if isinstance(error, dev.Refused) else ('DEPENDENCY_UNAVAILABLE' if isinstance(error, ImportError) else 'INVALID_OR_UNAVAILABLE_STATE')
+        raise SystemExit('DEV05_RUNTIME_FAILED '+code+'; private recovery retained on cleanup failure') from None

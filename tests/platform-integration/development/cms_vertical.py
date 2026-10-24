@@ -33,6 +33,7 @@ def lock():
 
 
 def prepare():
+    print('DEV05_PHASE=PREPARE',flush=True)
     run=dev.prepare();directory,state=dev.current(run);value=lock()
     state['runtime_images'].update({key:value[key] for key in ('redis','node','frontend')})
     state['cms_lock_sha256']=hashlib.sha256((BASE/'cms-lock.json').read_bytes()).hexdigest()
@@ -42,8 +43,10 @@ def prepare():
     dev.persist(directory,state,'PREPARED')
     sys.path.insert(0,str(BASE.parent/'int03'))
     import cms_gate
+    print('DEV05_PHASE=REGISTRY',flush=True)
     verdict,_=cms_gate.judge((directory/'sources/shared/contracts/identity/v1/workload-registry.yaml').read_text())
     dev.require(verdict=='OPEN','DEV05_CANONICAL_REGISTRY_REFUSED')
+    print('DEV05_PHASE=OWNER_SOURCES',flush=True)
     for repo,sha in value['sources'].items():
         target=directory/'sources'/repo
         dev.call(['git','init','-q',str(target)],state=state)
@@ -57,6 +60,7 @@ def prepare():
 def up(run):
     dev.up(run);directory,state=dev.current(run);value=lock();secret=state['secrets']
     dev.require(state['cms_lock_sha256']==hashlib.sha256((BASE/'cms-lock.json').read_bytes()).hexdigest(),'DEV05_SOURCE_DRIFT')
+    print('DEV05_PHASE=CMS_IMAGES',flush=True)
     for name,target in [('cms-tool','build'),('cms','runtime')]:
         image=state['project']+'-'+name;state['images'][name]=image;dev.persist(directory,state,'RUNNING')
         args=['docker','build','--tag',image,'--target',target]
@@ -64,6 +68,7 @@ def up(run):
         dev.call([*args,str(directory/'sources/baobab-cms')],timeout=1800,state=state)
         state['image_ids'][name]=dev.call(['docker','image','inspect',image,'--format','{{.Id}}'])
         dev.persist(directory,state,'RUNNING')
+    print('DEV05_PHASE=ESTATE_IMAGE',flush=True)
     image=state['project']+'-nabhold';state['images']['nabhold']=image;dev.persist(directory,state,'RUNNING')
     package_token=os.environ.get('DEV05_NPM_TOKEN','');dev.require(bool(package_token),'DEV05_PACKAGE_READ_REQUIRED')
     tokenfile=directory/'package-token';tokenfile.write_text(package_token);tokenfile.chmod(0o600)
@@ -128,12 +133,16 @@ def up(run):
     (directory/'nginx.conf').write_text(edge)
     state['cms_config_hashes']={name:hashlib.sha256((directory/name).read_bytes()).hexdigest() for name in ('nginx.conf','redis.acl')}
     dev.write(directory/'compose.json',composition);state['compose_sha256']=hashlib.sha256((directory/'compose.json').read_bytes()).hexdigest();dev.persist(directory,state,'RUNNING')
+    print('DEV05_PHASE=PROVIDER_START',flush=True)
     dev.compose(directory,state,'up','-d','--wait','--wait-timeout','120','cms-db','redis','probe','edge',timeout=180)
     dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','clients')
     dev.compose(directory,state,'exec','-T','cms-db','psql','-U','payload','-d','cms_int03_'+run[:16],'-v','ON_ERROR_STOP=1','-c','CREATE SCHEMA payload AUTHORIZATION payload;')
+    print('DEV05_PHASE=CMS_MIGRATIONS',flush=True)
     dev.compose(directory,state,'run','--rm','--no-deps','cms-tool','npm','run','db:migrate',timeout=240)
+    print('DEV05_PHASE=CMS_FIXTURE',flush=True)
     fixture(directory,state,'seed');fixture(directory,state,'publish')
     dev.compose(directory,state,'up','-d','cms','nabhold')
+    print('DEV05_PHASE=HTTP_HEALTH',flush=True)
     for _ in range(90):
         try:
             dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','health',timeout=15);break

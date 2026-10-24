@@ -1,6 +1,4 @@
 """Private actual CMS/Nabhold protocol driver. No provider activation is inferred."""
-import base64
-import hashlib
 import http.cookiejar
 import json
 import os
@@ -114,7 +112,7 @@ def bff(report):
     report['component_checks']['native_bff_login_session']=True
     p.require(set(identity)=={'principalId','expiresAt','csrfToken'});report['component_checks']['bff_token_free_session']=True
     cookies=[c for c in jar if c.name=='__Host-nabhold-session']
-    p.require(len(cookies)==1 and cookies[0].secure and cookies[0].path=='/' and re.fullmatch(r'[A-Za-z0-9_-]{43}',cookies[0].value))
+    p.require(len(cookies)==1 and cookies[0].secure and cookies[0].path=='/' and not cookies[0].domain_specified and cookies[0].has_nonstandard_attr('HttpOnly') and str(cookies[0].get_nonstandard_attr('SameSite')).lower()=='strict' and re.fullmatch(r'[A-Za-z0-9_-]{43}',cookies[0].value))
     report['component_checks']['bff_secure_opaque_cookie']=True
     old=cookies[0]
     code,_,_=p.request('POST',ESTATE+'/api/auth/logout',{'csrfToken':identity['csrfToken']},form=True,headers={'Origin':ESTATE},opener=opener)
@@ -124,7 +122,9 @@ def bff(report):
 
 
 def main(action):
-    if action=='clients':return clients()
+    if action=='clients':
+        clients()
+        return
     if action=='health':
         p.require(p.request('GET',CMS+'/api/health/live')[0]==200)
         p.require(p.request('GET',ESTATE+'/api/auth/session',timeout=15)[0]==401);return
