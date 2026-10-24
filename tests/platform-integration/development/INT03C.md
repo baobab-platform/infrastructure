@@ -48,7 +48,7 @@ markers, private state, canonical databases or evidence to make a run green.
 
 | Original case | Actual service assertions and control |
 | --- | --- |
-| `issuer-issuance-and-readback` | Hydra creates only fresh run-marked owner/verifier proof clients at their exact development audience, `context:resolve` scope, client-credentials method and 60-second configured lifetime. Owner obtains a genuine signed token. Named verifier authenticates independently at the exact private TLS introspection path and reads matching issuer, subject, client, audience, scope, expiry and active status. Owner credentials and wrong verifier secret cannot introspect. CP accepts the owner before mutation. |
+| `issuer-issuance-and-readback` | Hydra creates only fresh run-marked owner/verifier proof clients at their exact development audience, `context:resolve` scope, client-credentials method and 55-second configured proof-client lifetime (below the unchanged 60-second validation ceiling). Owner obtains a genuine signed token. Named verifier authenticates independently at the exact private TLS introspection path and reads matching issuer, subject, client, audience, scope, expiry and active status. Owner credentials and wrong verifier secret cannot introspect. CP accepts the owner before mutation. |
 | `current-cp-principal-and-link` | CP's guarded bootstrap owns canonical IDs and mappings. Distinct actual Kratos humans use Hydra code/S256 PKCE. Checker reads exact ACTIVE Principal; maker proposes exact issuer/subject/run/source provenance, self-approval returns 409, distinct checker approves the immutable bootstrap evidence digest. CP validates the current canonical external link in its transaction. Own tenant/Organisation/ZA context succeeds. No SQL is inserted by the driver. |
 | `wrong-audience-denial` | Temporarily narrow the run-owned issuer client to ERP audience, obtain a genuine same-subject token, restore config in `finally`, independently introspect it as active and correctly bound, and observe CP 401 while unexpired. Fresh valid-audience control succeeds. No JWT editing. |
 | `wrong-tenant-denial` | The same unexpired owner bearer receives 403 for a sibling and unrelated external tenant. Own-context control succeeds. |
@@ -154,5 +154,13 @@ and signing-to-expiry lifetimes in (0,60] seconds. Missing/rebound/future times,
 wrong subject/client/audience/scope, inactive status and excessive lifetimes
 still deny. A regression covers a real-shaped two-second signing delay; an
 older request that extends either lifetime beyond 60 seconds remains rejected.
+The native proof-client configuration is now exactly **55 seconds**, rather
+than issuing at the full 60-second ceiling. A real Hydra run subsequently
+returned a JWT lifetime of 60 seconds but a request-to-expiry lifetime
+exceeding 60 seconds because RequestedAt preceded signing. That was
+correctly rejected; reducing the issuer's configured proof lifetime leaves
+headroom for timestamp separation without relaxing either bound. Source
+tests do not substitute for a repeat real-issued-token readback.
+
 Diagnostics expose only fixed binding booleans and a bounded relative lifetime,
 never tokens, absolute timestamps, subjects, provider bodies or credentials.
