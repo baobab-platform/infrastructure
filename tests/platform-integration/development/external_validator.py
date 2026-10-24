@@ -1,6 +1,8 @@
 """Execute the maintained Pulse authority adapters, emitting fixed diagnostics only."""
 import asyncio
 import json
+import ssl
+import urllib.error
 from pathlib import Path
 from uuid import UUID
 from baobab_pulse.configuration.settings import Settings
@@ -8,7 +10,7 @@ from baobab_pulse.application.ports.authentication import AuthenticatedCaller
 from baobab_pulse.infrastructure.control_plane.context_authority import ClientCredentialsTokenProvider, HttpControlPlaneContextAuthority
 
 async def main():
-    stage='TOKEN';reason='UNKNOWN'
+    stage='TOKEN'
     try:
         s=Settings();request=json.loads(Path('/run/l4/authority.json').read_text())
         provider=ClientCredentialsTokenProvider(token_url=s.iam_token_url,client_id=s.iam_client_id,
@@ -32,6 +34,10 @@ async def main():
           'Control Plane returned an invalid context expiry':'CONTEXT_EXPIRY',
         }
         reason=reasons.get(str(error),'UNKNOWN')
+        cause=error.__cause__
+        if stage=='TOKEN' and isinstance(cause,urllib.error.HTTPError) and cause.code in (400,401,403,404,500,502,503,504):reason='TOKEN_HTTP_'+str(cause.code)
+        if stage=='TOKEN' and isinstance(cause,urllib.error.URLError) and isinstance(cause.reason,ssl.SSLCertVerificationError):reason='TOKEN_TLS'
+        if stage=='TOKEN' and isinstance(cause,TimeoutError):reason='TOKEN_TIMEOUT'
     print(json.dumps({'stage':stage,'reason':reason}))
 
 if __name__=='__main__':asyncio.run(main())

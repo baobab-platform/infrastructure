@@ -129,7 +129,7 @@ def qualify(run):
         if direct in {'DEV06_DIRECT_CP=READY','DEV06_DIRECT_CP=REFUSED'}:print(direct,flush=True)
         observed=json.loads(dev.compose(directory,state,'run','--rm','--no-deps','pulse-tool','/external_validator.py',timeout=30).splitlines()[-1])
         stages={'TOKEN','CONTEXT','READY'}
-        reasons={'UNKNOWN','OBSERVED','TOKEN_TRANSPORT','TOKEN_PROFILE','VALIDATOR_AUTHENTICATION','CONTEXT_UNAVAILABLE','CONTEXT_DENIED','CONTEXT_UNKNOWN','CONTEXT_IDENTITY','CONTEXT_TENANT','CONTEXT_UNBOUNDED','CONTEXT_EXPIRY'}
+        reasons={'UNKNOWN','OBSERVED','TOKEN_TRANSPORT','TOKEN_PROFILE','VALIDATOR_AUTHENTICATION','CONTEXT_UNAVAILABLE','CONTEXT_DENIED','CONTEXT_UNKNOWN','CONTEXT_IDENTITY','CONTEXT_TENANT','CONTEXT_UNBOUNDED','CONTEXT_EXPIRY','TOKEN_TLS','TOKEN_TIMEOUT',*('TOKEN_HTTP_'+str(code) for code in (400,401,403,404,500,502,503,504))}
         if set(observed)=={'stage','reason'} and observed['stage'] in stages and observed['reason'] in reasons:
             print('DEV06_OWNER_AUTHORITY='+observed['stage']+':'+observed['reason'],flush=True)
         dev.compose(directory,state,'exec','-T','probe','python','/external_probe.py','initial',timeout=180)
