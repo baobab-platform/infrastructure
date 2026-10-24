@@ -116,6 +116,20 @@ def call(args, *, timeout=120, stdin=None, state=None):
                                 check=False, timeout=timeout)
         if result.returncode != 0:
             # Closed diagnostics only: never print command arguments, env or logs.
+            # Only the native qualifier's closed binding diagnostics may leave
+            # captured subprocess output. Provider bodies/commands remain private.
+            for line in result.stdout.splitlines():
+                if line.startswith('DEV04_BINDING='):
+                    try:
+                        value = json.loads(line[len('DEV04_BINDING='):], object_pairs_hook=unique)
+                        keys = {'active','issuer_bound','subject_bound','client_bound','audience_bound','scope_bound',
+                                'integer_times','expiry_bound','issued_at_bound','lifetime_bounded','current_time_bound'}
+                        if (set(value) == keys | {'jwt_lifetime_seconds'} and all(type(value[k]) is bool for k in keys)
+                                and (value['jwt_lifetime_seconds'] is None or type(value['jwt_lifetime_seconds']) is int
+                                     and 0 <= value['jwt_lifetime_seconds'] <= 900)):
+                            print('DEV04_BINDING=' + json.dumps(value, sort_keys=True), flush=True)
+                    except (ValueError, TypeError, Refused):
+                        pass  # Unknown diagnostics never cross the custody boundary.
             raw=(result.stdout+result.stderr).lower()
             classification='COMMAND_FAILED'
             for needle,code in (('toomanyrequests','IMAGE_RATE_LIMITED'),('429 too many','IMAGE_RATE_LIMITED'),

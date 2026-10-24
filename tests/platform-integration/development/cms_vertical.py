@@ -149,7 +149,9 @@ def up(run):
             dev.require(set(health)=={'cms','estate'} and all(type(v) is int and 0<=v<600 for v in health.values()),'DEV05_HEALTH_SHAPE')
             if health=={'cms':200,'estate':401}:break
             if attempt%15==0:print('DEV05_HEALTH='+json.dumps(health,sort_keys=True),flush=True)
-        except dev.Refused:pass
+        except dev.Refused:
+            # Refused/malformed startup probes cannot advance readiness.
+            pass
         time.sleep(2)
     else:raise dev.Refused('DEV05_SERVICES_UNAVAILABLE')
     dev.test(run)

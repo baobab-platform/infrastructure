@@ -60,7 +60,8 @@ def context():
     code,body,_=p.context(bearer,own);p.require(code==200 and body.get('tenant_id')==own['tenant_id'] and body.get('organisation_id')==own['organisation_id']);return bearer,body
 
 def resolve(bearer,cid,key='home',tenant=None,preview=False):
-    _,_,own=config();body={'tenant_id':tenant or own['tenant_id'],'content_key':key}
+    _,bootstrap,own=config();body={'tenant_id':tenant or own['tenant_id'],'content_key':key,
+        'digital_estate_id':own['digital_estate_id'],'market_id':bootstrap['market_ids']['ZA'],'locale':'en-ZA'}
     if preview:body['preview_mode']=True
     return p.request('POST',CMS+'/v1/content/resolve?context_id='+cid,body,bearer)
 
@@ -129,7 +130,9 @@ def main(action):
         result={'cms':0,'estate':0}
         for name,url in [('cms',CMS+'/api/health/live'),('estate',ESTATE+'/api/auth/session')]:
             try:result[name]=p.request('GET',url,timeout=10)[0]
-            except (OSError,ValueError):pass
+            except (OSError,ValueError):
+                # Startup transport/JSON failures remain explicit status zero.
+                continue
         print(json.dumps(result));return
     value=report();current={'initial':'published-home-nav-footer','draft':'draft-or-preview','withdraw':'withdrawn-content',
         'outage':'dependency-outage-and-restoration','restored':'dependency-outage-and-restoration','finish':'disabled-caller'}.get(action,'published-home-nav-footer')
