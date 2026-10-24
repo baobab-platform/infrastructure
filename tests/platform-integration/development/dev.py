@@ -422,14 +422,15 @@ def validate_fixture_report(value, run_id):
             == sorted(inventory), 'DEV02_INVENTORY_OR_OUTCOME_INVALID')
 
 
-def test(run_id):
+def test(run_id, health_attempts=45):
     directory, state = current(run_id)
     verify_sources(directory, state)
     require(state['phase'] in {'RUNNING', 'TESTED'}, 'RUNNING_PROFILE_REQUIRED')
     # Clear a former success before probing; failure cannot preserve old green.
     state['tests'] = False
     persist(directory, state, 'RUNNING')
-    for _ in range(45):
+    require(type(health_attempts) is int and 1 <= health_attempts <= 45, 'HEALTH_ATTEMPT_BOUND')
+    for _ in range(health_attempts):
         try:
             compose(directory, state, 'exec', '-T', 'probe', 'python', '/probe.py', 'health', timeout=20)
             break

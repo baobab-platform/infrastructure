@@ -40,7 +40,7 @@ def main():
             print('DEV01_STAGE=FAILED_HEALTH', flush=True)
             dev.compose(directory, state, 'stop', 'cp')
             try:
-                dev.test(run_id)
+                dev.test(run_id, health_attempts=1)
             except dev.Refused:
                 checks['failed_health_rejected'] = True
             else:

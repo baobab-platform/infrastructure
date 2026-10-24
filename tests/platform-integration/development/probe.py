@@ -78,11 +78,12 @@ def subjects():
     for name in clients:
         secret=os.environ['DEV03_INTROSPECTION_SECRET'] if name=='baobab-dev-introspection' else secrets.token_urlsafe(32)
         human=name=='baobab-dev-human'
+        proof=name.startswith('baobab-int03c-')
         config={'client_id':name,'client_secret':secret,'grant_types':['authorization_code'] if human else ['client_credentials'],
                 'response_types':['code'] if human else [],'scope':ADMIN_SCOPES if human else 'context:resolve',
-                'audience':['baobab-control-plane'],'token_endpoint_auth_method':'client_secret_basic',
-                'redirect_uris':[CALLBACK] if human else [],'metadata':{'development_run_id':os.environ['DEV01_RUN_ID']},
-                'client_credentials_grant_access_token_lifespan':'120s','authorization_code_grant_access_token_lifespan':'120s'}
+                'audience':['baobab-control-plane'],'token_endpoint_auth_method':'client_secret_post' if proof else 'client_secret_basic',
+                'redirect_uris':[CALLBACK] if human else [],'metadata':{'development_run_id':os.environ['DEV01_RUN_ID'],'environment':'development','owner':'baobab-platform/infrastructure',**({'int03c_run_id':os.environ['DEV01_RUN_ID']} if proof else {})},
+                'client_credentials_grant_access_token_lifespan':'60s' if proof else '120s','authorization_code_grant_access_token_lifespan':'120s'}
         code,_=api('GET','/admin/clients/'+name);require(code==404,'REFUSE_EXISTING_ISSUER_CLIENT')
         code,created=api('POST','/admin/clients',config);require(code==201 and created['client_id']==name,'HYDRA_CREATE')
         code,actual=api('GET','/admin/clients/'+name)
@@ -127,7 +128,12 @@ def health():
 
 def token(name,native=None):
     native=native or read('native.json')
-    code,body,_=request('POST',ISSUER+'/oauth2/token',{'grant_type':'client_credentials','scope':'context:resolve','audience':'baobab-control-plane'},form=True,basic=(name,native['clients'][name]['secret']))
+    form={'grant_type':'client_credentials','scope':'context:resolve','audience':'baobab-control-plane'}
+    credential=native['clients'][name]
+    auth=(name,credential['secret'])
+    if credential['config']['token_endpoint_auth_method']=='client_secret_post':
+        form.update(client_id=name,client_secret=credential['secret']);auth=None
+    code,body,_=request('POST',ISSUER+'/oauth2/token',form,form=True,basic=auth)
     require(code==200 and body.get('access_token'),'SIGNED_TOKEN_ISSUANCE')
     return body['access_token']
 
