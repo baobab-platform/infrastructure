@@ -221,6 +221,11 @@ def main():
         return 2
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[2] == "development":
+        sys.dont_write_bytecode = True
+        sys.path.insert(0, str(BASE / 'development'))
+        from development.dev import main as development_main
+        sys.exit(development_main([sys.argv[1], *sys.argv[3:]]))
     # INT-02 is a selectable heavier real-process profile; the proven
     # INT-01 foundation implementation and its default CLI remain unchanged.
     if len(sys.argv) >= 3 and sys.argv[2] == "iam-cp":

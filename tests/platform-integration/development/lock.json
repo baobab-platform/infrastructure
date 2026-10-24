@@ -1,0 +1,19 @@
+{
+  "schema": "infrastructure.development-lifecycle.v1",
+  "profile": "iam-cp-development",
+  "authority": "ADR-SHARED-043",
+  "infrastructure_baseline": "d573582e6302da40a68215746371980e096a8b3c",
+  "sources": {
+    "shared": "e2acbed153e8868bc07679374815971acac48f5b",
+    "baobab-cp": "3b1ca63f85dd18d9d82c162c2777ab3313091328",
+    "baobab-iam": "0ad103606b9705fcb33c468ea01b54d8ce76f9ae"
+  },
+  "images": {
+    "postgres": "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+    "probe": "python@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c",
+    "edge": "nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de"
+  },
+  "max_lease_seconds": 3600,
+  "synthetic_only": true,
+  "protected_acceptance": false
+}
