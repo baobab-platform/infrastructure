@@ -52,6 +52,19 @@ must revoke server custody even when the old handle is replayed. This is a
 native HTTP BFF observation, not a claim of an independently observed browser
 UI, protected sign-in, step-up/MFA or production session acceptance.
 
+## Closed fixture failure diagnostics
+
+The CMS-owned fixture emits `CMS_INT03_STAGE_FAILED=<fixed-phase>` only on
+nonzero exit. The Infrastructure harness accepts an exact finite set of stages
+(`BOUNDARY`, `REFERENCE_DECLARATION`, `PAYLOAD_INIT`, `PG17_CHECK`,
+`ESTATE_PROJECTION`, `CONTENT_SEED`, `PUBLICATION`, `READBACK`,
+`DESTROY`) and reports `CMS_FIXTURE_<fixed-phase>`. Unknown or embellished
+messages remain `COMMAND_FAILED`. These stage names localize failures without
+disclosing SQL, stack traces, provider data, secrets or CP-issued references.
+A stage is **not** an acceptance result. Inspect the CMS owner implementation
+and its migrations at the *exact pinned source SHA*; fix the owner error rather
+than replacing real execution with a stub or promoting blocked cases.
+
 ## Result and custody semantics
 
 `cms_contract.py` preserves all fourteen original IDs. Each case is PASS, FAIL
