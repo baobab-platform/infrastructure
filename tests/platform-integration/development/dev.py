@@ -119,7 +119,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
             # Only the native qualifier's closed binding diagnostics may leave
             # captured subprocess output. Provider bodies/commands remain private.
             for line in result.stdout.splitlines():
-                if line in {'DEV05_PROBE_STAGE='+name for name in ('BFF_LOGIN','BFF_AUTHORIZE','BFF_CALLBACK',
+                if line in {'DEV05_PROBE_STAGE='+name for name in ('BFF_LOGIN','BFF_KRATOS_FLOW','BFF_KRATOS_LOGIN','BFF_INITIATE','BFF_PKCE','BFF_AUTHORIZE','BFF_CALLBACK',
                         'BFF_SESSION','BFF_LOGOUT','CMS_CONTEXT','CMS_RECORDS','CANONICAL_RESOLUTION')}:
                     print(line,flush=True)
                 if line.startswith('DEV04_BINDING='):
