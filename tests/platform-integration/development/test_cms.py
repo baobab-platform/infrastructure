@@ -65,6 +65,57 @@ class CMSContracts(unittest.TestCase):
             bad=copy.deepcopy(report);change(bad)
             with self.assertRaises(ValueError):cms_contract.validate(bad,run)
 
+    def test_bff_epoch_matches_nabhold_strict_store_and_preserves_all_run_bits(self):
+        # Nabhold's store validates ^[a-z][a-z0-9-]{0,31}$.
+        # All 128 run bits must participate, including the last hex nibble.
+        a='0'*32
+        b='0'*31+'1'
+        value=cms_vertical.bff_epoch(a)
+        self.assertRegex(value,r'^[a-z][a-z0-9-]{0,31}
+        value=cms_vertical.lock()
+        self.assertEqual(set(value['sources']),{'baobab-cms','nabhold'})
+        self.assertTrue(all(dev.SHA.fullmatch(sha) for sha in value['sources'].values()))
+        for key in ('node','redis','frontend'):self.assertIn('@sha256:',value[key])
+
+    def test_host_cleanup_never_promotes_partial_provider(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);state=root/'state';state.mkdir(mode=0o700);run='a'*32
+            directory=state/run;directory.mkdir(mode=0o700)
+            report=cms_contract.fresh(run)
+            for row in report['cases'].values():row.update(result='PASS',reason='OBSERVED')
+            report['cases']['published-home-nav-footer'].update(result='BLOCKED',reason='PROVIDER_NOT_ELIGIBLE')
+            report['cases']['teardown'].update(result='BLOCKED',reason='TEARDOWN_PENDING')
+            report['component_checks'].update(provider_declared_partial=True,native_clients_deleted=True,native_tokens_inactive=True)
+            dev.write(directory/'state.json',{'run_id':run,'sources':{},'harness_sha':'b'*40,'image_ids':{},'lock_sha256':'c'*64,'tests':True,'cms':report})
+            with patch.object(dev,'STATE',state),patch.object(dev,'EVIDENCE',root/'evidence'),patch.object(dev,'resources',return_value=[]):
+                dev.down(run)
+                receipt=dev.read(root/'evidence'/('dev01-'+run)/'completed/receipt.json')
+            self.assertFalse(directory.exists());self.assertFalse(receipt['nab03_qualified'])
+            self.assertEqual(receipt['cms']['cases']['teardown']['result'],'PASS')
+            self.assertFalse(receipt['protected_acceptance'])
+
+    def test_outage_failure_is_attributed_without_overwriting_publication(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);report=cms_contract.fresh('a'*32)
+            report['cases']['published-home-nav-footer'].update(result='BLOCKED',reason='PROVIDER_NOT_ELIGIBLE')
+            (root/'cms-report.json').write_text(json.dumps(report))
+            with patch.object(probe.p,'ROOT',root),patch.object(probe,'config',return_value=({}, {}, {})):
+                with self.assertRaises(SystemExit):probe.main('outage')
+            retained=json.loads((root/'cms-report.json').read_text())
+            self.assertEqual(retained['cases']['published-home-nav-footer'],report['cases']['published-home-nav-footer'])
+            self.assertEqual(retained['cases']['dependency-outage-and-restoration']['result'],'FAIL')
+
+if __name__=='__main__':unittest.main()
+)
+        self.assertLessEqual(len(value),32)
+        self.assertNotEqual(value,cms_vertical.bff_epoch(b))
+        self.assertEqual(cms_vertical.bff_epoch(a),value)
+        for invalid in ('','0'*31,'0'*33,'g'*32,'A'*32):
+            with self.subTest(invalid=invalid),self.assertRaises(dev.Refused):
+                cms_vertical.bff_epoch(invalid)
+
     def test_source_profile_uses_immutable_owner_images_and_sources(self):
         value=cms_vertical.lock()
         self.assertEqual(set(value['sources']),{'baobab-cms','nabhold'})
