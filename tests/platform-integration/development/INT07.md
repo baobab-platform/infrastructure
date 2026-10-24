@@ -88,3 +88,13 @@ retains recovery custody and never publishes a teardown PASS. Rollback recovers
 the owned run, restores the reviewed source/image pins and disables only this
 profile. Historical receipts remain immutable. No protected identity or storage
 may depend on this development fixture.
+
+## Python 3.14 strict TLS
+
+The run CA has critical CA/keyCertSign/cRLSign usage; the leaf has explicit
+serverAuth, key usage, subject-key identifier and authority-key identifier.
+Python 3.14's default strict validation rejected the old CA's missing key usage.
+The regression performs an actual socket TLS handshake with VERIFY_X509_STRICT
+also enabled in the lighter Python 3.12 tool image. Verification and hostname
+checks are never disabled; no arbitrary trust fallback or insecure adapter is
+used. The generated private CA key is destroyed after signing as before.

@@ -88,4 +88,36 @@ class ExternalContracts(unittest.TestCase):
                 self.assertEqual(saved['cases']['independent-registered-workload']['result'],'PASS')
                 self.assertEqual(saved['cases'][case]['result'],'FAIL')
 
+    def test_actual_generated_ca_and_leaf_satisfy_python314_strict_tls(self):
+        import socket
+        import ssl
+        import threading
+        import time
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            dev.tls(root,{'deadline':time.time()+60})
+            server=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            server.load_cert_chain(root/'tls/edge.pem',root/'tls/edge.key')
+            listener=socket.socket()
+            self.addCleanup(listener.close)
+            listener.bind(('127.0.0.1',0));listener.listen();listener.settimeout(5)
+            failures=[]
+            def accept():
+                try:
+                    conn,_=listener.accept()
+                    with conn,server.wrap_socket(conn,server_side=True):pass
+                except (ssl.SSLError,OSError) as error:failures.append(type(error).__name__)
+            thread=threading.Thread(target=accept,daemon=True);thread.start()
+            client=ssl.create_default_context(cafile=str(root/'tls/ca.pem'))
+            # Python 3.14 enables STRICT by default. Explicitly enable it on
+            # the lighter 3.12 integration tool container too, without clearing
+            # hostname checks, required trust or any verification flag.
+            client.verify_flags |= ssl.VERIFY_X509_STRICT
+            with socket.create_connection(listener.getsockname(),timeout=5) as raw:
+                with client.wrap_socket(raw,server_hostname='hydra.int03.test') as conn:
+                    self.assertTrue(conn.getpeercert())
+            thread.join(5)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(failures,[])
+
 if __name__=='__main__':unittest.main()

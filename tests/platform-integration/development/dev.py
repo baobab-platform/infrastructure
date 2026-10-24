@@ -251,11 +251,12 @@ def tls(directory, state):
     folder.mkdir(mode=0o755)
     commands = [
         ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=Baobab DEV-01 CA',
-         '-addext', 'basicConstraints=critical,CA:TRUE', '-keyout', str(directory / 'ca.key'), '-out', str(folder / 'ca.pem')],
+         '-addext', 'basicConstraints=critical,CA:TRUE',
+         '-addext', 'keyUsage=critical,keyCertSign,cRLSign', '-keyout', str(directory / 'ca.key'), '-out', str(folder / 'ca.pem')],
         ['req', '-newkey', 'rsa:2048', '-nodes', '-subj', '/CN=baobab-dev.test',
          '-keyout', str(folder / 'edge.key'), '-out', str(directory / 'edge.csr')],
     ]
-    (directory / 'edge.ext').write_text('subjectAltName=DNS:hydra.int03.test,DNS:kratos.baobab-dev.test,DNS:cp.baobab-dev.test,DNS:rp.baobab-dev.test,DNS:cms.baobab-dev.test,DNS:nabhold.baobab-dev.test,DNS:redis.baobab-dev.test,DNS:pulse.baobab-dev.test\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n')
+    (directory / 'edge.ext').write_text('subjectAltName=DNS:hydra.int03.test,DNS:kratos.baobab-dev.test,DNS:cp.baobab-dev.test,DNS:rp.baobab-dev.test,DNS:cms.baobab-dev.test,DNS:nabhold.baobab-dev.test,DNS:redis.baobab-dev.test,DNS:pulse.baobab-dev.test\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature,keyEncipherment\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\nbasicConstraints=CA:FALSE\n')
     for command in commands:
         call(['openssl', *command], state=state)
     call(['openssl', 'x509', '-req', '-in', str(directory / 'edge.csr'), '-CA', str(folder / 'ca.pem'),
