@@ -144,6 +144,19 @@ This does not weaken cookie binding, TLS Redis, one-time GETDEL semantics,
 issuer checks or session expiry. Closed BFF stage markers isolate any remaining
 Kratos/authorization errors without recording credentials or HTTP bodies.
 
+## CMS validator bounded clock qualification
+
+The named DEV-05 CMS validator uses its own actual Hydra client with an
+**exact 55-second client-credentials lifetime**, verified by a native issuer
+readback. Payload/CMS's maintained token provider still checks current
+introspection, issuer, subject, client, single audience, exact scope, actor type,
+introspection request timestamp, expiry, immutable run deadline, and a hard
+60-second end-to-end maximum. Hydra may sign after access-request time; the
+qualifier allows no more than five seconds of nominal timing difference, and
+never accepts tokens over the hard 60-second ceiling. Neither source CI green
+nor a positive validator token alone qualifies any of the fourteen cases;
+actual published-content requests and independent teardown remain required.
+
 ## Result and custody semantics
 
 `cms_contract.py` preserves all fourteen original IDs. Each case is PASS, FAIL
