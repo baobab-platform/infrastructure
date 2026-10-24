@@ -34,12 +34,32 @@ def bound(actual, bearer, audience='baobab-control-plane'):
     """
     c = p.claims(bearer)
     aud = actual.get('aud', []); aud = [aud] if isinstance(aud, str) else aud
-    return (actual.get('active') is True and actual.get('iss') == c.get('iss') == p.ISSUER
-            and actual.get('sub') == c.get('sub') == OWNER and actual.get('client_id') == OWNER
-            and aud == [audience] and set(actual.get('scope', '').split()) == {'context:resolve'}
-            and type(c.get('exp')) is int and type(c.get('iat')) is int
-            and actual.get('exp') == c['exp'] and actual.get('iat') == c['iat']
-            and 0 < c['exp'] - c['iat'] <= 60 and c['iat'] <= time.time() < c['exp'])
+    checks = {
+        'active': actual.get('active') is True,
+        'issuer_bound': actual.get('iss') == c.get('iss') == p.ISSUER,
+        'subject_bound': actual.get('sub') == c.get('sub') == OWNER,
+        'client_bound': actual.get('client_id') == OWNER,
+        'audience_bound': aud == [audience],
+        'scope_bound': set(actual.get('scope', '').split()) == {'context:resolve'},
+        'integer_times': type(c.get('exp')) is int and type(c.get('iat')) is int,
+        'expiry_bound': actual.get('exp') == c.get('exp'),
+        # Hydra introspection uses accessRequest.RequestedAt; its signed JWT
+        # uses Claims.IssuedAt=time.Now at signing (v26.2.0 oauth2/handler.go).
+        # Both must be integer, ordered and independently <=60s to ONE expiry.
+        'issued_at_bound': type(actual.get('iat')) is int and type(c.get('iat')) is int
+                           and actual['iat'] <= c['iat'],
+    }
+    checks['lifetime_bounded'] = (checks['integer_times'] and checks['issued_at_bound']
+        and 0 < c['exp'] - c['iat'] <= 60 and 0 < c['exp'] - actual['iat'] <= 60)
+    checks['current_time_bound'] = checks['integer_times'] and c['iat'] <= time.time() < c['exp']
+    if not all(checks.values()):
+        # Only fixed field-level booleans and a bounded relative lifetime leave
+        # the private driver. Never print token/subject/issuer/body/timestamps.
+        lifetime = c['exp'] - c['iat'] if checks['integer_times'] else None
+        print('DEV04_BINDING=' + json.dumps({**checks, 'jwt_lifetime_seconds':
+              lifetime if type(lifetime) is int and 0 <= lifetime <= 900 else None}, sort_keys=True), flush=True)
+    return all(checks.values())
+
 
 
 def main():
@@ -75,7 +95,7 @@ def main():
                       and client['metadata']['int03c_run_id'] == run_id
                       and client['metadata']['environment'] == 'development'
                       and client['token_endpoint_auth_method'] == 'client_secret_post'
-                      and client.get('client_credentials_grant_access_token_lifespan') in ('60s', '1m0s'))
+                      and client.get('client_credentials_grant_access_token_lifespan') == p.PROOF_LIFESPAN)
         # A provider GET alone is insufficient: independently bind the actual
         # issued lifetime below as well as the requested/native client ceiling.
         observe('exact_client_ceiling', True)

@@ -28,6 +28,10 @@ CP='https://cp.baobab-dev.test'
 CALLBACK='https://rp.baobab-dev.test/callback'
 TLS=ssl.create_default_context(cafile='/tls/ca.pem');TLS.minimum_version=ssl.TLSVersion.TLSv1_3
 ADMIN_SCOPES='changeset:write changeset:approve changeset:read'
+# Proof-only Hydra clients have an issuer-enforced 55s ceiling, safely below
+# the verifier's unchanged 60s upper bound. Hydra may sign after RequestedAt;
+# the margin accommodates that delay without permitting any longer token.
+PROOF_LIFESPAN='55s'
 WORKLOADS=('baobab-dev-nabhold-estate','baobab-dev-zuribeans-estate','baobab-dev-thamani-estate','baobab-dev-equator-estate-estate','baobab-int03c-issuer-owner','baobab-int03c-issuer-verifier')
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -45,7 +49,7 @@ def read(name): return json.loads((ROOT/name).read_text())
 def request(method,url,data=None,token=None,form=False,basic=None,headers=None,opener=None,timeout=8):
     # Private provider admin planes are the only permitted cleartext origins.
     parsed=urllib.parse.urlsplit(url)
-    require((parsed.scheme=='https' and parsed.hostname in ('hydra.int03.test','kratos.baobab-dev.test','cp.baobab-dev.test')) or
+    require((parsed.scheme=='https' and parsed.hostname in ('hydra.int03.test','kratos.baobab-dev.test','cp.baobab-dev.test','cms.baobab-dev.test','nabhold.baobab-dev.test')) or
             (parsed.scheme=='http' and parsed.netloc in ('hydra:4445','kratos:4434')),'UNTRUSTED_ENDPOINT')
     body=(urllib.parse.urlencode(data).encode() if form else json.dumps(data).encode()) if data is not None else None
     h={'Accept':'application/json',**(headers or {})}
@@ -84,7 +88,7 @@ def subjects():
                 'response_types':['code'] if human else [],'scope':ADMIN_SCOPES if human else 'context:resolve',
                 'audience':['baobab-control-plane'],'token_endpoint_auth_method':'client_secret_post' if proof else 'client_secret_basic',
                 'redirect_uris':[CALLBACK] if human else [],'metadata':{'development_run_id':os.environ['DEV01_RUN_ID'],'environment':'development','owner':'baobab-platform/infrastructure',**({'int03c_run_id':os.environ['DEV01_RUN_ID']} if proof else {})},
-                'client_credentials_grant_access_token_lifespan':'60s' if proof else '120s','authorization_code_grant_access_token_lifespan':'120s'}
+                'client_credentials_grant_access_token_lifespan':PROOF_LIFESPAN if proof else '120s','authorization_code_grant_access_token_lifespan':'120s'}
         code,_=api('GET','/admin/clients/'+name);require(code==404,'REFUSE_EXISTING_ISSUER_CLIENT')
         code,created=api('POST','/admin/clients',config);require(code==201 and created['client_id']==name,'HYDRA_CREATE')
         code,actual=api('GET','/admin/clients/'+name)
@@ -97,19 +101,49 @@ class Hook(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
     def do_POST(self):
         try:
+            if self.path=='/introspect':
+                return self.introspect()
             require(self.path=='/token-hook' and hmac.compare_digest(self.headers.get('X-DEV03-Hook-Key',''),os.environ['DEV03_HOOK_KEY']))
             size=int(self.headers.get('Content-Length','0'));require(0<size<65536)
             body=json.loads(self.rfile.read(size)); req=body['request'];session=body['session'];client=req['client_id'];grant=req['grant_types']
             native=read('native.json');require(client in native['clients'] and session['client_id']==client)
-            human=client=='baobab-dev-human';require(grant==(['authorization_code'] if human else ['client_credentials']))
+            human=client in ('baobab-dev-human','nabhold-dev-bff');require(grant==(['authorization_code'] if human else ['client_credentials']))
             if human: require(session['id_token']['subject'] in {x['id'] for x in native['humans'].values()})
-            else: require(client in WORKLOADS and session['id_token']['subject']==client)
+            else: require(client in WORKLOADS+('baobab-int03-cms-consumer','baobab-int03-cms-validator') and session['id_token']['subject']==client)
             # Identity normalisation only. No tenant/org/capability/grant claims.
             claims={'actor_type':'human' if human else 'workload','azp':client}
             if human: claims['realm_access']={'roles':['cp:platform-admin']}
             raw=json.dumps({'session':{'access_token':claims}}).encode()
             self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(raw)
         except Exception: self.send_response(403);self.end_headers()
+
+    def introspect(self):
+        try:
+            require(os.environ.get('DEV05_PROFILE')=='native-cms')
+            size=int(self.headers.get('Content-Length','0'));require(0<size<16384)
+            fields=urllib.parse.parse_qs(self.rfile.read(size).decode(),strict_parsing=True)
+            require(all(len(v)==1 for v in fields.values()) and 'token' in fields)
+            if self.headers.get('Authorization','').startswith('Basic '):
+                require('client_id' not in fields and 'client_secret' not in fields)
+                name,secret=base64.b64decode(self.headers['Authorization'][6:],validate=True).decode().split(':',1)
+            else:
+                name=fields['client_id'][0];secret=fields['client_secret'][0]
+            native=read('native.json')
+            require(name in ('baobab-int03-cms-consumer','baobab-int03-cms-validator','nabhold-dev-bff') and
+                    hmac.compare_digest(secret,native['clients'][name]['secret']))
+            code,body,_=request('POST','http://hydra:4445/admin/oauth2/introspect',{'token':fields['token'][0]},form=True)
+            require(code==200)
+            if body.get('active') is True:
+                require((name=='baobab-int03-cms-validator' and body.get('client_id') in ('baobab-int03-cms-validator','baobab-int03-cms-consumer')) or body.get('client_id')==name)
+                # Hydra's native extension container holds issuer-produced
+                # custom claims. Promote only actor_type, rejecting conflicts.
+                extra=body.get('ext',{})
+                if 'actor_type' in extra:
+                    require('actor_type' not in body or body['actor_type']==extra['actor_type'])
+                    body['actor_type']=extra['actor_type']
+            raw=json.dumps(body).encode();self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(raw)
+        except Exception:
+            self.send_response(401);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(b'{"error":"invalid_client"}')
 
 def provider_ready():
     observed={'hydra':0,'kratos':0}

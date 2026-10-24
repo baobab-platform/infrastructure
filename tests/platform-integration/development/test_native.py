@@ -1,5 +1,7 @@
 """Source regressions only; never credited as live authority evidence."""
 import importlib.util
+import io
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -22,6 +24,11 @@ class NativeTests(unittest.TestCase):
 
     def test_failure_diagnostics_keep_only_closed_probe_codes(self):
         import subprocess
+        output=io.StringIO()
+        with redirect_stdout(output), patch('subprocess.run',return_value=subprocess.CompletedProcess([],2,
+                'DEV05_PROBE_STAGE=BFF_CALLBACK\nDEV05_PROBE_STAGE=private-secret\nprivate-body','')):
+            with self.assertRaises(dev.Refused):dev.call(['docker','exec','owned'])
+        self.assertEqual(output.getvalue(),'DEV05_PROBE_STAGE=BFF_CALLBACK\n')
         with patch('subprocess.run',return_value=subprocess.CompletedProcess([],2,'private-body','DEV03_PROVIDER_PROBE_FAILED CP_PROVENANCE_PROPOSE private-secret')):
             with self.assertRaisesRegex(dev.Refused,'^PROBE_CP_PROVENANCE_PROPOSE$'):
                 dev.call(['docker','exec','owned'])

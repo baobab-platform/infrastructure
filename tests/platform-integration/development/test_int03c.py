@@ -95,6 +95,14 @@ class Int03CTests(unittest.TestCase):
                         self.assertIs(receipt['production_authorized'], False)
                         if complete_provider: contract.validate(receipt['int03c'], RUN, complete=True)
 
+    def test_issuer_proof_ceiling_has_headroom_below_verified_limit(self):
+        with patch('ssl.create_default_context', return_value=SimpleNamespace()):
+            probe = importlib.import_module('int03c_probe')
+        # Fail if someone reverts to an exactly-60s Hydra client config,
+        # which intermittently issues a >60s request-to-expiry lifetime.
+        self.assertEqual(probe.p.PROOF_LIFESPAN, '55s')
+        self.assertLess(int(probe.p.PROOF_LIFESPAN[:-1]), 60)
+
     def test_provider_lifetime_readback_is_bound_to_actual_token(self):
         with patch('ssl.create_default_context', return_value=SimpleNamespace()):
             probe = importlib.import_module('int03c_probe')
@@ -104,6 +112,11 @@ class Int03CTests(unittest.TestCase):
                   'scope': 'context:resolve', 'aud': ['baobab-control-plane']}
         with patch.object(probe.p, 'claims', return_value=claims):
             self.assertTrue(probe.bound(actual, 'private-test-bearer'))
+        signing_claims = {**claims, 'exp': now + 58}
+        requested = {**actual, 'iat': now - 2, 'exp': now + 58}
+        with patch.object(probe.p, 'claims', return_value=signing_claims):
+            self.assertTrue(probe.bound(requested, 'private-test-bearer'))
+        with patch.object(probe.p, 'claims', return_value=claims):
             for altered in ({**actual, 'iat': now - 1}, {**actual, 'exp': now + 600},
                             {**actual, 'active': False}, {**actual, 'scope': 'context:resolve changeset:approve'}):
                 self.assertFalse(probe.bound(altered, 'private-test-bearer'))

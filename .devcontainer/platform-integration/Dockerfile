@@ -11,4 +11,8 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list
 
 # Run as the image's non-root user (remoteUser in devcontainer.json). The
 # Dev Containers CLI installs features in its own build stage as root.
+# Existing canonical registry parser, also used by platform-int03 source CI.
+# Install once in the shared image so Actions and Codespaces use the same port.
+RUN python3 -m pip install --no-cache-dir PyYAML==6.0.3
+
 USER vscode
