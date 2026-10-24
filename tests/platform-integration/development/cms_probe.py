@@ -102,12 +102,16 @@ def estate_page(expected):
 def bff(report):
     stage('BFF_LOGIN')
     native,bootstrap,_=config();human=native['humans']['maker']
+    stage('BFF_KRATOS_FLOW')
     code,flow,_=p.request('GET',p.KRATOS+'/self-service/login/api');p.require(code==200)
+    stage('BFF_KRATOS_LOGIN')
     code,logged,_=p.request('POST',p.KRATOS+'/self-service/login?flow='+flow['id'],{'method':'password','identifier':human['email'],'password':human['password']});p.require(code==200)
     session=logged['session_token']
     jar=http.cookiejar.CookieJar();opener=urllib.request.build_opener(p.NoRedirect(),urllib.request.HTTPSHandler(context=p.TLS),urllib.request.HTTPCookieProcessor(jar))
+    stage('BFF_INITIATE')
     code,_,location=p.request('POST',ESTATE+'/api/auth/login',{},headers={'Origin':ESTATE},opener=opener)
     p.require(code in (302,303) and location)
+    stage('BFF_PKCE')
     authorization=urllib.parse.urlsplit(location);fields=urllib.parse.parse_qs(authorization.query)
     p.require(set(fields['scope'][0].split())=={'openid','authority:self'} and fields['code_challenge_method']==['S256'] and fields.get('nonce'))
     stage('BFF_AUTHORIZE')
