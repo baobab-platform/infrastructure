@@ -91,6 +91,19 @@ def record_failure_class(result, key):
     """Bounded classification only; never print CMS content, context or IDs."""
     http, body, _ = result
     if http != 200:
+        if http==503 and isinstance(body,dict) and body.get('code')=='CONTENT_CONTEXT_UNAVAILABLE':
+            # Only fixed CMS-owned titles/details; never output a response,
+            # token, private identifier, or provider-originated free text.
+            if body.get('title')=='Not configured':return 'CONFIG_NOT_READY'
+            if body.get('title')=='Caller status unavailable':return 'CALLER_STATUS_UNAVAILABLE'
+            if body.get('detail')=='The Control Plane could not be reached to validate the context.':
+                return 'VALIDATOR_UNAVAILABLE'
+            if body.get('detail')=='The projection could not be checked.':return 'PROJECTION_UNAVAILABLE'
+            return 'CONTEXT_UNAVAILABLE'
+        if http==500:return 'HTTP_500'
+        if http==502:return 'HTTP_502'
+        if http==503:return 'HTTP_503'
+        if http==504:return 'HTTP_504'
         return 'HTTP_DENIED' if http in (400,401,403,404,409,422) else 'HTTP_UNAVAILABLE'
     if not isinstance(body,dict):return 'INVALID_BODY'
     record=body.get('record')
