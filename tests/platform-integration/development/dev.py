@@ -335,6 +335,7 @@ def up(run_id):
                 if all(value==200 for value in status.values()): ready=True;break
                 if attempt % 15==0: print('DEV03_READINESS='+json.dumps(status,sort_keys=True),flush=True)
             except Refused:
+                # A transient or malformed probe cannot advance readiness.
                 pass
             time.sleep(2)
         require(ready, 'IAM_HEALTH_UNAVAILABLE')

@@ -113,7 +113,9 @@ class Hook(BaseHTTPRequestHandler):
 def provider_ready():
     observed={'hydra':0,'kratos':0}
     try: observed['hydra']=request('GET',ISSUER+'/.well-known/openid-configuration',timeout=3)[0]
-    except (OSError,ValueError): pass
+    except (OSError,ValueError):
+        # Startup transport/JSON errors remain explicit status 0, never ready.
+        pass
     for path in ('/admin/health/ready','/health/ready'):
         try: observed['kratos']=request('GET','http://kratos:4434'+path,timeout=3)[0]
         except (OSError,ValueError): continue
