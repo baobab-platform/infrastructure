@@ -28,6 +28,10 @@ CP='https://cp.baobab-dev.test'
 CALLBACK='https://rp.baobab-dev.test/callback'
 TLS=ssl.create_default_context(cafile='/tls/ca.pem');TLS.minimum_version=ssl.TLSVersion.TLSv1_3
 ADMIN_SCOPES='changeset:write changeset:approve changeset:read'
+# Proof-only Hydra clients have an issuer-enforced 55s ceiling, safely below
+# the verifier's unchanged 60s upper bound. Hydra may sign after RequestedAt;
+# the margin accommodates that delay without permitting any longer token.
+PROOF_LIFESPAN='55s'
 WORKLOADS=('baobab-dev-nabhold-estate','baobab-dev-zuribeans-estate','baobab-dev-thamani-estate','baobab-dev-equator-estate-estate','baobab-int03c-issuer-owner','baobab-int03c-issuer-verifier')
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -84,7 +88,7 @@ def subjects():
                 'response_types':['code'] if human else [],'scope':ADMIN_SCOPES if human else 'context:resolve',
                 'audience':['baobab-control-plane'],'token_endpoint_auth_method':'client_secret_post' if proof else 'client_secret_basic',
                 'redirect_uris':[CALLBACK] if human else [],'metadata':{'development_run_id':os.environ['DEV01_RUN_ID'],'environment':'development','owner':'baobab-platform/infrastructure',**({'int03c_run_id':os.environ['DEV01_RUN_ID']} if proof else {})},
-                'client_credentials_grant_access_token_lifespan':'60s' if proof else '120s','authorization_code_grant_access_token_lifespan':'120s'}
+                'client_credentials_grant_access_token_lifespan':PROOF_LIFESPAN if proof else '120s','authorization_code_grant_access_token_lifespan':'120s'}
         code,_=api('GET','/admin/clients/'+name);require(code==404,'REFUSE_EXISTING_ISSUER_CLIENT')
         code,created=api('POST','/admin/clients',config);require(code==201 and created['client_id']==name,'HYDRA_CREATE')
         code,actual=api('GET','/admin/clients/'+name)
