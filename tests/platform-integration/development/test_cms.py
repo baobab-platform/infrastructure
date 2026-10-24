@@ -3,6 +3,7 @@ import copy
 import importlib
 import json
 import os
+import re
 from types import SimpleNamespace
 import tempfile
 from pathlib import Path
@@ -65,18 +66,24 @@ class CMSContracts(unittest.TestCase):
             bad=copy.deepcopy(report);change(bad)
             with self.assertRaises(ValueError):cms_contract.validate(bad,run)
 
-    def test_bff_epoch_matches_nabhold_strict_store_and_preserves_all_run_bits(self):
-        # Nabhold's store validates ^[a-z][a-z0-9-]{0,31}$.
-        # All 128 run bits must participate, including the last hex nibble.
+    def test_bff_epoch_matches_nabhold_store_and_preserves_all_run_bits(self):
+        # Nabhold permits a lowercase initial letter and at most 32 characters.
         a='0'*32
         b='0'*31+'1'
         value=cms_vertical.bff_epoch(a)
-        self.assertRegex(value,r'^[a-z][a-z0-9-]{0,31}
+        self.assertTrue(re.fullmatch(r'[a-z][a-z0-9-]{0,31}',value))
+        self.assertLessEqual(len(value),32)
+        self.assertNotEqual(value,cms_vertical.bff_epoch(b))
+        self.assertEqual(cms_vertical.bff_epoch(a),value)
+        for invalid in ('','0'*31,'0'*33,'g'*32,'A'*32):
+            with self.subTest(invalid=invalid),self.assertRaises(dev.Refused):
+                cms_vertical.bff_epoch(invalid)
+
+    def test_source_profile_uses_immutable_owner_images_and_sources(self):
         value=cms_vertical.lock()
         self.assertEqual(set(value['sources']),{'baobab-cms','nabhold'})
         self.assertTrue(all(dev.SHA.fullmatch(sha) for sha in value['sources'].values()))
         for key in ('node','redis','frontend'):self.assertIn('@sha256:',value[key])
-
     def test_host_cleanup_never_promotes_partial_provider(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);state=root/'state';state.mkdir(mode=0o700);run='a'*32
