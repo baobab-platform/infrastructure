@@ -113,7 +113,16 @@ def call(args, *, timeout=120, stdin=None, state=None):
     try:
         result = subprocess.run(args, input=stdin, text=True, capture_output=True,
                                 check=False, timeout=timeout)
-        require(result.returncode == 0, 'COMMAND_FAILED')
+        if result.returncode != 0:
+            # Closed diagnostics only: never print command arguments, env or logs.
+            raw=(result.stdout+result.stderr).lower()
+            classification='COMMAND_FAILED'
+            for needle,code in (('toomanyrequests','IMAGE_RATE_LIMITED'),('429 too many','IMAGE_RATE_LIMITED'),
+                                ('failed to resolve source metadata','IMAGE_UNAVAILABLE'),('failed to fetch oauth token','IMAGE_UNAVAILABLE'),
+                                ('manifest unknown','IMAGE_UNAVAILABLE'),('invalid config','INVALID_PROVIDER_CONFIGURATION'),
+                                ('field not found','INVALID_PROVIDER_CONFIGURATION'),('permission denied','RUNTIME_PERMISSION_DENIED')):
+                if needle in raw: classification=code;break
+            raise Refused(classification)
         return result.stdout.strip()
     except (subprocess.SubprocessError, OSError) as error:
         raise Refused('COMMAND_UNAVAILABLE_OR_TIMED_OUT') from error
@@ -276,6 +285,7 @@ def up(run_id):
     lock = load_lock()
     persist(directory, state, 'BUILDING')
     try:
+        print('DEV03_PHASE=CP_IMAGE',flush=True)
         for name, repo, dockerfile in [('cp', 'baobab-cp', directory / 'sources/baobab-cp/Dockerfile.development')]:
             image = state['project'] + '-' + name
             check_dockerfile(dockerfile)
@@ -288,11 +298,13 @@ def up(run_id):
             state['image_ids'][name] = call(['docker', 'image', 'inspect', image, '--format', '{{.Id}}'])
             require(DIGEST.fullmatch(state['image_ids'][name]), 'BUILT_IMAGE_DIGEST_REQUIRED')
             persist(directory, state, 'BUILDING')
+        print('DEV03_PHASE=ORY_CONFIG',flush=True)
         adapter.configure(directory, state)
         write(directory / 'compose.json', adapter.composition(state, directory, lock['images'], NAMESPACE))
         state['compose_sha256'] = hashlib.sha256((directory / 'compose.json').read_bytes()).hexdigest()
         persist(directory, state, 'STARTING')
         compose(directory, state, 'config', '--quiet')
+        print('DEV03_PHASE=ORY_START',flush=True)
         compose(directory, state, 'up', '-d', '--wait', '--wait-timeout', '240',
                 'hydra', 'kratos', 'cp-db', 'edge', 'probe', timeout=300)
         database = 'baobab_dev_' + run_id
@@ -315,6 +327,7 @@ def up(run_id):
             except Refused:
                 time.sleep(2)
         require(ready, 'IAM_HEALTH_UNAVAILABLE')
+        print('DEV03_PHASE=NATIVE_IDENTITIES',flush=True)
         compose(directory, state, 'exec', '-T', 'probe', 'python', '/probe.py', 'subjects')
         result = bootstrap(directory, state)
         write(directory / 'bootstrap.json', result)

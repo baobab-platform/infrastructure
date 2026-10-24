@@ -202,7 +202,7 @@ def authority():
     check('wrong_audience_denied',claims(wrong_token)['sub']==claims(bearer)['sub'] and context(wrong_token,a)[0]==401)
     code,resolved,_=context(bearer,a);require(code==200)
     status,decision,_=request('POST',CP+'/v1/capabilities/resolve',{'context_id':resolved['context_id'],'capability_key':'content.entry.resolve','required_contract_version':1,'correlation_id':str(uuid.uuid4())},bearer)
-    check('absent_capability_grant_denied',status==200 and decision['decision']!='RESOLVED' and not decision.get('invocation') and not decision.get('grant_id'))
+    check('absent_capability_grant_denied',status==200 and decision['decision']=='DENIED' and decision.get('reason_code') in ('CAPABILITY_UNKNOWN','GRANT_NOT_FOUND') and not decision.get('invocation') and not decision.get('grant_id'))
     short=dict(credential['config']);short['client_credentials_grant_access_token_lifespan']='2s';require(api('PUT','/admin/clients/'+name,short)[0]==200)
     expired=token(name,native);require(api('PUT','/admin/clients/'+name,credential['config'])[0]==200)
     wait=claims(expired)['exp']-time.time()+1;require(0<wait<10,'REAL_SHORT_LIVED_TOKEN_REQUIRED');time.sleep(wait)
