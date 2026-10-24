@@ -101,6 +101,24 @@ class CMSContracts(unittest.TestCase):
             self.assertEqual(receipt['cms']['cases']['teardown']['result'],'PASS')
             self.assertFalse(receipt['protected_acceptance'])
 
+    def test_validator_profile_reports_only_closed_current_claim_classes(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        state={'secrets':{'cms_validator':'synthetic-private-test-secret'}}
+        issued={'access_token':'synthetic-test-bearer','expires_in':60}
+        valid={'active':True,'iss':probe.p.ISSUER,'client_id':probe.VALIDATOR,
+               'actor_type':'workload','scope':'context:validate',
+               'aud':['baobab-control-plane'],'sub':'synthetic-id',
+               'exp':int(probe.time.time())+59}
+        for claims,label in ((valid,'READY'),({**valid,'actor_type':'human'},'ACTOR_MISMATCH'),
+                             ({**valid,'aud':['baobab-control-plane','baobab-cms']},'AUDIENCE_MISMATCH')):
+            with self.subTest(label=label),patch.object(probe.p,'read',return_value=state), \
+                 patch.object(probe.p,'request',side_effect=[(200,issued,None),(200,claims,None)]), \
+                 patch('builtins.print') as printed:
+                probe.validator_profile()
+                self.assertEqual(printed.call_args.args[0],'DEV05_VALIDATOR_PROFILE='+label)
+                self.assertNotIn('synthetic-private-test-secret',printed.call_args.args[0])
+
     def test_cms_failure_classification_is_closed_and_precise(self):
         with patch('ssl.create_default_context',return_value=SimpleNamespace()):
             probe=importlib.import_module('cms_probe')
