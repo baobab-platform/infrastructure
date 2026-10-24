@@ -42,9 +42,9 @@ class CMSContracts(unittest.TestCase):
         # The CMS candidate emits a fixed phase identifier instead of raw
         # Payload/SQL/tenant material. Unknown or forged labels remain opaque.
         for stderr, expected in (
-            ('CMS_INT03_STAGE_FAILED=CONTENT_SEED\\nprivate db secret', 'CMS_FIXTURE_CONTENT_SEED'),
-            ('CMS_INT03_STAGE_FAILED=NOT_REVIEWED\\n', 'COMMAND_FAILED'),
-            ('CMS_INT03_STAGE_FAILED=CONTENT_SEED secret=abc\\n', 'COMMAND_FAILED'),
+            ('CMS_INT03_STAGE_FAILED=CONTENT_SEED\nprivate db secret', 'CMS_FIXTURE_CONTENT_SEED'),
+            ('CMS_INT03_STAGE_FAILED=NOT_REVIEWED\n', 'COMMAND_FAILED'),
+            ('CMS_INT03_STAGE_FAILED=CONTENT_SEED secret=abc\n', 'COMMAND_FAILED'),
         ):
             with self.subTest(stderr=stderr.splitlines()[0]):
                 completed=SimpleNamespace(returncode=1,stdout='',stderr=stderr)
