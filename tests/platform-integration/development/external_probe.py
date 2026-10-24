@@ -74,10 +74,12 @@ def main(action):
         print(json.dumps({'pulse':p.request('GET',PULSE+'/readyz')[0]}));return
     run=os.environ['DEV01_RUN_ID'];path=p.ROOT/'external-report.json'
     report=p.read('external-report.json') if path.exists() else contract.fresh(run)
-    current='independent-registered-workload'
+    current={'outage':'dependency-outage-and-recovery','restored':'dependency-outage-and-recovery',
+             'finish':'teardown'}.get(action,'independent-registered-workload')
     def record(case,observe):
         nonlocal current
         current=case
+        print('DEV06_PROBE_CASE='+case,flush=True)
         p.require(observe())
         report['cases'][case]={'result':'PASS','reason':'OBSERVED'};checkpoint(report)
     try:
@@ -88,7 +90,14 @@ def main(action):
             record('own-context',lambda:ctx['principal_id']==own['principal_id'] if 'principal_id' in ctx else ctx['tenant_id']==own['tenant_id'])
             # Use actual maintained Pulse HTTP/authentication/context adapters.
             # This component positive is NOT an entitled bound invocation.
-            p.require(positive(search(bearer,ctx['context_id'])))
+            current='bound-resource-and-audited-effect'
+            observed=search(bearer,ctx['context_id'])
+            if not positive(observed):
+                code=observed[0]
+                if type(code) is int and code in (200,400,401,403,404,500,502,503,504):print('DEV06_RESOURCE_HTTP='+str(code),flush=True)
+                reason=observed[1].get('code') if isinstance(observed[1],dict) else None
+                if reason in {'AUTH_TOKEN_INVALID','CAPABILITY_AUTHORITY_UNAVAILABLE','CAPABILITY_ACCESS_DENIED','CONTEXT_NOT_FOUND','PULSE_INTERNAL_ERROR','CAPABILITY_RUNTIME_UNAVAILABLE','SEMANTIC_RETRIEVAL_UNAVAILABLE'}:print('DEV06_RESOURCE_CODE='+reason,flush=True)
+            p.require(positive(observed))
             report['component_checks']['real_external_resource_read']=True
             restricted=search(bearer,ctx['context_id'],'evs_int02_restricted')
             p.require(restricted[0]==200 and restricted[1].get('candidates')==[])

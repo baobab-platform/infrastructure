@@ -71,4 +71,21 @@ class ExternalContracts(unittest.TestCase):
             self.assertEqual(saved['cases']['zero-estates']['result'],'PASS')
             self.assertEqual(saved['cases']['dependency-outage-and-recovery']['result'],'FAIL')
 
+    def test_recovery_and_teardown_failure_preserve_prior_identity_observation(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('external_probe')
+        for action,case in (('restored','dependency-outage-and-recovery'),('finish','teardown')):
+            with self.subTest(action=action),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);report=contract.fresh('a'*32)
+                report['cases']['independent-registered-workload']={'result':'PASS','reason':'OBSERVED'}
+                (root/'external-report.json').write_text(json.dumps(report))
+                with patch.dict('os.environ',{'DEV01_RUN_ID':'a'*32}),patch.object(probe.p,'ROOT',root), \
+                     patch.object(probe,'config',return_value=({}, {}, {})), \
+                     patch.object(probe,'context',side_effect=ValueError('private-context')), \
+                     patch.object(probe.p,'api',side_effect=ValueError('private-provider')):
+                    with self.assertRaises(SystemExit):probe.main(action)
+                saved=json.loads((root/'external-report.json').read_text())
+                self.assertEqual(saved['cases']['independent-registered-workload']['result'],'PASS')
+                self.assertEqual(saved['cases'][case]['result'],'FAIL')
+
 if __name__=='__main__':unittest.main()

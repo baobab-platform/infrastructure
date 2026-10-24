@@ -119,6 +119,13 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
             # Only the native qualifier's closed binding diagnostics may leave
             # captured subprocess output. Provider bodies/commands remain private.
             for line in result.stdout.splitlines():
+                # Closed DEV-06 diagnostics never expose arbitrary issuer or
+                # engine bodies, token material, context IDs or credentials.
+                if line.startswith('DEV06_PROBE_CASE='):
+                    import external_contract
+                    if line[len('DEV06_PROBE_CASE='):] in external_contract.CASES:print(line,flush=True)
+                if line in {'DEV06_RESOURCE_HTTP='+str(code) for code in (200,400,401,403,404,500,502,503,504)}:print(line,flush=True)
+                if line in {'DEV06_RESOURCE_CODE='+code for code in ('AUTH_TOKEN_INVALID','CAPABILITY_AUTHORITY_UNAVAILABLE','CAPABILITY_ACCESS_DENIED','CONTEXT_NOT_FOUND','PULSE_INTERNAL_ERROR','CAPABILITY_RUNTIME_UNAVAILABLE','SEMANTIC_RETRIEVAL_UNAVAILABLE')}:print(line,flush=True)
                 if line in {'DEV05_PROBE_STAGE='+name for name in ('BFF_LOGIN','BFF_KRATOS_FLOW','BFF_KRATOS_LOGIN','BFF_INITIATE','BFF_PKCE','BFF_AUTHORIZE','BFF_CALLBACK',
                         'BFF_SESSION','BFF_LOGOUT','CMS_CONTEXT','CMS_RECORDS','CANONICAL_RESOLUTION')}:
                     print(line,flush=True)
