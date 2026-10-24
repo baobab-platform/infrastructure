@@ -101,6 +101,12 @@ class CMSContracts(unittest.TestCase):
             self.assertEqual(receipt['cms']['cases']['teardown']['result'],'PASS')
             self.assertFalse(receipt['protected_acceptance'])
 
+    def test_validator_proof_ceiling_is_below_runtime_max(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        self.assertEqual(probe.VALIDATOR_CEILING,'55s')
+        self.assertLess(int(probe.VALIDATOR_CEILING[:-1]),60)
+
     def test_validator_profile_reports_only_closed_current_claim_classes(self):
         with patch('ssl.create_default_context',return_value=SimpleNamespace()):
             probe=importlib.import_module('cms_probe')
@@ -109,7 +115,7 @@ class CMSContracts(unittest.TestCase):
         valid={'active':True,'iss':probe.p.ISSUER,'client_id':probe.VALIDATOR,
                'actor_type':'workload','scope':'context:validate',
                'aud':['baobab-control-plane'],'sub':'synthetic-id',
-               'exp':int(probe.time.time())+59}
+               'iat':int(probe.time.time())-1,'exp':int(probe.time.time())+59}
         for claims,label in ((valid,'READY'),({**valid,'actor_type':'human'},'ACTOR_MISMATCH'),
                              ({**valid,'aud':['baobab-control-plane','baobab-cms']},'AUDIENCE_MISMATCH')):
             with self.subTest(label=label),patch.object(probe.p,'read',return_value=state), \
