@@ -124,7 +124,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                     print(line,flush=True)
                 # Only static keys/reason classes may cross the native CMS
                 # runner boundary; actual responses and identity data stay private.
-                if re.fullmatch(r'DEV05_RECORD_DIAGNOSTIC=(HOME|NAVIGATION|FOOTER)_(HTTP_DENIED|HTTP_UNAVAILABLE|INVALID_BODY|NO_RECORD|NOT_PUBLISHED|WRONG_CONTENT_KEY|WRONG_TENANT|UNEXPECTED)',line):
+                if re.fullmatch(r'DEV05_RECORD_DIAGNOSTIC=(HOME|NAVIGATION|FOOTER)_(CONFIG_NOT_READY|CALLER_STATUS_UNAVAILABLE|VALIDATOR_UNAVAILABLE|PROJECTION_UNAVAILABLE|CONTEXT_UNAVAILABLE|HTTP_500|HTTP_502|HTTP_503|HTTP_504|HTTP_DENIED|HTTP_UNAVAILABLE|INVALID_BODY|NO_RECORD|NOT_PUBLISHED|WRONG_CONTENT_KEY|WRONG_TENANT|UNEXPECTED)',line):
                     print(line,flush=True)
                 if line.startswith('DEV04_BINDING='):
                     try:
