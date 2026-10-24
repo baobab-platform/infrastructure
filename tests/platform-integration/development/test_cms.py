@@ -101,6 +101,24 @@ class CMSContracts(unittest.TestCase):
             self.assertEqual(receipt['cms']['cases']['teardown']['result'],'PASS')
             self.assertFalse(receipt['protected_acceptance'])
 
+    def test_cms_failure_classification_is_closed_and_precise(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        examples=[
+            (503,{'code':'CONTENT_CONTEXT_UNAVAILABLE','title':'Not configured'},'CONFIG_NOT_READY'),
+            (503,{'code':'CONTENT_CONTEXT_UNAVAILABLE','title':'Caller status unavailable'},'CALLER_STATUS_UNAVAILABLE'),
+            (503,{'code':'CONTENT_CONTEXT_UNAVAILABLE','detail':'The Control Plane could not be reached to validate the context.'},'VALIDATOR_UNAVAILABLE'),
+            (503,{'code':'CONTENT_CONTEXT_UNAVAILABLE','detail':'The projection could not be checked.'},'PROJECTION_UNAVAILABLE'),
+            (503,{'code':'CONTENT_CONTEXT_UNAVAILABLE'},'CONTEXT_UNAVAILABLE'),
+            (500,{'internal':'private error'},'HTTP_500'),
+            (502,None,'HTTP_502'),
+            (503,{'arbitrary':'unsafe content'},'HTTP_503'),
+            (504,None,'HTTP_504'),
+        ]
+        for code,body,expected in examples:
+            with self.subTest(code=code,expected=expected):
+                self.assertEqual(probe.record_failure_class((code,body,None),'home'),expected)
+                self.assertNotIn('private',expected)
     def test_native_delivery_request_preserves_cp_issued_legal_scope(self):
         with patch('ssl.create_default_context',return_value=SimpleNamespace()):
             probe=importlib.import_module('cms_probe')
