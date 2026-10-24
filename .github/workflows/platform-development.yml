@@ -1,0 +1,72 @@
+name: DEV-01 ordinary development lifecycle
+on:
+  pull_request:
+    paths:
+      - tests/platform-integration/development/**
+      - tests/platform-integration/l4.py
+      - .github/workflows/platform-development.yml
+      - .devcontainer/platform-integration/**
+  push:
+    branches: [main]
+    paths:
+      - tests/platform-integration/development/**
+      - tests/platform-integration/l4.py
+      - .github/workflows/platform-development.yml
+      - .devcontainer/platform-integration/**
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dev01-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  source:
+    name: DEV-01 source and recovery contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 -B tests/platform-integration/l4.py preflight development --static
+      - run: python3 -B tests/platform-integration/development/test_dev.py -v
+  runtime:
+    name: DEV-01 real IAM CP bootstrap and recoverable teardown
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install existing pinned Dev Containers CLI
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Start the same private integration container used by Codespaces
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up --frozen-lockfile \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: Observe actual lifecycle, failure, recovery and cleanup
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env BAOBAB_ENVIRONMENT=development \
+            python3 -B tests/platform-integration/development/ci.py
+      - name: Recover through the shared development CLI
+        if: always()
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Host-side recovery if the development container was lost
+        if: always()
+        run: python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Retain only sanitized completed receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev01-lifecycle-evidence
+          path: |
+            tests/platform-integration/evidence/dev01-*/completed/*.json
+            tests/platform-integration/evidence/dev01-lifecycle-suite.json
+          if-no-files-found: warn
+          retention-days: 14

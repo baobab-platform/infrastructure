@@ -50,8 +50,10 @@ jobs:
       - run: node --check tests/platform-integration/int03/consumer.mjs
       - run: bash -n tests/platform-integration/int03/fixture.sh
       - run: bash -n tests/platform/run-l3.sh
+  # Frozen historical source qualification only. Current ADR-043 development
+  # uses platform-development.yml; this job never vetoes that lane.
   cms-gate:
-    name: INT-03 CMS registry gate (NAB-03 BLOCKED while the activation hold stands)
+    name: Historical CMS registry snapshot (not the ordinary development gate)
     # Accepted Shared #354: the CMS lane needs two named development identities
     # in the canonical registry; the owner's no-registry-activation hold keeps
     # them out. This reads the unmodified registry at the locked Shared commit

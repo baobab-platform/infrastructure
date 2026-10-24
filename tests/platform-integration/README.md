@@ -36,3 +36,10 @@ ever forwarded; Codespaces forwarded-port policy is private/disabled.
 INT-02 adds actual IAM and CP executables with synthetic principals; INT-03
 adds the Nabhold confidential BFF and CMS. These are deliberately NOT
 reported as implemented by INT-01.
+
+## Ordinary development lifecycle (DEV-01)
+
+Use [the development lifecycle](development/README.md) for current-source, guarded
+IAM/CP synthetic provisioning and recoverable cleanup. The `development` profile
+is independent of the historical INT-02 source qualification and optional #49
+exercise; it cannot report INT-03C/NAB-03 or protected acceptance.
