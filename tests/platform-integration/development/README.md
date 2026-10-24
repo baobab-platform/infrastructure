@@ -84,3 +84,14 @@ An Actions receipt is not an independently observed interactive Codespaces run.
 Rollback: recover owned runs, restore the preceding reviewed profile/source
 pins and disable this adapter. Do not alter frozen receipts, borrow protected
 credentials, write CP canonical SQL or restore a general human approval hold.
+
+## DEV-02 fixture checks
+
+The pinned CP bootstrap must return fixture version 2. Every lifecycle `test`
+also calls CP's guarded read-only `--check-fixtures` mode against the actual
+run PostgreSQL database. All 24 non-authorising policy observations must match
+exactly; missing, duplicate or unexpected outcomes fail the run. Scope-valid
+synthetic parents return ACTOR_NOT_VERIFIED, never verified legal authority.
+The native workflow retains `dev02-fixture-suite.json` only after successful
+recovery and teardown. This is separate from the DEV-01 lifecycle report and
+does not qualify IAM end-to-end, INT-03C, NAB-03 or protected acceptance.

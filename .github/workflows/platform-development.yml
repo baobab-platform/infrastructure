@@ -68,5 +68,6 @@ jobs:
           path: |
             tests/platform-integration/evidence/dev01-*/completed/*.json
             tests/platform-integration/evidence/dev01-lifecycle-suite.json
+            tests/platform-integration/evidence/dev02-fixture-suite.json
           if-no-files-found: warn
           retention-days: 14
