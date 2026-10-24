@@ -228,6 +228,20 @@ def qualify(run):
     verify_runtime(directory,state)
     state['cms']=cms_contract.fresh(run);dev.persist(directory,state,'TESTED')
     try:
+        # Execute the *maintained* CMS token provider in the same isolated
+        # toolchain/environment/network before delivery probes. A fixed result
+        # is diagnostic only, not authority evidence or a passed NAB-03 case.
+        code=("import {createDevelopmentValidatorTokens} from './src/baobab/identity/development-validator.ts';"
+              "try { const token=await createDevelopmentValidatorTokens().getToken();"
+              "process.stdout.write(token?'DEV05_CMS_VALIDATOR=READY':'DEV05_CMS_VALIDATOR=UNAVAILABLE');"
+              "} catch {process.stdout.write('DEV05_CMS_VALIDATOR=UNAVAILABLE');}")
+        try:
+            observed=dev.compose(directory,state,'run','--rm','--no-deps','cms-tool',
+                'node','--import','tsx','--input-type=module','-e',code,timeout=35)
+        except dev.Refused:
+            observed='DEV05_CMS_VALIDATOR=UNAVAILABLE'
+        print(observed if observed in {'DEV05_CMS_VALIDATOR=READY','DEV05_CMS_VALIDATOR=UNAVAILABLE'}
+              else 'DEV05_CMS_VALIDATOR=UNAVAILABLE',flush=True)
         for action in ('initial','draft','withdraw','outage','finish'):
             if action=='draft':fixture(directory,state,'draft')
             if action=='withdraw':fixture(directory,state,'withdraw')
