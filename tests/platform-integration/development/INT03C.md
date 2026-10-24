@@ -88,7 +88,12 @@ runtime image references, lock SHA-256, native configuration SHA-256 anchors and
 hashes of the three Shared contracts checked byte-for-byte against CP's embedded
 copies. It retains `nab03_qualified`, `canonical_provider_qualified`, protected
 and production flags false (the provider flag is inside the INT-03C report).
-The receipt sidecar hashes its original JSON bytes. Hashes are integrity anchors,
+The receipt sidecar hashes its original JSON bytes. Before deleting private
+state, the host fsyncs a sanitized, nonauthoritative candidate under `.pending`.
+After state removal it independently rechecks host absence, completes the final
+case, hashes the final bytes and atomically publishes `completed`. Recovery
+discovers pending candidates even with no state directory or Docker resources;
+write/rename interruption cannot erase the only recoverable observations. Hashes are integrity anchors,
 not independent signatures or external certification.
 
 Actions runs `ci.py` for DEV-01/02/03, then `ci_int03c.py` in a **fresh run**.
@@ -126,6 +131,7 @@ change also needs new digest pins and verification of API/status semantics.
 When changing a case, update its original meaning, closed assertion vocabulary,
 failure tests and this table together; do not translate DEV-03's sixteen-case
 booleans into seven-case PASS. When changing cleanup, preserve the ordering:
-provider readbacks → host resource removal/empty inventory → private-state
-removal → completed receipt. Roll back by recovering owned runs and restoring
+provider readbacks → host resource removal/empty inventory → durable sanitized
+pending candidate → private-state removal → final empty readback and atomic
+completed receipt. `.pending` is never uploaded. Roll back by recovering owned runs and restoring
 previous reviewed pins; never edit old evidence or enable protected bootstrap.

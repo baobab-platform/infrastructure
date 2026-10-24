@@ -10,7 +10,7 @@ import os
 import time
 import uuid
 
-import probe as p
+import native_probe as p
 import int03c_contract as contract
 
 OWNER = 'baobab-int03c-issuer-owner'
@@ -24,6 +24,22 @@ def checkpoint(report):
     with os.fdopen(fd, 'w') as out:
         json.dump(report, out); out.flush(); os.fsync(out.fileno())
     os.replace(temp, p.ROOT / 'int03c-report.json')
+
+
+def bound(actual, bearer, audience='baobab-control-plane'):
+    """Bind issuer readback to the issued JWT and an actual <=60s lifetime.
+
+    JWT decoding supplies observations, not trust: CP independently verifies the
+    signature/current status. Reject booleans/absent or contradictory timestamps.
+    """
+    c = p.claims(bearer)
+    aud = actual.get('aud', []); aud = [aud] if isinstance(aud, str) else aud
+    return (actual.get('active') is True and actual.get('iss') == c.get('iss') == p.ISSUER
+            and actual.get('sub') == c.get('sub') == OWNER and actual.get('client_id') == OWNER
+            and aud == [audience] and set(actual.get('scope', '').split()) == {'context:resolve'}
+            and type(c.get('exp')) is int and type(c.get('iat')) is int
+            and actual.get('exp') == c['exp'] and actual.get('iat') == c['iat']
+            and 0 < c['exp'] - c['iat'] <= 60 and c['iat'] <= time.time() < c['exp'])
 
 
 def main():
@@ -50,16 +66,8 @@ def main():
         verifier_auth = (VERIFIER, native['clients'][VERIFIER]['secret'])
         def status(bearer, auth=verifier_auth):
             return p.request('POST', p.ISSUER + '/oauth2/introspect', {'token': bearer}, form=True, basic=auth)
-        def bound(actual, bearer, audience='baobab-control-plane'):
-            c = p.claims(bearer)
-            aud = actual.get('aud', []); aud = [aud] if isinstance(aud, str) else aud
-            return (actual.get('active') is True and actual.get('iss') == p.ISSUER
-                    and actual.get('sub') == OWNER and actual.get('client_id') == OWNER
-                    and aud == [audience] and set(actual.get('scope', '').split()) == {'context:resolve'}
-                    and actual.get('exp') == c['exp'] and c['exp'] > time.time())
         for name in (OWNER, VERIFIER):
             code, client = p.api('GET', '/admin/clients/' + name)
-            config = native['clients'][name]['config']
             p.require(code == 200 and client['client_id'] == name
                       and client['grant_types'] == ['client_credentials']
                       and client['audience'] == ['baobab-control-plane'] and client['scope'] == 'context:resolve'
@@ -67,7 +75,9 @@ def main():
                       and client['metadata']['int03c_run_id'] == run_id
                       and client['metadata']['environment'] == 'development'
                       and client['token_endpoint_auth_method'] == 'client_secret_post'
-                      and config['client_credentials_grant_access_token_lifespan'] == '60s')
+                      and client.get('client_credentials_grant_access_token_lifespan') in ('60s', '1m0s'))
+        # A provider GET alone is insufficient: independently bind the actual
+        # issued lifetime below as well as the requested/native client ceiling.
         observe('exact_client_ceiling', True)
         bearer = p.token(OWNER, native)
         code, actual, _ = status(bearer)

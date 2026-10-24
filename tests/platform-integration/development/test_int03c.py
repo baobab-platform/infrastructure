@@ -1,10 +1,10 @@
 """Fail-closed evidence/custody regressions; never native qualification evidence."""
-import copy
-import json
-import os
+from contextlib import nullcontext
+import importlib
+from types import SimpleNamespace
+import time
 from pathlib import Path
 import tempfile
-import time
 import unittest
 from unittest.mock import patch
 
@@ -94,6 +94,57 @@ class Int03CTests(unittest.TestCase):
                         self.assertIs(receipt['protected_acceptance'], False)
                         self.assertIs(receipt['production_authorized'], False)
                         if complete_provider: contract.validate(receipt['int03c'], RUN, complete=True)
+
+    def test_provider_lifetime_readback_is_bound_to_actual_token(self):
+        with patch('ssl.create_default_context', return_value=SimpleNamespace()):
+            probe = importlib.import_module('int03c_probe')
+        now = int(time.time())
+        claims = {'iss': probe.p.ISSUER, 'sub': probe.OWNER, 'iat': now, 'exp': now + 60}
+        actual = {**claims, 'active': True, 'client_id': probe.OWNER,
+                  'scope': 'context:resolve', 'aud': ['baobab-control-plane']}
+        with patch.object(probe.p, 'claims', return_value=claims):
+            self.assertTrue(probe.bound(actual, 'private-test-bearer'))
+            for altered in ({**actual, 'iat': now - 1}, {**actual, 'exp': now + 600},
+                            {**actual, 'active': False}, {**actual, 'scope': 'context:resolve changeset:approve'}):
+                self.assertFalse(probe.bound(altered, 'private-test-bearer'))
+        for bad in ({**claims, 'exp': now + 600}, {**claims, 'iat': True},
+                    {**claims, 'exp': now - 1}, {**claims, 'iat': now + 600}):
+            with patch.object(probe.p, 'claims', return_value=bad):
+                self.assertFalse(probe.bound({**actual, 'iat': bad['iat'], 'exp': bad['exp']}, 'private-test-bearer'))
+
+    def test_publication_failures_leave_a_discoverable_candidate(self):
+        for stage in ('candidate-write', 'final-write', 'rename'):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp); state_dir = root / 'state'; state_dir.mkdir(mode=0o700)
+                directory = state_dir / RUN; directory.mkdir(mode=0o700)
+                evidence = root / 'evidence'; completed = evidence / ('dev01-' + RUN) / 'completed'
+                data = {'run_id': RUN, 'harness_sha': 'b'*40, 'sources': {}, 'image_ids': {},
+                        'lock_sha256': 'c'*64, 'tests': True, 'int03c': pending_report(),
+                        'deadline': int(time.time()) - 1}
+                dev.write(directory / 'state.json', data)
+                original_write = dev.write
+                def fail_write(path, value):
+                    if path.name == 'receipt.json' and ((stage == 'candidate-write' and directory.exists()) or
+                                                        (stage == 'final-write' and not directory.exists())):
+                        raise OSError('SIMULATED_DISK_FAILURE')
+                    return original_write(path, value)
+                rename_failure = (patch.object(dev.os, 'rename', side_effect=OSError('SIMULATED_RENAME_FAILURE'))
+                                  if stage == 'rename' else nullcontext())
+                with patch.object(dev, 'STATE', state_dir), patch.object(dev, 'EVIDENCE', evidence), \
+                     patch.object(dev, 'resources', return_value=[]), patch.object(dev, 'write', side_effect=fail_write), \
+                     rename_failure:
+                    with self.assertRaises(OSError): dev.down(RUN)
+                self.assertFalse(completed.exists())
+                self.assertEqual(directory.exists(), stage == 'candidate-write')
+                with patch.object(dev, 'STATE', state_dir), patch.object(dev, 'EVIDENCE', evidence), \
+                     patch.object(dev, 'resources', return_value=[]):
+                    # Default recovery must discover a no-state/no-resource pending
+                    # candidate as well as an expired ordinary run.
+                    dev.recover()
+                self.assertFalse(directory.exists())
+                receipt = dev.read(completed / 'receipt.json')
+                self.assertTrue(receipt['int03c_qualified'])
+                contract.validate(receipt['int03c'], RUN, complete=True)
 
 
 if __name__ == '__main__': unittest.main()

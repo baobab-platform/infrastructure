@@ -333,7 +333,7 @@ def up(run_id):
         ready = False
         for attempt in range(90):
             try:
-                status=json.loads(compose(directory,state,'exec','-T','probe','python','/probe.py','provider-ready',timeout=12))
+                status=json.loads(compose(directory,state,'exec','-T','probe','python','/native_probe.py','provider-ready',timeout=12))
                 require(set(status)=={'hydra','kratos'} and all(type(value) is int and 0<=value<600 for value in status.values()),'READINESS_SHAPE')
                 if all(value==200 for value in status.values()): ready=True;break
                 if attempt % 15==0: print('DEV03_READINESS='+json.dumps(status,sort_keys=True),flush=True)
@@ -343,7 +343,7 @@ def up(run_id):
             time.sleep(2)
         require(ready, 'IAM_HEALTH_UNAVAILABLE')
         print('DEV03_PHASE=NATIVE_IDENTITIES',flush=True)
-        compose(directory, state, 'exec', '-T', 'probe', 'python', '/probe.py', 'subjects')
+        compose(directory, state, 'exec', '-T', 'probe', 'python', '/native_probe.py', 'subjects')
         result = bootstrap(directory, state)
         write(directory / 'bootstrap.json', result)
         # Up never registers or activates a domain provider.
@@ -436,7 +436,7 @@ def test(run_id, health_attempts=45):
     require(type(health_attempts) is int and 1 <= health_attempts <= 45, 'HEALTH_ATTEMPT_BOUND')
     for _ in range(health_attempts):
         try:
-            compose(directory, state, 'exec', '-T', 'probe', 'python', '/probe.py', 'health', timeout=20)
+            compose(directory, state, 'exec', '-T', 'probe', 'python', '/native_probe.py', 'health', timeout=20)
             break
         except Refused:
             time.sleep(2)
@@ -477,7 +477,7 @@ def qualify(run_id):
     require(state['phase']=='TESTED','TESTED_PROFILE_REQUIRED')
     state['authority']=None
     persist(directory,state,'TESTED')
-    compose(directory,state,'exec','-T','probe','python','/probe.py','authority',timeout=180)
+    compose(directory,state,'exec','-T','probe','python','/native_probe.py','authority',timeout=180)
     report=read(directory/'authority.json')
     require(set(report)=={'schema','checks','synthetic_only','canonical_provider_qualified','int03c_qualified','nab03_qualified','protected_acceptance'}
             and report['schema']=='infrastructure.dev03.authority-observed.v1'
@@ -553,38 +553,65 @@ def down(run_id):
                   'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
-        # Runtime/store/resource removal and private-state destruction precede the
-        # last case and final receipt. Provider absence alone is insufficient.
-        if directory.exists():
-            shutil.rmtree(directory)
-        if qualification:
-            row = qualification['cases']['complete-teardown']
-            for key in ('accepting_runtime_absent', 'owned_resources_absent', 'private_state_absent'):
-                row['assertions'][key] = True
-            if row['reason'] == 'TEARDOWN_PENDING' and all(row['assertions'].values()):
-                row.update(result='PASS', reason='OBSERVED')
-            int03c_contract.validate(qualification, run_id)
-            report['int03c_qualified'] = state['tests'] and all(
-                item['result'] == 'PASS' for item in qualification['cases'].values())
-            report['domain_qualification'] = 'DEV04_INT03C_DEVELOPMENT_ONLY'
         folder = EVIDENCE / ('dev01-' + run_id)
         private_directory(folder)
         pending = folder / '.pending'
-        if pending.exists():
-            private_directory(pending)
-            shutil.rmtree(pending)
         private_directory(pending)
+        # Phase 1: fsync a sanitized recovery candidate BEFORE destroying the
+        # private run. It is not uploaded or authoritative; no final-case PASS.
         write(pending / 'receipt.json', report)
-        write(pending / 'receipt.sha256.json',
-              {'sha256': hashlib.sha256((pending / 'receipt.json').read_bytes()).hexdigest()})
-        os.rename(pending, folder / 'completed')
+    else:
+        folder = EVIDENCE / ('dev01-' + run_id)
     if directory.exists():
         shutil.rmtree(directory)
+    if (folder / '.pending/receipt.json').exists():
+        publish_receipt(folder, run_id)
+
+
+def publish_receipt(folder, run_id):
+    """Phase 2, replayable after process/host interruption without private state.
+
+    A candidate lives outside the run's secret tree. Recovery re-observes host
+    absence, completes only the host-owned assertions, rewrites/hash-checks the
+    final bytes and atomically renames them into custody. Nothing under .pending
+    is published by Actions. A write/rename failure keeps the recovery candidate.
+    """
+    private_directory(folder)
+    pending = folder / '.pending'
+    private_directory(pending)
+    report = read(pending / 'receipt.json')
+    require(report.get('run_id') == run_id and report.get('schema') ==
+            'infrastructure.dev01.lifecycle.observed.v1', 'PENDING_RECEIPT_IDENTITY_INVALID')
+    require(not run_dir(run_id).exists() and not resources(run_id), 'TEARDOWN_SURVIVORS')
+    qualification = report.get('int03c')
+    if qualification:
+        int03c_contract.validate(qualification, run_id)
+        row = qualification['cases']['complete-teardown']
+        for key in ('accepting_runtime_absent', 'owned_resources_absent', 'private_state_absent'):
+            row['assertions'][key] = True
+        if row['reason'] == 'TEARDOWN_PENDING' and all(row['assertions'].values()):
+            row.update(result='PASS', reason='OBSERVED')
+        int03c_contract.validate(qualification, run_id)
+        report['int03c_qualified'] = report['lifecycle_passed'] and all(
+            item['result'] == 'PASS' for item in qualification['cases'].values())
+        report['domain_qualification'] = 'DEV04_INT03C_DEVELOPMENT_ONLY'
+    write(pending / 'receipt.json', report)
+    write(pending / 'receipt.sha256.json',
+          {'sha256': hashlib.sha256((pending / 'receipt.json').read_bytes()).hexdigest()})
+    os.rename(pending, folder / 'completed')
+    handle = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(handle)
+    finally:
+        os.close(handle)
 
 
 def recover(all_runs=False):
     private_directory(STATE)
     ids = {path.name for path in STATE.iterdir() if NONCE.fullmatch(path.name)}
+    pending_ids = {path.name[6:] for path in EVIDENCE.glob('dev01-*')
+                   if NONCE.fullmatch(path.name[6:]) and (path / '.pending/receipt.json').exists()}
+    ids.update(pending_ids)
     owned = resources()
     ids.update(labels['io.baobab.dev.run'] for _, _, labels in owned)
     for run_id in sorted(ids):
@@ -592,7 +619,7 @@ def recover(all_runs=False):
         state_path = run_dir(run_id) / 'state.json'
         if state_path.exists():
             deadlines.append(read(state_path)['deadline'])
-        if all_runs or (deadlines and min(deadlines) <= time.time()):
+        if all_runs or (run_id in pending_ids and not state_path.exists()) or (deadlines and min(deadlines) <= time.time()):
             with guarded(run_id):
                 down(run_id)
 
