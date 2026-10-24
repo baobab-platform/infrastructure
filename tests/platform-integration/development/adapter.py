@@ -14,6 +14,15 @@ def host(path):
     if local: return str(Path(local) / Path(path).resolve().relative_to(Path(container).resolve()))
     return str(path)
 
+def unique_transport_lists(raw):
+    # Two distinct loopback UI origins collapse into one isolated RP origin.
+    # Kratos requires unique CORS/return-URL entries even for native API use.
+    lines=[]
+    for line in raw.splitlines():
+        if lines and line==lines[-1] and line.lstrip().startswith('- https://rp.baobab-dev.test'): continue
+        lines.append(line)
+    return '\n'.join(lines)+'\n'
+
 def configure(directory, state):
     """Derive isolated transport/secret overlays from exact IAM-owned configs."""
     source=directory/'sources/baobab-iam/config/ory'
@@ -25,6 +34,7 @@ def configure(directory, state):
     hydra+='\nttl:\n  access_token: 2m\n'
     (directory/'hydra.yml').write_text(hydra)
     kratos=(source/'kratos/kratos.yml').read_text().replace('http://127.0.0.1:4433/','https://kratos.baobab-dev.test/').replace('http://127.0.0.1:4434/','http://kratos:4434/').replace('http://127.0.0.1:4455','https://rp.baobab-dev.test').replace('http://127.0.0.1:3000','https://rp.baobab-dev.test')
+    kratos=unique_transport_lists(kratos)
     for value in ('local_dev_only_cookie_secret_32b','local_dev_only_cipher_secret_32b'): kratos=kratos.replace(value,state['secrets']['hook'][:32])
     config=directory/'kratos';config.mkdir(mode=0o755)
     (config/'kratos.yml').write_text(kratos)

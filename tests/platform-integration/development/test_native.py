@@ -29,6 +29,10 @@ class NativeTests(unittest.TestCase):
             with self.assertRaisesRegex(dev.Refused,'^COMMAND_FAILED$'):
                 dev.call(['docker','exec','owned'])
 
+    def test_collapsed_ui_origins_remain_unique(self):
+        raw='allowed_origins:\n  - https://rp.baobab-dev.test\n  - https://rp.baobab-dev.test\n'
+        self.assertEqual(adapter.unique_transport_lists(raw).count('  - https://rp.baobab-dev.test'),1)
+
     def test_native_planes_and_exact_receipt_obligations(self):
         self.assertEqual(adapter.ISSUER,'https://hydra.int03.test')
         self.assertIn('hydra',dev.load_lock()['images'])
