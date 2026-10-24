@@ -95,7 +95,7 @@ def main():
                       and client['metadata']['int03c_run_id'] == run_id
                       and client['metadata']['environment'] == 'development'
                       and client['token_endpoint_auth_method'] == 'client_secret_post'
-                      and client.get('client_credentials_grant_access_token_lifespan') in ('60s', '1m0s'))
+                      and client.get('client_credentials_grant_access_token_lifespan') == p.PROOF_LIFESPAN)
         # A provider GET alone is insufficient: independently bind the actual
         # issued lifetime below as well as the requested/native client ceiling.
         observe('exact_client_ceiling', True)
