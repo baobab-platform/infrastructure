@@ -34,6 +34,7 @@ def lock():
 
 def prepare():
     run=dev.prepare();directory,state=dev.current(run);value=lock()
+    state['runtime_images'].update({key:value[key] for key in ('redis','node','frontend')})
     state['cms_lock_sha256']=hashlib.sha256((BASE/'cms-lock.json').read_bytes()).hexdigest()
     state['cms']=cms_contract.fresh(run)
     for key in ('cms_db','cms_payload','cms_consumer','cms_validator','bff','redis','session_key'):
@@ -125,6 +126,7 @@ def up(run):
         extra+='server { listen 443 ssl; server_name '+name+'; ssl_certificate /tls/edge.pem; ssl_certificate_key /tls/edge.key; location / { set $target http://'+upstream+'; proxy_pass $target; proxy_set_header Host '+name+'; proxy_set_header X-Forwarded-Host '+name+'; proxy_set_header X-Forwarded-Proto https; } }\n'
     edge=edge[:-2]+extra+'}\n'
     (directory/'nginx.conf').write_text(edge)
+    state['cms_config_hashes']={name:hashlib.sha256((directory/name).read_bytes()).hexdigest() for name in ('nginx.conf','redis.acl')}
     dev.write(directory/'compose.json',composition);state['compose_sha256']=hashlib.sha256((directory/'compose.json').read_bytes()).hexdigest();dev.persist(directory,state,'RUNNING')
     dev.compose(directory,state,'up','-d','--wait','--wait-timeout','120','cms-db','redis','probe','edge',timeout=180)
     dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','clients')
@@ -137,7 +139,29 @@ def up(run):
             dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','health',timeout=15);break
         except dev.Refused:time.sleep(2)
     else:raise dev.Refused('DEV05_SERVICES_UNAVAILABLE')
-    state['tests']=True;dev.persist(directory,state,'TESTED')
+    dev.test(run)
+    directory,state=dev.current(run)
+    verify_runtime(directory,state)
+    state['cms_runtime_identity_verified']=True;dev.persist(directory,state,'TESTED')
+
+
+
+def verify_runtime(directory,state):
+    """Read actual extra-container images and network/host exposure, not Compose intent."""
+    for name in ('cms','nabhold','cms-db','redis'):
+        container=dev.compose(directory,state,'ps','-q',name)
+        dev.require(bool(container),'DEV05_CONTAINER_NOT_RUNNING')
+        actual=json.loads(dev.call(['docker','inspect',container]))[0]
+        image=state['image_ids'].get(name)
+        if image is None:
+            reference=state['runtime_images']['postgres' if name=='cms-db' else name]
+            image=dev.call(['docker','image','inspect',reference,'--format','{{.Id}}'])
+        dev.require(actual['Image']==image and not actual['HostConfig']['PortBindings'] and not actual['HostConfig']['Privileged']
+            and actual['Config']['Labels'].get('io.baobab.dev.run')==state['run_id'],'DEV05_RUNTIME_IDENTITY_INVALID')
+        networks=actual['NetworkSettings']['Networks'];dev.require(len(networks)==1,'DEV05_NETWORK_INVALID')
+        network=json.loads(dev.call(['docker','network','inspect',next(iter(networks))]))[0]
+        dev.require(network['Internal'] is True,'DEV05_PUBLIC_NETWORK_FORBIDDEN')
+    dev.require(all(hashlib.sha256((directory/name).read_bytes()).hexdigest()==digest for name,digest in state['cms_config_hashes'].items()),'DEV05_CONFIG_DRIFT')
 
 
 def fixture(directory,state,action):
@@ -150,6 +174,8 @@ def fixture(directory,state,action):
 
 def qualify(run):
     directory,state=dev.current(run);dev.verify_sources(directory,state)
+    dev.require(state['cms_lock_sha256']==hashlib.sha256((BASE/'cms-lock.json').read_bytes()).hexdigest(),'DEV05_SOURCE_DRIFT')
+    verify_runtime(directory,state)
     state['cms']=cms_contract.fresh(run);dev.persist(directory,state,'TESTED')
     try:
         for action in ('initial','draft','withdraw','outage','finish'):

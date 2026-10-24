@@ -550,7 +550,7 @@ def down(run_id):
                   'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA' if state['tests'] else 'SOURCE',
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
-                  'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
+                  'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         folder = EVIDENCE / ('dev01-' + run_id)
