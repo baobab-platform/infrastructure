@@ -148,6 +148,17 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                    'CP_PROVENANCE_APPROVE','CP_DEACTIVATION_PROPOSE','CP_DISTINCT_CHECKER','REAL_SHORT_LIVED_TOKEN_REQUIRED'}
             known.update('DEV03_'+name.upper() for name in AUTHORITY_CASES)
             if matched and matched[1] in known: classification='PROBE_'+matched[1]
+            # CMS intentionally emits no raw error: only this finite, reviewed
+            # stage vocabulary may cross the private subprocess boundary.
+            # Reject provider-authored messages, unknown phases and embellishments.
+            fixture_stages={'BOUNDARY','REFERENCE_DECLARATION','PAYLOAD_INIT','PG17_CHECK',
+                            'ESTATE_PROJECTION','CONTENT_SEED','PUBLICATION','READBACK','DESTROY'}
+            if 'scripts/qualification/int03-fixture.ts' in args:
+                for line in (result.stdout+'\n'+result.stderr).splitlines():
+                    prefix='CMS_INT03_STAGE_FAILED='
+                    if line.startswith(prefix) and line[len(prefix):] in fixture_stages:
+                        classification='CMS_FIXTURE_'+line[len(prefix):]
+                        break
             raise Refused(classification)
         return result.stdout.strip()
     except (subprocess.SubprocessError, OSError) as error:
