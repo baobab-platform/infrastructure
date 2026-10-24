@@ -126,6 +126,12 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                 # runner boundary; actual responses and identity data stay private.
                 if re.fullmatch(r'DEV05_RECORD_DIAGNOSTIC=(HOME|NAVIGATION|FOOTER)_(CONFIG_NOT_READY|CALLER_STATUS_UNAVAILABLE|VALIDATOR_UNAVAILABLE|PROJECTION_UNAVAILABLE|CONTEXT_UNAVAILABLE|HTTP_500|HTTP_502|HTTP_503|HTTP_504|HTTP_DENIED|HTTP_UNAVAILABLE|INVALID_BODY|NO_RECORD|NOT_PUBLISHED|WRONG_CONTENT_KEY|WRONG_TENANT|UNEXPECTED)',line):
                     print(line,flush=True)
+                if line in {'DEV05_VALIDATOR_PROFILE='+name for name in (
+                        'UNAVAILABLE','ISSUANCE_REFUSED','INTROSPECTION_REFUSED','INACTIVE',
+                        'ISSUER_MISMATCH','CLIENT_MISMATCH','ACTOR_MISMATCH','SCOPE_MISMATCH',
+                        'AUDIENCE_MISMATCH','OWNER_MISMATCH','ENVIRONMENT_MISMATCH',
+                        'SUBJECT_MISMATCH','TIME_MISMATCH','READY')}:
+                    print(line,flush=True)
                 if line.startswith('DEV04_BINDING='):
                     try:
                         value = json.loads(line[len('DEV04_BINDING='):], object_pairs_hook=unique)
