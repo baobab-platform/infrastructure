@@ -1,7 +1,7 @@
 {
   "schema": "infrastructure.dev05.sources.v1",
   "sources": {
-    "baobab-cms": "20481e3341f17b322ad04951f59241a39d15041b",
+    "baobab-cms": "cf3e3578b814ad9aa35eeb1cd46a28dc62eaa1cd",
     "nabhold": "9ea9453d1154da1d12a9a05bd64b7173a1935bdd"
   },
   "redis": "redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
