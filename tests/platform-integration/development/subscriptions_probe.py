@@ -118,12 +118,15 @@ def main(action):
             record('issuer-expiry-denied',invoke('GET',path,bearer=short)[0]==401)
             current='issuer-revocation-denied'
             bearer=token();p.require(invoke('GET',path,bearer=bearer)[0]==200)
-            code,_,_=p.request('POST',p.ISSUER+'/oauth2/revoke',{'token':bearer,'token_type_hint':'access_token'},form=True,
-                basic=(PRODUCER,native['clients'][PRODUCER]['secret']))
+            code,_,_=p.request('POST',p.ISSUER+'/oauth2/revoke',{'token':bearer,'token_type_hint':'access_token',
+                'client_id':PRODUCER,'client_secret':native['clients'][PRODUCER]['secret']},form=True)
             code2,observed,_=p.request('POST',p.ISSUER+'/oauth2/introspect',{'token':bearer},form=True,
                 basic=('baobab-dev-introspection',os.environ['DEV03_INTROSPECTION_SECRET']))
-            record('issuer-revocation-denied',code==200 and code2==200 and observed['active'] is False
-                   and p.claims(bearer)['exp']>time.time() and invoke('GET',path,bearer=bearer)[0]==401)
+            engine_status=invoke('GET',path,bearer=bearer)[0]
+            active='true' if observed.get('active') is True else 'false' if observed.get('active') is False else 'unknown'
+            print('SUBSCRIPTIONS_REVOCATION='+str(code)+':'+str(code2)+':'+active+':'+str(engine_status),flush=True)
+            record('issuer-revocation-denied',code==200 and code2==200 and observed.get('active') is False
+                   and p.claims(bearer)['exp']>time.time() and engine_status==401)
             current='event-durable-replay-conflict'
             event={'specversion':'1.0','id':str(uuid.uuid4()),'type':'com.baobab-platform.product.subscription.created.v1',
                 'source':'urn:baobab-platform:service:baobab-cp','subject':'subscription:'+fixture['product_subscription_id'],

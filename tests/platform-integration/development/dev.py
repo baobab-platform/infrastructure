@@ -121,6 +121,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
             for line in result.stdout.splitlines():
                 # Closed DEV-06 diagnostics never expose arbitrary issuer or
                 # engine bodies, token material, context IDs or credentials.
+                if re.fullmatch(r'SUBSCRIPTIONS_REVOCATION=[1-5][0-9]{2}:[1-5][0-9]{2}:(true|false|unknown):[1-5][0-9]{2}',line):print(line,flush=True)
                 if line.startswith('SUBSCRIPTIONS_CASE='):
                     import subscriptions_contract
                     if line.removeprefix('SUBSCRIPTIONS_CASE=') in subscriptions_contract.NATIVE:print(line,flush=True)
