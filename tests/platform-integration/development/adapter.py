@@ -61,7 +61,12 @@ def composition(state,directory,images,namespace):
     cp_env={'DATABASE_URL':f'postgres://baobab_dev:{secret["cp_db"]}@cp-db:5432/baobab_dev_{run}?sslmode=disable','BAOBAB_ENVIRONMENT':'development','HTTP_ADDRESS':':8080','ADMIN_OIDC_ISSUER':ISSUER,'WORKLOAD_OIDC_ISSUER':ISSUER,'ADMIN_OIDC_AUDIENCE':'baobab-control-plane','WORKLOAD_OIDC_AUDIENCE':'baobab-control-plane','WORKLOAD_REGISTRY_FILE':'/registry.yaml','SSL_CERT_FILE':'/tls/ca.pem','INT03C_CP_PRINCIPAL_DEACTIVATION_ENABLED':'true'}
     for actor in ('ADMIN','WORKLOAD'):
         cp_env.update({actor+'_INTROSPECTION_ENDPOINT':ISSUER+'/oauth2/introspect',actor+'_INTROSPECTION_CLIENT_ID':'baobab-dev-introspection',actor+'_INTROSPECTION_CLIENT_SECRET':secret['introspection']})
-    registry=directory/'sources/shared/contracts/identity/v1/workload-registry.yaml'
+    if state.get('subscriptions_profile'):
+        cp_env.update(PEO_INTERNAL_AUTHORITY_ENABLED='true',
+            PEO_SUBSCRIPTIONS_WORKLOAD_CLIENT_ID='baobab-dev-subscriptions-assessor',
+            CP_SUBSCRIPTION_CURRENT_AUTHORITY_ENABLED='true',
+            CP_SUBSCRIPTIONS_CURRENT_WORKLOAD_CLIENT_ID='baobab-dev-subscriptions-assessor')
+    registry=directory/'sources/shared/contracts/identity/v1/workload-registry.yaml' 
     services['cp']={'image':state['images']['cp'],'pull_policy':'never','environment':cp_env,'volumes':[tls+':/tls:ro',host(registry)+':/registry.yaml:ro']}
     services['edge']={'image':images['edge'],'read_only':True,'tmpfs':['/tmp'],'volumes':[host(directory/'nginx.conf')+':/etc/nginx/nginx.conf:ro',host(directory/'introspection.htpasswd')+':/etc/nginx/introspection.htpasswd:ro',tls+':/tls:ro'],'networks':{'lab':{'aliases':['hydra.int03.test','cp.baobab-dev.test','kratos.baobab-dev.test','rp.baobab-dev.test']}}}
     services['probe']={'image':images['probe'],'user':f'{state["uid"]}:{state["gid"]}','command':['python','/native_probe.py','serve'],'environment':{'DEV01_RUN_ID':run,'DEV03_HOOK_KEY':secret['hook'],'DEV03_INTROSPECTION_SECRET':secret['introspection'],'DEV04_VERIFIER_SECRET':secret['verifier']},'volumes':[host(directory)+':/run/dev01',tls+':/tls:ro',*[host(Path(__file__).parent/name)+':/'+name+':ro' for name in ('native_probe.py','int03c_probe.py','int03c_contract.py')]]}

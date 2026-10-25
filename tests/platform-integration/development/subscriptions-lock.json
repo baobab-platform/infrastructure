@@ -1,0 +1,6 @@
+{
+  "schema": "infrastructure.subscriptions.sources.v1",
+  "source": {
+    "baobab-subscriptions": "bdba962514b2ee5083dc95feba1343b02391f60a"
+  }
+}
