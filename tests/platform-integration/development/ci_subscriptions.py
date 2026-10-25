@@ -61,7 +61,9 @@ def verify(directory,state):
 
 def up(run):
     directory,state=dev.current(run)
-    state['subscriptions_profile']=True;dev.persist(directory,state,'PREPARED')
+    state['subscriptions_profile']=True
+    state['secrets']['subscriptions_db']=__import__('secrets').token_hex(32)
+    dev.persist(directory,state,'PREPARED')
     dev.up(run)
     dev.test(run);directory,state=dev.current(run)
     pin=json.loads((BASE/'subscriptions-lock.json').read_text(),object_pairs_hook=dev.unique)
@@ -90,11 +92,11 @@ def up(run):
     (identity/'truststore.p12').chmod(0o644)
     composition=dev.read(directory/'compose.json');services=composition['services'];labels=dev.labels(state)
     services['subscriptions-db']={'image':state['runtime_images']['postgres'],
-        'environment':{'POSTGRES_DB':'subscriptions','POSTGRES_USER':'subscriptions','POSTGRES_PASSWORD':state['secrets']['cp_db']},
+        'environment':{'POSTGRES_DB':'subscriptions','POSTGRES_USER':'subscriptions','POSTGRES_PASSWORD':state['secrets']['subscriptions_db']},
         'volumes':['subscriptions-data:/var/lib/postgresql/data'],
         'healthcheck':{'test':['CMD','pg_isready','-U','subscriptions','-d','subscriptions'],'interval':'3s','timeout':'3s','retries':40}}
     env={'BAOBAB_ENVIRONMENT':'development','DATABASE_URL':'jdbc:postgresql://subscriptions-db:5432/subscriptions',
-        'DATABASE_USER':'subscriptions','DATABASE_PASSWORD':state['secrets']['cp_db'],
+        'DATABASE_USER':'subscriptions','DATABASE_PASSWORD':state['secrets']['subscriptions_db'],
         'WORKLOAD_ISSUER':adapter.ISSUER,'WORKLOAD_JWKS_URI':adapter.ISSUER+'/.well-known/jwks.json',
         'WORKLOAD_AUDIENCE':'baobab-subscriptions','WORKLOAD_ALLOWED_CLIENTS':'baobab-dev-cp-subscriptions',
         'CP_SUBSCRIPTION_PROJECTION_AUTHORITY_ENABLED':'true','CP_SUBSCRIPTION_CURRENT_AUTHORITY_BASE_URL':'https://cp.baobab-dev.test',
@@ -133,6 +135,16 @@ def execute():
             directory,state=up(run)
             print('SUBSCRIPTIONS_PHASE=NATIVE_CASES',flush=True)
             probe(directory,state,'initial')
+            # The engine's credential must work for its own native store and
+            # fail authentication at CP, even on this shared private network.
+            # The exact server refusal proves this is not a network outage.
+            database='baobab_dev_'+state['run_id']
+            script='psql -h subscriptions-db -U subscriptions -d subscriptions -c "SELECT 1" >/dev/null; if psql -h cp-db -U baobab_dev -d '+database+' -c "SELECT 1" 2>/tmp/cp-auth-refusal; then exit 1; fi; grep -q "password authentication failed" /tmp/cp-auth-refusal'
+            dev.compose(directory,state,'exec','-T','-e','PGPASSWORD='+state['secrets']['subscriptions_db'],
+                'subscriptions-db','bash','-euo','pipefail','-c',script)
+            observations=dev.read(directory/'subscriptions-cases.json')
+            observations['engine-cp-database-denied']={'result':'PASS','reason':'OBSERVED'}
+            dev.write(directory/'subscriptions-cases.json',observations)
             # Independent store readbacks prove actual persistence rather than
             # trusting the HTTP projection or an event receipt alone.
             count=dev.compose(directory,state,'exec','-T','subscriptions-db','psql','-U','subscriptions','-d','subscriptions','-tAc',
@@ -179,7 +191,7 @@ def execute():
     path=dev.EVIDENCE/'subscriptions-onboarding.json';dev.write(path,report)
     dev.write(path.with_name('subscriptions-onboarding.sha256.json'),{'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
     dev.require(complete,'SUBSCRIPTIONS_NATIVE_INCOMPLETE')
-    print('SUBSCRIPTIONS_NATIVE_16_PASS_3_BLOCKED_INTERNAL_PREREQUISITE_UNQUALIFIED')
+    print('SUBSCRIPTIONS_NATIVE_17_PASS_3_BLOCKED_INTERNAL_PREREQUISITE_UNQUALIFIED')
 
 if __name__=='__main__':
     try:execute()

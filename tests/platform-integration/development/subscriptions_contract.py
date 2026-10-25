@@ -1,5 +1,5 @@
 """Finite engineering observations, never substitutes for DEV-09 or INT-07."""
-NATIVE = frozenset({'native-issuer-clients','current-cp-snapshot','commercial-projection-persistence',
+NATIVE = frozenset({'engine-cp-database-denied','native-issuer-clients','current-cp-snapshot','commercial-projection-persistence',
  'wrong-tenant-denied','wrong-audience-denied','missing-scope-denied','foreign-client-denied',
  'revision-before-replay','classification-denied','cp-outage-denied','cp-recovery',
  'issuer-expiry-denied','issuer-revocation-denied','event-durable-replay-conflict',

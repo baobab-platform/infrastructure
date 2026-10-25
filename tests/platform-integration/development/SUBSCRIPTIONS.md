@@ -13,14 +13,17 @@ ERP, Payments or real monetary provider starts. No engine or orchestrator writes
 canonical CP data: only CP's guarded development binary owns fixture transitions.
 
 Two immutable source locks keep this increment separate from the historical
-DEV-01..06 pins. The engine source pins its original Shared contract bundle.
+DEV-01..06 pins. The engine source pins its original Shared contract bundle. CP and Subscriptions
+have distinct per-run database secrets; native own-store authentication must pass
+and the same engine credential must receive a specific password-authentication
+refusal from the running CP database. A network outage cannot satisfy that case.
 Every native service has run ownership labels, no published/admin ports and one
 internal-only network. TLS verification stays enabled; the JVM truststore holds
 only this run's CA. Audience-specific tokens and introspection secrets stay in
 private run custody and are mounted read-only into the engine. Current CP tokens
 are refreshed in place so bind mounts see renewal; credentials are never evidence.
 
-The fixed engineering inventory has sixteen native observations and three
+The fixed engineering inventory has seventeen native observations and three
 independent blocked obligations. COMMERCIAL persistence is real but its monetary
 readiness must remain BLOCKED/simulated. This fixture confers no INTERNAL
 eligibility or actual legal/financial authority. Full Subscriptions onboarding,

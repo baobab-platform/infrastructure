@@ -13,7 +13,7 @@ import ci_subscriptions
 
 class SubscriptionContracts(unittest.TestCase):
     def test_inventory_and_independent_internal_gates_cannot_be_promoted(self):
-        value=contract.fresh();self.assertEqual(len(value),19)
+        value=contract.fresh();self.assertEqual(len(value),20)
         for mutate in (lambda v:v.pop('revision-before-replay'),
                        lambda v:v['current-internal-positive'].update(result='PASS',reason='OBSERVED'),
                        lambda v:v['teardown'].update(reason='SKIPPED'),
@@ -64,3 +64,9 @@ class SubscriptionContracts(unittest.TestCase):
         ci_subscriptions.validate_owner_flags({'CP_SUBSCRIPTION_LIFECYCLE_RECEIVER_ENABLED':'true'},source)
         with self.assertRaises(dev.Refused):
             ci_subscriptions.validate_owner_flags({'CP_SUBSCRIPTION_EVENT_RECEIVER_ENABLED':'true'},source)
+
+    def test_engine_never_receives_the_cp_database_credential(self):
+        source=(dev.BASE/'ci_subscriptions.py').read_text()
+        self.assertNotIn("'DATABASE_PASSWORD':state['secrets']['cp_db']",source)
+        self.assertNotIn("'POSTGRES_PASSWORD':state['secrets']['cp_db']",source)
+        self.assertIn('engine-cp-database-denied',contract.NATIVE)
