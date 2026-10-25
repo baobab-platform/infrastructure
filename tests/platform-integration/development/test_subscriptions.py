@@ -1,6 +1,8 @@
 """Evidence/refusal regressions; these mocks never certify native runtime."""
 import copy
 import hashlib
+import importlib
+from types import SimpleNamespace
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -40,3 +42,18 @@ class SubscriptionContracts(unittest.TestCase):
             self.assertEqual(dev.current(run)[1],state)
             state['lock_sha256']='c'*64
             with self.assertRaises(dev.Refused):dev.current(run)
+
+    def test_real_issuer_token_request_uses_registered_authentication_method(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('subscriptions_probe')
+        for method in ('client_secret_basic','client_secret_post'):
+            native={'clients':{'other':{'secret':'synthetic-private','config':{'token_endpoint_auth_method':method}}}}
+            with patch.object(probe.p,'read',return_value=native),patch.object(probe.p,'request',return_value=(200,{'access_token':'synthetic'},None)) as request:
+                self.assertEqual('synthetic',probe.token('other','baobab-subscriptions','billing:read'))
+                fields=request.call_args.args[2]
+                if method=='client_secret_basic':
+                    self.assertNotIn('client_secret',fields)
+                    self.assertEqual(('other','synthetic-private'),request.call_args.kwargs['basic'])
+                else:
+                    self.assertEqual('synthetic-private',fields['client_secret'])
+                    self.assertIsNone(request.call_args.kwargs['basic'])
