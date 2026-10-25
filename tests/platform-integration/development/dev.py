@@ -121,6 +121,9 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
             for line in result.stdout.splitlines():
                 # Closed DEV-06 diagnostics never expose arbitrary issuer or
                 # engine bodies, token material, context IDs or credentials.
+                if line.startswith('SUBSCRIPTIONS_CASE='):
+                    import subscriptions_contract
+                    if line.removeprefix('SUBSCRIPTIONS_CASE=') in subscriptions_contract.NATIVE:print(line,flush=True)
                 if line.startswith('DEV06_PROBE_CASE='):
                     import external_contract
                     if line[len('DEV06_PROBE_CASE='):] in external_contract.CASES:print(line,flush=True)
@@ -182,8 +185,9 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
         raise Refused('COMMAND_UNAVAILABLE_OR_TIMED_OUT') from error
 
 
-def load_lock():
-    data = json.loads((BASE / 'lock.json').read_text(), object_pairs_hook=unique)
+def load_lock(lock_name='lock.json'):
+    require(lock_name in {'lock.json', 'subscriptions-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
+    data = json.loads((BASE / lock_name).read_text(), object_pairs_hook=unique)
     require(set(data) == {'schema', 'profile', 'authority', 'infrastructure_baseline', 'sources',
                          'images', 'max_lease_seconds', 'synthetic_only', 'protected_acceptance'}, 'LOCK_SHAPE')
     require(data['schema'] == 'infrastructure.development-lifecycle.v1'
@@ -210,8 +214,8 @@ def source_identity():
     return sha
 
 
-def doctor(static=False):
-    data = load_lock()
+def doctor(static=False, lock_name='lock.json'):
+    data = load_lock(lock_name)
     if not static:
         for program in ('docker', 'git', 'openssl'):
             require(shutil.which(program), 'REQUIRED_TOOL_UNAVAILABLE')
@@ -256,7 +260,7 @@ def tls(directory, state):
         ['req', '-newkey', 'rsa:2048', '-nodes', '-subj', '/CN=baobab-dev.test',
          '-keyout', str(folder / 'edge.key'), '-out', str(directory / 'edge.csr')],
     ]
-    (directory / 'edge.ext').write_text('subjectAltName=DNS:hydra.int03.test,DNS:kratos.baobab-dev.test,DNS:cp.baobab-dev.test,DNS:rp.baobab-dev.test,DNS:cms.baobab-dev.test,DNS:nabhold.baobab-dev.test,DNS:redis.baobab-dev.test,DNS:pulse.baobab-dev.test\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature,keyEncipherment\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\nbasicConstraints=CA:FALSE\n')
+    (directory / 'edge.ext').write_text('subjectAltName=DNS:hydra.int03.test,DNS:kratos.baobab-dev.test,DNS:cp.baobab-dev.test,DNS:rp.baobab-dev.test,DNS:cms.baobab-dev.test,DNS:nabhold.baobab-dev.test,DNS:redis.baobab-dev.test,DNS:pulse.baobab-dev.test,DNS:subscriptions.baobab-dev.test\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature,keyEncipherment\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\nbasicConstraints=CA:FALSE\n')
     for command in commands:
         call(['openssl', *command], state=state)
     call(['openssl', 'x509', '-req', '-in', str(directory / 'edge.csr'), '-CA', str(folder / 'ca.pem'),
@@ -268,18 +272,19 @@ def tls(directory, state):
         path.chmod(0o644)  # enclosing private run directory is never shared
 
 
-def prepare(lease=3600):
+def prepare(lease=3600, lock_name='lock.json'):
     require(os.environ.get('BAOBAB_ENVIRONMENT') == 'development', 'EXPLICIT_DEVELOPMENT_REQUIRED')
-    lock = load_lock()
+    lock = load_lock(lock_name)
     require(type(lease) is int and 60 <= lease <= lock['max_lease_seconds'], 'LEASE_RANGE')
-    doctor()
+    doctor(lock_name=lock_name)
     run_id = secrets.token_hex(16)
     directory = run_dir(run_id)
     directory.mkdir(mode=0o700)
     data = {'run_id': run_id, 'project': 'dev01-' + run_id, 'namespace': NAMESPACE,
             'uid': os.getuid(), 'gid': os.getgid(), 'environment': 'development',
             'deadline': int(time.time()) + lease, 'lease_seconds': lease, 'harness_sha': source_identity(),
-            'lock_sha256': hashlib.sha256((BASE / 'lock.json').read_bytes()).hexdigest(),
+            'lock_sha256': hashlib.sha256((BASE / lock_name).read_bytes()).hexdigest(),
+            'lock_file': lock_name,
             'sources': lock['sources'], 'runtime_images': lock['images'],
             'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin', 'hook', 'introspection', 'verifier')},
             'images': {}, 'image_ids': {}, 'tests': False}
@@ -344,7 +349,7 @@ def up(run_id):
     directory, state = current(run_id)
     verify_sources(directory, state)
     require(state['phase'] == 'PREPARED', 'RECOVER_BEFORE_RETRY')
-    lock = load_lock()
+    lock = load_lock(state.get('lock_file', 'lock.json'))
     persist(directory, state, 'BUILDING')
     try:
         print('DEV03_PHASE=CP_IMAGE',flush=True)
