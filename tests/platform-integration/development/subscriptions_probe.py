@@ -139,7 +139,6 @@ def main(action):
                 record('native-restart-persistence',result[0]==200 and result[1]['billing_subscription_id']==req['id']
                        and invoke('POST','/internal/v1/cp-subscription-lifecycle-events',event)[1]['replayed'] is True)
         elif action=='finish':
-            native=p.read('native.json')
             for client in (PRODUCER,ASSESSOR):
                 bearer=token(client,'baobab-control-plane' if client==ASSESSOR else 'baobab-subscriptions',CP_SCOPES if client==ASSESSOR else SCOPES)
                 p.require(p.api('DELETE','/admin/clients/'+client)[0]==204)

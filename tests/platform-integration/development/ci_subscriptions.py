@@ -27,6 +27,18 @@ def fixture(directory,state,phase):
 def probe(directory,state,action):
     return dev.compose(directory,state,'exec','-T','probe','python','/subscriptions_probe.py',action,timeout=90)
 
+def wait_ready(directory,state):
+    """Bounded readiness polling, never retries a failed acceptance case."""
+    for _ in range(60):
+        try:
+            if json.loads(probe(directory,state,'health'))=={'subscriptions':200}:return
+        except (dev.Refused,ValueError):
+            # Transport/non-JSON errors are expected only during startup.
+            # They cannot advance readiness and the bounded loop still fails.
+            pass
+        time.sleep(2)
+    raise dev.Refused('SUBSCRIPTIONS_SERVICE_UNAVAILABLE')
+
 def verify(directory,state):
     dev.verify_sources(directory,state)
     for name in ('subscriptions','subscriptions-db'):
@@ -43,7 +55,7 @@ def verify(directory,state):
 def up(run):
     directory,state=dev.current(run)
     state['subscriptions_profile']=True;dev.persist(directory,state,'PREPARED')
-    dev.up(run);directory,state=dev.current(run)
+    dev.up(run)
     dev.test(run);directory,state=dev.current(run)
     pin=json.loads((BASE/'subscriptions-lock.json').read_text(),object_pairs_hook=dev.unique)
     dev.require(set(pin)=={'schema','source'} and pin['schema']=='infrastructure.subscriptions.sources.v1'
@@ -99,12 +111,7 @@ def up(run):
     dev.write(directory/'subscription-fixture.json',fixture(directory,state,'prepare'))
     probe(directory,state,'clients')
     dev.compose(directory,state,'up','-d','subscriptions')
-    for _ in range(60):
-        try:
-            if json.loads(probe(directory,state,'health'))=={'subscriptions':200}:break
-        except (dev.Refused,ValueError):pass
-        time.sleep(2)
-    else:raise dev.Refused('SUBSCRIPTIONS_SERVICE_UNAVAILABLE')
+    wait_ready(directory,state)
     verify(directory,state)
     return directory,state
 
@@ -127,12 +134,7 @@ def execute():
             dev.compose(directory,state,'restart','subscriptions-db')
             dev.compose(directory,state,'up','-d','--wait','--wait-timeout','120','subscriptions-db',timeout=180)
             dev.compose(directory,state,'up','-d','subscriptions')
-            for _ in range(60):
-                try:
-                    if json.loads(probe(directory,state,'health'))=={'subscriptions':200}:break
-                except (dev.Refused,ValueError):pass
-                time.sleep(2)
-            else:raise dev.Refused('SUBSCRIPTIONS_RESTART_UNAVAILABLE')
+            wait_ready(directory,state)
             probe(directory,state,'restart')
             dev.compose(directory,state,'stop','cp')
             try:probe(directory,state,'outage')
