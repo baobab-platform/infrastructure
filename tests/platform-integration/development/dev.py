@@ -236,7 +236,9 @@ def current(run_id, active=True):
     if active:
         require(os.environ.get('BAOBAB_ENVIRONMENT') == 'development', 'EXPLICIT_DEVELOPMENT_REQUIRED')
         require(time.time() < data['deadline'], 'LEASE_EXPIRED')
-        require(data['lock_sha256'] == hashlib.sha256((BASE / 'lock.json').read_bytes()).hexdigest()
+        lock_name=data.get('lock_file','lock.json')
+        load_lock(lock_name)  # closed, reviewed lock selection; no arbitrary path
+        require(data['lock_sha256'] == hashlib.sha256((BASE / lock_name).read_bytes()).hexdigest()
                 and source_identity() == data['harness_sha'], 'SOURCE_DRIFT')
         watcher = data.get('watcher_pid')
         require(type(watcher) is int and watcher > 1, 'WATCHDOG_REQUIRED')

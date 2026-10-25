@@ -173,4 +173,6 @@ def execute():
 
 if __name__=='__main__':
     try:execute()
-    except Exception:raise SystemExit('SUBSCRIPTIONS_ONBOARDING_FAILED; private recovery retained on cleanup failure') from None
+    except Exception as error:
+        code=str(error) if isinstance(error,dev.Refused) else 'INVALID_OR_UNAVAILABLE_STATE'
+        raise SystemExit('SUBSCRIPTIONS_ONBOARDING_FAILED '+code+'; private recovery retained on cleanup failure') from None
