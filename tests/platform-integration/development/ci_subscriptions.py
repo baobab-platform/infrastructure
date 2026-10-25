@@ -27,6 +27,13 @@ def fixture(directory,state,phase):
 def probe(directory,state,action):
     return dev.compose(directory,state,'exec','-T','probe','python','/subscriptions_probe.py',action,timeout=90)
 
+def validate_owner_flags(environment,application):
+    # Unknown environment switches are silently ignored by Java. Refuse a
+    # misspelled feature flag before claiming the intended native route ran.
+    for key in environment:
+        if key.endswith('_ENABLED'):
+            dev.require('System.getenv("'+key+'")' in application,'SUBSCRIPTIONS_UNKNOWN_OWNER_FEATURE_FLAG')
+
 def wait_ready(directory,state):
     """Bounded readiness polling, never retries a failed acceptance case."""
     for _ in range(60):
@@ -94,10 +101,11 @@ def up(run):
         'CP_SUBSCRIPTION_CURRENT_AUTHORITY_TOKEN_FILE':'/identity/cp-token',
         'PEO_INTERNAL_AUTHORITY_ENABLED':'true','PEO_CP_INTERNAL_AUTHORITY_BASE_URL':'https://cp.baobab-dev.test',
         'PEO_CP_INTERNAL_AUTHORITY_TOKEN_FILE':'/identity/cp-token',
-        'CP_SUBSCRIPTION_EVENT_RECEIVER_ENABLED':'true','CP_SUBSCRIPTION_EVENT_CLIENT_ID':'baobab-dev-cp-subscriptions',
+        'CP_SUBSCRIPTION_LIFECYCLE_RECEIVER_ENABLED':'true','CP_SUBSCRIPTION_EVENT_CLIENT_ID':'baobab-dev-cp-subscriptions',
         'WORKLOAD_INTROSPECTION_ENDPOINT':adapter.ISSUER+'/oauth2/introspect',
         'WORKLOAD_INTROSPECTION_CLIENT_ID':'baobab-dev-introspection','WORKLOAD_INTROSPECTION_SECRET_FILE':'/identity/introspection-secret',
         'JAVA_TOOL_OPTIONS':'-Djavax.net.ssl.trustStore=/identity/truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit'}
+    validate_owner_flags(env,(target/'src/main/java/com/baobabplatform/subscriptions/Application.java').read_text())
     services['subscriptions']={'image':image,'pull_policy':'never','environment':env,
         'volumes':[adapter.host(identity/name)+':/identity/'+name+':ro' for name in ('cp-token','introspection-secret','truststore.p12')]}
     services['probe']['volumes'] += [adapter.host(BASE/name)+':/'+name+':ro' for name in ('subscriptions_probe.py','subscriptions_contract.py')]

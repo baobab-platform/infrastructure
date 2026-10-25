@@ -9,6 +9,7 @@ from unittest.mock import patch
 import unittest
 import dev
 import subscriptions_contract as contract
+import ci_subscriptions
 
 class SubscriptionContracts(unittest.TestCase):
     def test_inventory_and_independent_internal_gates_cannot_be_promoted(self):
@@ -57,3 +58,9 @@ class SubscriptionContracts(unittest.TestCase):
                 else:
                     self.assertEqual('synthetic-private',fields['client_secret'])
                     self.assertIsNone(request.call_args.kwargs['basic'])
+
+    def test_owner_feature_flags_must_be_consumed_not_silently_ignored(self):
+        source='if ("true".equals(System.getenv("CP_SUBSCRIPTION_LIFECYCLE_RECEIVER_ENABLED"))) {}'
+        ci_subscriptions.validate_owner_flags({'CP_SUBSCRIPTION_LIFECYCLE_RECEIVER_ENABLED':'true'},source)
+        with self.assertRaises(dev.Refused):
+            ci_subscriptions.validate_owner_flags({'CP_SUBSCRIPTION_EVENT_RECEIVER_ENABLED':'true'},source)
