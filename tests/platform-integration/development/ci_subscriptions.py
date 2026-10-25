@@ -143,27 +143,32 @@ def execute():
             cases=contract.validate(dev.read(directory/'subscriptions-cases.json'))
             cleanup=dev.read(directory/'subscriptions-issuer-cleanup.json')
             verify(directory,state)
-    except BaseException:
+    except Exception:
         failure=True
-        raise
+        if run:
+            path=dev.run_dir(run)/'subscriptions-cases.json'
+            if path.exists():cases=contract.validate(dev.read(path))
     finally:
         if run:
             with dev.guarded(run):dev.down(run)
         dev.recover(all_runs=True)
+    dev.require(run is not None,'SUBSCRIPTIONS_PREPARATION_FAILED')
     receipt=dev.read(dev.EVIDENCE/('dev01-'+run)/'completed/receipt.json')
-    dev.require(not failure and cleanup=={'native_clients_deleted':True,'native_tokens_inactive':True}
-        and receipt['teardown_verified'] and not dev.resources(run) and not dev.run_dir(run).exists(),
+    dev.require(receipt['teardown_verified'] and not dev.resources(run) and not dev.run_dir(run).exists(),
         'SUBSCRIPTIONS_TEARDOWN')
-    cases['teardown']={'result':'PASS','reason':'OBSERVED'};contract.validate(cases)
-    dev.require(all(cases[k]=={'result':'PASS','reason':'OBSERVED'} for k in contract.NATIVE),'SUBSCRIPTIONS_NATIVE_INCOMPLETE')
+    cases=cases or contract.fresh()
+    if cleanup=={'native_clients_deleted':True,'native_tokens_inactive':True}:cases['teardown']={'result':'PASS','reason':'OBSERVED'}
+    contract.validate(cases)
+    complete=not failure and all(cases[k]=={'result':'PASS','reason':'OBSERVED'} for k in contract.NATIVE)
     report={'schema':'infrastructure.subscriptions.onboarding.v1','source_sha':receipt['harness_sha'],
         'source_pins':receipt['source_pins'],'image_ids':receipt['image_ids'],'runtime_images':receipt['runtime_images'],
-        'evidence_class':'REAL_COMPONENT_SYNTHETIC_DATA','cases':cases,
+        'evidence_class':receipt['evidence_class'],'cases':cases,'result':'SUCCESS' if complete else 'FAILURE',
         'cleanup':'COMPLETE_RUN_OWNED_CONTAINERS_IMAGES_VOLUMES_NETWORKS_PRIVATE_STATE',
         'internal_authority_qualified':False,'full_onboarding_qualified':False,'int07_qualified':False,
         'provider_qualified':False,'protected_acceptance':False,'production_authorized':False,'money_moved':False}
     path=dev.EVIDENCE/'subscriptions-onboarding.json';dev.write(path,report)
     dev.write(path.with_name('subscriptions-onboarding.sha256.json'),{'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
+    dev.require(complete,'SUBSCRIPTIONS_NATIVE_INCOMPLETE')
     print('SUBSCRIPTIONS_NATIVE_16_PASS_3_BLOCKED_INTERNAL_PREREQUISITE_UNQUALIFIED')
 
 if __name__=='__main__':
