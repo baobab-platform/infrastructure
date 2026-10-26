@@ -1,0 +1,17 @@
+{
+  "schema": "infrastructure.dev15.first-adopters.source-lock.v1",
+  "shared": "9fa1bbd6ad9b5c9d4ec406c721bd75227803dcea",
+  "adopters": {
+    "pulse-intelligence": {
+      "repo": "baobab-platform/baobab-pulse",
+      "sha": "dfd04d695b80e2e6dfea560af5c227da166ed183"
+    },
+    "payments-sandbox": {
+      "repo": "baobab-platform/baobab-payments",
+      "sha": "de8ec24f150b8770592db5df22953b35f14fe357"
+    }
+  },
+  "environment": "development",
+  "synthetic_only": true,
+  "protected_acceptance": false
+}
