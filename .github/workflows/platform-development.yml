@@ -41,6 +41,10 @@ jobs:
           ref: 9fa1bbd6ad9b5c9d4ec406c721bd75227803dcea
           path: .shared-dev14
           persist-credentials: false
+      - name: Set up deterministic DEV-14 source-validation Python
+        uses: actions/setup-python@ad3497abcd142e169a10aac37abd5175c44f33c4 # v7.0.0+6
+        with:
+          python-version: "3.13"
       - name: Install pinned Shared validator dependencies
         run: python3 -m pip install --disable-pip-version-check -r .shared-dev14/.github/foundation-tests/requirements.txt
       - name: Plan both DEV-14 profiles without inventing native readiness
