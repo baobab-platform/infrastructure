@@ -339,6 +339,18 @@ def verify_sources(directory, state):
     if state.get('phase') in {'RUNNING','TESTED'}:
         anchors=state.get('native_config_hashes',{})
         require(set(anchors)==NATIVE_FILES and all(hashlib.sha256((directory/path).read_bytes()).hexdigest()==digest for path,digest in anchors.items()),'NATIVE_CONFIGURATION_DRIFT')
+    if state.get('dev15_registry_sha256'):
+        # Detect post-admission registry tampering before every real provider
+        # phase. Baseline DEV-01 runs remain byte-for-byte unaffected.
+        registry = directory / 'dev15-workload-registry.yaml'
+        require(state.get('environment') == 'development'
+                and state.get('dev15_registry_source_sha') ==
+                    '9fa1bbd6ad9b5c9d4ec406c721bd75227803dcea'
+                and isinstance(state['dev15_registry_sha256'], str)
+                and re.fullmatch(r'[0-9a-f]{64}', state['dev15_registry_sha256'])
+                and registry.is_file() and not registry.is_symlink()
+                and hashlib.sha256(registry.read_bytes()).hexdigest() == state['dev15_registry_sha256'],
+                'DEV15_REGISTRY_SOURCE_DRIFT')
     for repo, sha in state['sources'].items():
         source = directory / 'sources' / repo
         require(call(['git', '-C', str(source), 'rev-parse', 'HEAD']) == sha
@@ -609,6 +621,17 @@ def down(run_id):
                   'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_oci_manifest_digest':state.get('cms_oci_manifest_digest'), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
+        if state.get('dev15_registry_sha256'):
+            # The final receipt preserves source provenance but NEVER claims
+            # that registered DEV-15 clients were issued by IAM or authorised.
+            report['dev15_registry_sha256'] = state['dev15_registry_sha256']
+            report['dev15_registry_source_sha'] = state['dev15_registry_source_sha']
+            report['dev15_profile'] = state.get('dev15_profile')
+            report['dev15_profile_sha256'] = state.get('dev15_profile_sha256')
+            report['dev15_owner_sha'] = state.get('dev15_owner_sha')
+            report['dev15_iam_issued'] = False
+            report['dev15_eng_onb_qualified'] = False
+            report['dev15_native_component'] = state.get('dev15_native_component', 'NOT_STARTED')
         folder = EVIDENCE / ('dev01-' + run_id)
         private_directory(folder)
         pending = folder / '.pending'
