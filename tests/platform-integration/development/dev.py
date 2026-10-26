@@ -119,6 +119,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
             # Only the native qualifier's closed binding diagnostics may leave
             # captured subprocess output. Provider bodies/commands remain private.
             for line in result.stdout.splitlines():
+                if re.fullmatch(r'ENGINE_NATIVE_HTTP=[1-5][0-9]{2}_CODE_(NONE|OTHER|IDEMPOTENCY_KEY_REUSED|SANDBOX_CAPABILITY_DENIED|SANDBOX_CAPABILITY_EXPIRED|SANDBOX_AUTHORITY_UNAVAILABLE|AUTH_TOKEN_INVALID|VALIDATION_FAILED)_REPLAY_(true|false|absent|other)',line):print(line,flush=True)
                 # Closed DEV-06 diagnostics never expose arbitrary issuer or
                 # engine bodies, token material, context IDs or credentials.
                 if re.fullmatch(r'SUBSCRIPTIONS_REVOCATION=[1-5][0-9]{2}:[1-5][0-9]{2}:(true|false|unknown):[1-5][0-9]{2}',line):print(line,flush=True)

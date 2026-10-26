@@ -1,5 +1,8 @@
 """Engine-neutral source/security contracts. No mocks qualify real IAM or L4."""
 import copy
+import contextlib
+import io
+import subprocess
 import json
 from pathlib import Path
 import sys
@@ -10,6 +13,7 @@ BASE=Path(__file__).resolve().parent
 sys.path.insert(0,str(BASE))
 import engine_contract as contract
 import engines
+import engine_sdk
 
 class EngineReceiptTests(unittest.TestCase):
     def setUp(self):
@@ -58,6 +62,23 @@ class EngineReceiptTests(unittest.TestCase):
         args=compose.call_args.args
         self.assertEqual(args[args.index('--user')+1],'1001:1001')
         self.assertIn('/private/engine-profile.json:/engine-profile.json:ro',args)
+
+    def test_native_diagnostics_do_not_reflect_response_or_request_values(self):
+        driver=object.__new__(engine_sdk.Driver)
+        driver.last_headers={'idempotent-replayed':'secret-replay-value'}
+        output=io.StringIO()
+        with patch.object(driver,'request',return_value=(409,{'code':'secret-code','detail':'secret-detail'})), contextlib.redirect_stdout(output):
+            driver.native('/secret-path',{'secret':'secret-body'},'secret-token','secret-context')
+        self.assertEqual(output.getvalue(),'ENGINE_NATIVE_HTTP=409_CODE_OTHER_REPLAY_other\n')
+
+    def test_failed_process_only_releases_closed_native_diagnostics(self):
+        allowed='ENGINE_NATIVE_HTTP=409_CODE_IDEMPOTENCY_KEY_REUSED_REPLAY_absent'
+        rejected=[allowed+' secret-token','ENGINE_NATIVE_HTTP=409_CODE_secret-code_REPLAY_absent','secret-response']
+        result=subprocess.CompletedProcess(['private-command'],2,'\n'.join([allowed,*rejected]),'secret-stderr')
+        output=io.StringIO()
+        with patch.object(engines.dev.subprocess,'run',return_value=result),contextlib.redirect_stdout(output):
+            with self.assertRaises(engines.dev.Refused):engines.dev.call(['private-command'])
+        self.assertEqual(output.getvalue(),allowed+'\n')
 
     def test_multiple_engine_owned_stores_cannot_share_dns(self):
         profile={'subject_engine':'baobab-future','services':{'required':[{'key':'canonical-store','kind':'postgresql'},{'key':'history-store','kind':'postgresql'}]}}

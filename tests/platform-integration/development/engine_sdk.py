@@ -48,7 +48,17 @@ class Driver:
     def native(self,path,body,token,context_id,key=None,method='POST'):
         headers={'X-Baobab-Context-Id':context_id}
         if key:headers['Idempotency-Key']=key
-        return self.request(method,'https://engine.baobab-dev.test'+path,body,token,headers)
+        status,result=self.request(method,'https://engine.baobab-dev.test'+path,body,token,headers)
+        # Closed diagnostics survive a failed owner process without disclosing
+        # request paths, resource references, credentials or response bodies.
+        codes={'IDEMPOTENCY_KEY_REUSED','SANDBOX_CAPABILITY_DENIED','SANDBOX_CAPABILITY_EXPIRED',
+            'SANDBOX_AUTHORITY_UNAVAILABLE','AUTH_TOKEN_INVALID','VALIDATION_FAILED'}
+        code=result.get('code') if isinstance(result,dict) else None
+        code=code if isinstance(code,str) and code in codes else 'NONE' if status<400 else 'OTHER'
+        replay=self.last_headers.get('idempotent-replayed','absent')
+        replay=replay if replay in {'true','false','absent'} else 'other'
+        print('ENGINE_NATIVE_HTTP='+str(status)+'_CODE_'+code+'_REPLAY_'+replay,flush=True)
+        return status,result
 
 
 def isolation():
