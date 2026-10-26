@@ -25,6 +25,20 @@ services from issuer administration and platform databases; native code receives
 only the public CA certificate. A probe from the actual owner namespace checks
 that the private planes are unreachable.
 
+CP startup replays Shared's complete registration bundles. If the selected
+provider is already in that index, its startup and owner-generated descriptions
+must agree, including invocation and implementation-family metadata. Omitting an
+invocation deliberately removes the route; a source declaration alone cannot
+prevent a stale startup bundle from doing so. Recovery therefore exercises real
+native operations after CP restart. The probe's closed recovery diagnostics
+separate current context/Market validation from capability availability without
+publishing tokens, opaque references or response bodies.
+
+An outage retry keeps the same business payload and idempotency key while placing
+fresh CP context authority in the request header. A lost response can require a
+replay: verify the identical resource and native read rather than require a second
+creation. This does not cache or bypass the current-authority checks.
+
 Every declared ENG-ONB/domain case is retained. Native operations must increase
 CP's matching recorded resolutions; Pulse's durable resource/mutation audits are
 independently joined to CP records. Failure/recovery stops real CP, issuer and
