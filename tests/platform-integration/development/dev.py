@@ -627,6 +627,7 @@ def down(run_id):
             report['dev15_registry_sha256'] = state['dev15_registry_sha256']
             report['dev15_iam_issued'] = False
             report['dev15_eng_onb_qualified'] = False
+            report['dev15_native_component'] = state.get('dev15_native_component', 'NOT_STARTED')
         folder = EVIDENCE / ('dev01-' + run_id)
         private_directory(folder)
         pending = folder / '.pending'
