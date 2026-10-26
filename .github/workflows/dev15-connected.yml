@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/shared
-          ref: 9fa1bbd6ad9b5c9d4ec406c721bd75227803dcea
+          ref: 32b71f3335e566daeb58246f17fcbbf162cf7f53
           path: tests/platform-integration/.runtime/engine-shared
           persist-credentials: false
       - name: Install pinned integration CLI
