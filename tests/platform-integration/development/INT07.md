@@ -98,3 +98,45 @@ The regression performs an actual socket TLS handshake with VERIFY_X509_STRICT
 also enabled in the lighter Python 3.12 tool image. Verification and hostname
 checks are never disabled; no arbitrary trust fallback or insecure adapter is
 used. The generated private CA key is destroyed after signing as before.
+
+## Current bound-resource rerun
+
+The selected external-base-lock keeps historical DEV-01..05 locks unchanged.
+Merged owner pins enforce current subscription/projection provenance, current
+provider/support and normal binding resolution at actual Pulse resource use.
+The actual caller requests both CP and Pulse audiences with context:resolve and
+the exact Intelligence operation scope; the independent validator cannot act as
+that caller. All eighteen original case names and meanings are retained.
+
+The CP-owned guarded fixture uses the original catalogue/registration, actual
+running PG/Qdrant readiness and actual immutable owner source/declaration/image.
+An OCI image manifest is derived from the actual saved image config and layer
+bytes (diff IDs checked against config), published with its blobs only on the
+private run-owned artifact endpoint. A config/image ID is not called a manifest
+digest. CP fetches/hashes that actual manifest, then uses normal maker/checker
+release approval, provider activation, ProductVersion/Composition expansion and
+binding admission. It does not insert ACTIVE provider/certification shortcuts.
+The expiring external TRIAL source is nonmonetary and creates no estate or INTERNAL
+eligibility, legal verification, provider certification or protected authority.
+
+A fresh resource read commits its actual resolution/grant/binding/provider/
+instance audit in Pulse PG before returning data. The driver independently reads
+that record and matches its resolution ID and tuple to CP's persisted decision.
+Control one revokes only the grant (source/binding active), then normal expansion
+restores a new grant. Control two actually deletes the source (grant/binding
+active), then normal source/expansion restores it. Control three retires the
+binding with source/grant still active, as a final transition. Each observes the
+normal CP denial and repeated Pulse403 with no added read audit. These are not
+unavailable-provider or missing-fixture substitutes for the original negatives.
+
+The runner removes old suite/hash output before every attempt and requires all
+18 native cases plus every source/control/audit/cleanup component observation.
+Failure remains failure; skipped or BLOCKED mandatory cases cannot satisfy CI.
+Original historical14/4 receipts remain unchanged; the new run needs separate
+original-byte report/hash custody and actual source/merge/artifact identity.
+
+All observations remain disposable component-development evidence. The canonical
+INT-07-API acceptance matrix's separately certified-provider requirement, EA-09,
+protected acceptance and production permission are not manufactured by permissive
+nonproduction release approval. Qualification flags remain false until their
+independent gates are satisfied. DEV-10 remains paused.

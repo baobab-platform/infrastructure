@@ -99,6 +99,26 @@ def subjects():
 
 class Hook(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
+    def do_GET(self):
+        # Private run-owned OCI publication, not an identity or provider stub.
+        # Only content-addressed actual built-image bytes can be read.
+        import re, hashlib, shutil
+        match=re.fullmatch(r'/v2/baobab-pulse/(manifests|blobs)/sha256:([0-9a-f]{64})',self.path)
+        try:
+            require(read('state.json').get('external_api') is True)
+            require(match is not None)
+            kind,digest=match.groups();root=ROOT/'external-oci'
+            path=root/'manifest.json' if kind=='manifests' else root/'blobs'/digest
+            require(path.is_file())
+            if kind=='manifests':require(hashlib.sha256(path.read_bytes()).hexdigest()==digest)
+            self.send_response(200)
+            self.send_header('Content-Type','application/vnd.oci.image.manifest.v1+json' if kind=='manifests' else 'application/octet-stream')
+            self.send_header('Docker-Content-Digest','sha256:'+digest)
+            self.send_header('Content-Length',str(path.stat().st_size));self.end_headers()
+            with path.open('rb') as source:shutil.copyfileobj(source,self.wfile)
+        except Exception:
+            self.send_response(404);self.end_headers()
+
     def do_POST(self):
         try:
             if self.path=='/introspect':
