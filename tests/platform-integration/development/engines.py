@@ -181,9 +181,15 @@ def up(run):
     set_context_owner(private/'context.json',state)
     services['subject']={'image':image,'networks':['engine'],'user':'1000:1000','environment':env,'volumes':[adapter.host(directory/'tls/ca.pem')+':/tls/ca.pem:ro'],'cap_drop':['ALL'],'security_opt':['no-new-privileges:true']}
     driver=image if profile['adapter']['driver']=='engine' else state['runtime_images']['probe']
-    services['engine-tool']={'image':driver,'networks':['engine'],'user':tool_identity(state),'entrypoint':['python','/engine_adapter.py'],'environment':{**env,'BAOBAB_DEV14_PRIVATE_RUN':'1'},'cap_drop':['ALL'],'security_opt':['no-new-privileges:true'],
+    root=dev.call(['docker','image','inspect',image,'--format','{{.Config.WorkingDir}}']) if profile['adapter']['driver']=='engine' else '/app'
+    root=root or '/app'
+    dev.require(root.startswith('/') and '..' not in Path(root).parts and ':' not in root,'ENGINE_OWNER_ROOT_REFUSED')
+    adapter_path=str(Path(root)/profile['adapter']['path']);sdk_path=str(Path(adapter_path).parent/'engine_sdk.py')
+    dev.require(adapter_path!=sdk_path,'ENGINE_ADAPTER_NAME_RESERVED')
+    state['engine_sdk_path']=sdk_path
+    services['engine-tool']={'image':driver,'networks':['engine'],'user':tool_identity(state),'entrypoint':['python',adapter_path],'environment':{**env,'BAOBAB_DEV14_PRIVATE_RUN':'1'},'cap_drop':['ALL'],'security_opt':['no-new-privileges:true'],
         'volumes':[adapter.host(private/'context.json')+':/run/engine/context.json:ro',adapter.host(directory/'tls/ca.pem')+':/tls/ca.pem:ro',
-        adapter.host(source/profile['adapter']['path'])+':/engine_adapter.py:ro',adapter.host(BASE/'engine_sdk.py')+':/engine_sdk.py:ro']}
+        adapter.host(source/profile['adapter']['path'])+':'+adapter_path+':ro',adapter.host(BASE/'engine_sdk.py')+':'+sdk_path+':ro']}
     gateway=adapter.EDGE[:adapter.EDGE.index(' server {')]
     gateway+='server { listen 443 ssl; server_name engine.baobab-dev.test; ssl_certificate /tls/edge.pem; ssl_certificate_key /tls/edge.key; location / { set $target http://subject:'+str(profile['adapter']['port'])+'; proxy_pass $target; proxy_set_header Host engine.baobab-dev.test; } }\n'
     for host in ('hydra.int03.test','cp.baobab-dev.test'):
@@ -208,7 +214,7 @@ def up(run):
     dev.write(directory/'compose.json',composition);state['compose_sha256']=hashlib.sha256((directory/'compose.json').read_bytes()).hexdigest();dev.persist(directory,state,'RUNNING')
     dev.compose(directory,state,'up','-d','--wait','--wait-timeout','120',*stores,'engine-gateway',timeout=180)
     print('ENGINE_PHASE=OWNER_PREPARE',flush=True)
-    isolated=json.loads(dev.compose(directory,state,'run','--rm','--no-deps','--entrypoint','python','engine-tool','/engine_sdk.py','isolation',timeout=30).splitlines()[-1])
+    isolated=json.loads(dev.compose(directory,state,'run','--rm','--no-deps','--entrypoint','python','engine-tool',state['engine_sdk_path'],'isolation',timeout=30).splitlines()[-1])
     dev.require(isolated=={'private_planes_unreachable':True},'ENGINE_ADMIN_NETWORK_EXPOSED')
     engine_tool(directory,state,'prepare')
     dev.compose(directory,state,'up','-d','subject')

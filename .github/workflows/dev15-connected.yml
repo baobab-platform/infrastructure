@@ -42,6 +42,7 @@ jobs:
         run: |
           tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
             --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            env -u LOCAL_WORKSPACE_FOLDER -u CONTAINER_WORKSPACE_FOLDER \
             python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_*.py' -q
       - name: Execute every declared case with real IAM CP and native processes
         env:
