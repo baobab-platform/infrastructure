@@ -13,6 +13,13 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list
 # Dev Containers CLI installs features in its own build stage as root.
 # Existing canonical registry parser, also used by platform-int03 source CI.
 # Install once in the shared image so Actions and Codespaces use the same port.
-RUN python3 -m pip install --no-cache-dir PyYAML==6.0.3
+# DEV-14/15 invokes the *real* Shared canonical validator inside this
+# same Codespaces/Actions lab. Match Shared's pinned Foundation test
+# dependencies, rather than trusting an accidentally preinstalled jsonschema.
+RUN python3 -m pip install --no-cache-dir \
+    PyYAML==6.0.3 \
+    check-jsonschema==0.38.0 \
+    rfc3339-validator==0.1.4 \
+    rfc3986-validator==0.1.1
 
 USER vscode
