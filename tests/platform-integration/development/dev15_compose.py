@@ -88,7 +88,7 @@ def apply(profile: dict, base: dict, *, subject_image: str,
             and isinstance(passwd, str) and re.fullmatch(r"[0-9a-f]{64}", passwd),
             "DEV15_NATIVE_STORE_IMAGE_OR_SECRET_REQUIRED",
         )
-        services["dev15-postgres"] = {
+        services["pulse-db"] = {
             "image": postgres,
             "environment": {
                 "POSTGRES_DB": "pulse", "POSTGRES_USER": "pulse",
@@ -100,20 +100,20 @@ def apply(profile: dict, base: dict, *, subject_image: str,
                 "interval": "3s", "timeout": "3s", "retries": 40,
             },
         }
-        services["dev15-qdrant"] = {
+        services["pulse-qdrant"] = {
             "image": qdrant,
             "volumes": ["dev15-pulse-qdrant:/qdrant/storage"],
         }
         volumes["dev15-pulse-data"] = {"labels": labels}
         volumes["dev15-pulse-qdrant"] = {"labels": labels}
         depends.update({
-            "dev15-postgres": {"condition": "service_healthy"},
-            "dev15-qdrant": {"condition": "service_started"},
+            "pulse-db": {"condition": "service_healthy"},
+            "pulse-qdrant": {"condition": "service_started"},
         })
         subject_env = {
             "PULSE_ENVIRONMENT": "development",
-            "PULSE_DATABASE_URL": f"postgresql://pulse:{passwd}@dev15-postgres:5432/pulse",
-            "PULSE_QDRANT_URL": "http://dev15-qdrant:6333",
+            "PULSE_DATABASE_URL": f"postgresql://pulse:{passwd}@pulse-db:5432/pulse",
+            "PULSE_QDRANT_URL": "http://pulse-qdrant:6333",
             "PULSE_EMBEDDING_PROVIDER": "mock",
             "PULSE_EMBEDDING_DIMENSION": "16",
             "PULSE_QDRANT_COLLECTION_PREFIX": "dev15",
