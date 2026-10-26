@@ -8,7 +8,7 @@ CASES = ('zero-estates', 'independent-registered-workload', 'own-context',
 COMPONENTS = {'zero_estates_read_before', 'zero_estates_read_after', 'native_pulse_dependencies',
  'native_canonical_hydration', 'native_cross_tenant_no_leak', 'real_external_resource_read',
  'restricted_evidence_denied', 'current_cp_subject_validation', 'native_clients_deleted',
- 'native_tokens_inactive', 'private_state_absent', 'owned_resources_absent', 'canonical_resolution_denied'}
+ 'native_tokens_inactive', 'private_state_absent', 'owned_resources_absent', 'canonical_resolution_denied','normal_provider_activation','actual_oci_publication','current_grant_provenance','resource_audit_persisted','independent_cp_resolution_readback','controlled_absent_subscription','controlled_unentitled_resource','controlled_retired_binding'}
 REASONS = {'NOT_EXECUTED', 'OBSERVED', 'ASSERTION_FAILED', 'PREREQUISITE_FAILED',
  'CANONICAL_ENTITLEMENT_NOT_ESTABLISHED', 'CANONICAL_BINDING_NOT_ESTABLISHED', 'TEARDOWN_PENDING'}
 
@@ -29,6 +29,7 @@ def validate(report,run):
         if not isinstance(row,dict) or set(row)!={'result','reason'} or row['result'] not in {'PASS','FAIL','BLOCKED'} or row['reason'] not in REASONS:raise ValueError('DEV06_REPORT_INVALID')
         if (row['result']=='PASS')!=(row['reason']=='OBSERVED'):raise ValueError('DEV06_REPORT_INVALID')
     if not isinstance(report['component_checks'],dict) or any(k not in COMPONENTS or type(v) is not bool for k,v in report['component_checks'].items()):raise ValueError('DEV06_REPORT_INVALID')
-    # This implementation has no independent subscription/grant/binding
-    # positive. It cannot promote INT-07, even by marking every row PASS.
+    # Native grant/binding controls are engineering evidence. They do not
+    # independently certify the provider required by canonical INT-07-API,
+    # so even eighteen native PASS cannot promote global qualification.
     return report

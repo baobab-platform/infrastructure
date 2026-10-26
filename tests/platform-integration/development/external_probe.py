@@ -42,10 +42,11 @@ def clients():
     with os.fdopen(fd,'w') as out:json.dump(native,out);out.flush();os.fsync(out.fileno())
     os.replace(path,p.ROOT/'native.json')
 
-def token(name=CLIENT,audience='baobab-pulse',scope='intelligence:evidence:search'):
+def token(name=CLIENT,audience=None,scope='context:resolve intelligence:evidence:search'):
     native=p.read('native.json')
-    code,body,_=p.request('POST',p.ISSUER+'/oauth2/token',{'grant_type':'client_credentials','client_id':name,
-        'client_secret':native['clients'][name]['secret'],'audience':audience,'scope':scope},form=True)
+    audiences=audience if isinstance(audience,list) else [audience] if audience else ['baobab-pulse','baobab-control-plane']
+    fields=[('grant_type','client_credentials'),('client_id',name),('client_secret',native['clients'][name]['secret']),('scope',scope)]+[('audience',a) for a in audiences]
+    code,body,_=p.request('POST',p.ISSUER+'/oauth2/token',fields,form=True)
     p.require(code==200 and body.get('access_token'))
     return body['access_token']
 
@@ -55,7 +56,7 @@ def context():
     p.require(code==200 and ctx['tenant_id']==own['tenant_id'] and ctx['organisation_id']==own['organisation_id'] and not ctx.get('digital_estate_id'))
     return bearer,ctx
 
-def search(bearer,cid,evidence=None):
+def search(bearer,cid,evidence='evs_int02_native'):
     body={'query_text':'INT-02 synthetic canonical evidence for provider conformance.','top_k':10}
     if evidence:body['evidence_set_id']=evidence
     return p.request('POST',PULSE+'/evidence/search',body,bearer,headers={'X-Baobab-Context-Id':cid})
@@ -96,8 +97,8 @@ def main(action):
             cp_token,ctx=context();bearer=token()
             record('independent-registered-workload',lambda:p.claims(bearer)['sub']==CLIENT and p.claims(bearer)['actor_type']=='workload')
             record('own-context',lambda:ctx['principal_id']==own['principal_id'] if 'principal_id' in ctx else ctx['tenant_id']==own['tenant_id'])
-            # Use actual maintained Pulse HTTP/authentication/context adapters.
-            # This component positive is NOT an entitled bound invocation.
+            # Actual maintained authentication/context and current canonical
+            # resolver gates run before the native resource/audit.
             current='bound-resource-and-audited-effect'
             observed=search(bearer,ctx['context_id'])
             if not positive(observed):
@@ -136,16 +137,33 @@ def main(action):
             code,actual,_=status(revoked);p.require(code==200 and actual['active'] is False and p.claims(revoked)['exp']>time.time())
             record('revoked-token-replay-denied',lambda:search(revoked,ctx['context_id'])[0]==401 and search(revoked,ctx['context_id'])[0]==401)
             p.require(positive(search(token(),ctx['context_id'])))
-            # Resolve through CP's canonical API. Missing grant/provider does
-            # not become a positive or a controlled absent-subscription proof.
             code,decision,_=p.request('POST',p.CP+'/v1/capabilities/resolve',{'context_id':ctx['context_id'],
                 'capability_key':'intelligence.evidence.search','required_contract_version':1,'correlation_id':str(uuid.uuid4())},cp_token)
-            p.require(code==200 and decision.get('decision')=='DENIED' and decision.get('reason_code')=='GRANT_NOT_FOUND' and not decision.get('invocation'))
-            report['component_checks']['canonical_resolution_denied']=True
-            for case in ('bound-resource-and-audited-effect','absent-subscription-denied','unentitled-resource-denied'):
-                report['cases'][case]={'result':'BLOCKED','reason':'CANONICAL_ENTITLEMENT_NOT_ESTABLISHED'}
-            report['cases']['retired-binding-denied']={'result':'BLOCKED','reason':'CANONICAL_BINDING_NOT_ESTABLISHED'}
+            owner=p.read('external-capability.json')
+            p.require(code==200 and decision.get('decision')=='RESOLVED' and
+                decision.get('grant_id')=='grant_'+owner['grant_id'].replace('-','') and
+                decision.get('binding_id')=='bind_'+owner['binding_id'].replace('-',''))
+            report['component_checks']['current_grant_provenance']=all(owner[k] for k in ('source_present','source_active','grant_active','projection_current','provider_active','binding_active'))
+            p.require(report['component_checks']['current_grant_provenance'])
+            report['cases']['bound-resource-and-audited-effect']={'result':'PASS','reason':'OBSERVED'}
             p.write('external-context.json',ctx)
+        elif action in ('unentitled','absent','retire'):
+            case={'unentitled':'unentitled-resource-denied','absent':'absent-subscription-denied','retire':'retired-binding-denied'}[action]
+            current=case;owner=p.read('external-capability.json');ctx=p.read('external-context.json')
+            if action=='unentitled':p.require(owner['source_active'] and owner['binding_active'] and not owner['grant_active'])
+            elif action=='absent':p.require(not owner['source_present'] and owner['grant_active'] and owner['binding_active'])
+            else:p.require(owner['source_active'] and owner['grant_active'] and not owner['binding_active'])
+            cp_bearer=token(audience='baobab-control-plane',scope='context:resolve')
+            code,decision,_=p.request('POST',p.CP+'/v1/capabilities/resolve',{'context_id':ctx['context_id'],
+                'capability_key':'intelligence.evidence.search','required_contract_version':1,'correlation_id':str(uuid.uuid4())},cp_bearer)
+            expected={'unentitled':('DENIED','GRANT_REVOKED'),'absent':('DENIED','GRANT_NOT_FOUND'),'retire':('UNAVAILABLE','BINDING_NOT_FOUND')}[action]
+            p.require(code==200 and (decision.get('decision'),decision.get('reason_code'))==expected and not decision.get('invocation'))
+            record(case,lambda:search(token(),ctx['context_id'])[0]==403 and search(token(),ctx['context_id'])[0]==403)
+            report['component_checks']['canonical_resolution_denied']=True
+            report['component_checks'][{'unentitled':'controlled_unentitled_resource','absent':'controlled_absent_subscription','retire':'controlled_retired_binding'}[action]]=True
+        elif action=='rebound':
+            current='bound-resource-and-audited-effect';ctx=p.read('external-context.json')
+            p.require(positive(search(token(),ctx['context_id'])))
         elif action=='outage':
             current='dependency-outage-and-recovery';ctx=p.read('external-context.json')
             p.require(search(token(),ctx['context_id'])[0]==503)
