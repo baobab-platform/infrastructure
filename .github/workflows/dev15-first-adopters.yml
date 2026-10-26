@@ -5,6 +5,8 @@ on:
       - 'tests/platform-integration/development/dev15_source.py'
       - 'tests/platform-integration/development/dev15-owner-lock.json'
       - 'tests/platform-integration/development/test_dev15_source.py'
+      - 'tests/platform-integration/development/dev15_registry.py'
+      - 'tests/platform-integration/development/test_dev15_registry.py'
       - '.github/workflows/dev15-first-adopters.yml'
   push:
     branches: [main]
@@ -12,6 +14,8 @@ on:
       - 'tests/platform-integration/development/dev15_source.py'
       - 'tests/platform-integration/development/dev15-owner-lock.json'
       - 'tests/platform-integration/development/test_dev15_source.py'
+      - 'tests/platform-integration/development/dev15_registry.py'
+      - 'tests/platform-integration/development/test_dev15_registry.py'
       - '.github/workflows/dev15-first-adopters.yml'
   workflow_dispatch:
 permissions:
@@ -42,6 +46,12 @@ jobs:
           ref: 93c4b6cbaa92f9c5081c27d454ba0af5bdb25b13
           path: .dev15-payments
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-cp
+          ref: 8cab5cc534ffce1d7b3e64b625d8214eb810c4c1
+          path: .dev15-cp
+          persist-credentials: false
       - uses: actions/setup-python@ad3497abcd142e169a10aac37abd5175c44f33c4 # v7.0.0+6
         with:
           python-version: '3.13'
@@ -49,6 +59,23 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check -r .shared-dev15/.github/foundation-tests/requirements.txt
       - name: Test strict source evidence and negative scenarios
         run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev15_source.py' -v
+      - name: Verify DEV-15 registered workload roster and CP snapshot authority gap
+        run: |
+          python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev15_registry.py' -v
+          python3 -B tests/platform-integration/development/dev15_registry.py \
+            --shared-root .shared-dev15 \
+            --cp-root .dev15-cp \
+            --cp-sha 8cab5cc534ffce1d7b3e64b625d8214eb810c4c1 \
+            > "$RUNNER_TEMP/dev15-registry.json"
+          python3 - "$RUNNER_TEMP/dev15-registry.json" <<'PY'
+          import json,sys
+          row=json.load(open(sys.argv[1]))
+          assert len(row["registered_development_clients"]) == 6
+          assert row["dev15_connected_status"] == "BLOCKED"
+          assert row["real_iam_clients_issued"] == "NOT_OBSERVED"
+          assert row["effective_cp_runtime_registry"] == "NOT_INSPECTED"
+          assert row["production_authorized"] is False
+          PY
       - name: Qualify native owner declarations without runtime promotion
         run: |
           python3 -B tests/platform-integration/development/dev15_source.py \
