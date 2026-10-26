@@ -66,7 +66,17 @@ def composition(state,directory,images,namespace):
             PEO_SUBSCRIPTIONS_WORKLOAD_CLIENT_ID='baobab-dev-subscriptions-assessor',
             CP_SUBSCRIPTION_CURRENT_AUTHORITY_ENABLED='true',
             CP_SUBSCRIPTIONS_CURRENT_WORKLOAD_CLIENT_ID='baobab-dev-subscriptions-assessor')
-    registry=directory/'sources/shared/contracts/identity/v1/workload-registry.yaml' 
+    registry=directory/'sources/shared/contracts/identity/v1/workload-registry.yaml'
+    if state.get('dev15_registry_sha256'):
+        # Only a reviewed, private development overlay is permitted here.
+        # Merely mounting a registered client does not provision credentials,
+        # create a current CP grant or make the engine provider ACTIVE.
+        require_source = '9fa1bbd6ad9b5c9d4ec406c721bd75227803dcea'
+        if state.get('environment')!='development' or state.get('dev15_registry_source_sha')!=require_source:
+            raise ValueError('DEV15_REGISTRY_AUTHORITY_REFUSED')
+        registry=directory/'dev15-workload-registry.yaml'
+        if registry.is_symlink() or not registry.is_file() or hashlib.sha256(registry.read_bytes()).hexdigest()!=state['dev15_registry_sha256']:
+            raise ValueError('DEV15_REGISTRY_DRIFT')
     services['cp']={'image':state['images']['cp'],'pull_policy':'never','environment':cp_env,'volumes':[tls+':/tls:ro',host(registry)+':/registry.yaml:ro']}
     services['edge']={'image':images['edge'],'read_only':True,'tmpfs':['/tmp'],'volumes':[host(directory/'nginx.conf')+':/etc/nginx/nginx.conf:ro',host(directory/'introspection.htpasswd')+':/etc/nginx/introspection.htpasswd:ro',tls+':/tls:ro'],'networks':{'lab':{'aliases':['hydra.int03.test','cp.baobab-dev.test','kratos.baobab-dev.test','rp.baobab-dev.test']}}}
     services['probe']={'image':images['probe'],'user':f'{state["uid"]}:{state["gid"]}','command':['python','/native_probe.py','serve'],'environment':{'DEV01_RUN_ID':run,'DEV03_HOOK_KEY':secret['hook'],'DEV03_INTROSPECTION_SECRET':secret['introspection'],'DEV04_VERIFIER_SECRET':secret['verifier']},'volumes':[host(directory)+':/run/dev01',tls+':/tls:ro',*[host(Path(__file__).parent/name)+':/'+name+':ro' for name in ('native_probe.py','int03c_probe.py','int03c_contract.py')]]}
