@@ -33,13 +33,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/baobab-pulse
-          ref: dfd04d695b80e2e6dfea560af5c227da166ed183
+          ref: 6aa1ef059a331bd8b316c2d1c2364d3212527eed
           path: .dev15-pulse
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/baobab-payments
-          ref: de8ec24f150b8770592db5df22953b35f14fe357
+          ref: 93c4b6cbaa92f9c5081c27d454ba0af5bdb25b13
           path: .dev15-payments
           persist-credentials: false
       - uses: actions/setup-python@ad3497abcd142e169a10aac37abd5175c44f33c4 # v7.0.0+6
