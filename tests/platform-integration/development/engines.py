@@ -156,7 +156,7 @@ def up(run):
     context={'schema':'baobab.engine-adapter-context.v1','run':{'id':run},'tenant':enterprise(profile['enterprise_seed']),
         'neighbour':enterprise(profile['neighbour_seed']),'iam':{**iam,'issuer':adapter.ISSUER,'jwks':adapter.ISSUER+'/.well-known/jwks.json',
             'token':adapter.ISSUER+'/oauth2/token','introspection_url':adapter.ISSUER+'/oauth2/introspect',
-            'allowed_clients':json.dumps({identity['client_id']:profile['subject_engine'] for role,identity in iam.items() if role!='validator'})},
+            'allowed_clients':','.join(identity['client_id']+'='+profile['subject_engine'] for role,identity in iam.items() if role!='validator')},
         'cp':{'origin':'https://cp.baobab-dev.test','context_validation':'https://cp.baobab-dev.test/v1/platform-context/validate',
             'capability_resolution':'https://cp.baobab-dev.test/v1/capabilities/resolve','provider_id':'provider_'+authority['provider_id'].replace('-',''),
             'engine_instance_id':'ei_'+authority['engine_instance_id'].replace('-','')},'tls':{'ca_file':'/tls/ca.pem'},'native':{}}
