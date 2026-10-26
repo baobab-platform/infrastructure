@@ -88,6 +88,8 @@ def composition(state,directory,images,namespace):
             raise ValueError('DEV15_UNRECOGNISED_PROFILE')
         services['probe']['volumes'].append(
             host(Path(__file__).parent/'dev15_health.py')+':/dev15_health.py:ro')
+    if state.get('engine_profile'):
+        services['probe']['volumes'] += [host(Path(__file__).parent/name)+':/'+name+':ro' for name in ('engine_probe.py','engine_contract.py')]
     for service in services.values(): service.update(labels=labels,restart='no');service.setdefault('networks',['lab'])
     return {'name':state['project'],'services':services,'networks':{'lab':{'internal':True,'labels':labels}},'volumes':{name:{'labels':labels} for name in ('cp-data','hydra-data','kratos-data')}}
 
