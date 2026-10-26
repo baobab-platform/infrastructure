@@ -1,0 +1,70 @@
+name: DEV-15 first-adopter source conformance
+on:
+  pull_request:
+    paths:
+      - 'tests/platform-integration/development/dev15_source.py'
+      - 'tests/platform-integration/development/dev15-owner-lock.json'
+      - 'tests/platform-integration/development/test_dev15_source.py'
+      - '.github/workflows/dev15-first-adopters.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tests/platform-integration/development/dev15_source.py'
+      - 'tests/platform-integration/development/dev15-owner-lock.json'
+      - 'tests/platform-integration/development/test_dev15_source.py'
+      - '.github/workflows/dev15-first-adopters.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  conformance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/shared
+          ref: 9fa1bbd6ad9b5c9d4ec406c721bd75227803dcea
+          path: .shared-dev15
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-pulse
+          ref: dfd04d695b80e2e6dfea560af5c227da166ed183
+          path: .dev15-pulse
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-payments
+          ref: de8ec24f150b8770592db5df22953b35f14fe357
+          path: .dev15-payments
+          persist-credentials: false
+      - uses: actions/setup-python@ad3497abcd142e169a10aac37abd5175c44f33c4 # v7.0.0+6
+        with:
+          python-version: '3.13'
+      - name: Install exact Shared source validator
+        run: python3 -m pip install --disable-pip-version-check -r .shared-dev15/.github/foundation-tests/requirements.txt
+      - name: Test strict source evidence and negative scenarios
+        run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev15_source.py' -v
+      - name: Qualify native owner declarations without runtime promotion
+        run: |
+          python3 -B tests/platform-integration/development/dev15_source.py \
+            --shared-root .shared-dev15 \
+            --pulse-root .dev15-pulse \
+            --payments-root .dev15-payments \
+            --output "$RUNNER_TEMP/dev15-source-inventory.json"
+          python3 - "$RUNNER_TEMP/dev15-source-inventory.json" <<'PY'
+          import json,sys
+          row=json.load(open(sys.argv[1]))
+          assert row["evidence_class"]=="SOURCE_ONLY"
+          assert row["eng_onb_runtime_qualified"] is False
+          assert row["dev15_accepted"] is False
+          assert row["production_authorized"] is False
+          for value in row["adopters"].values():
+              assert value["runtime_status"]=="BLOCKED"
+              assert all(case["result"]=="BLOCKED" for case in value["cases"].values())
+              assert len([k for k in value["cases"] if k.startswith("ENG-ONB-")])==9
+          PY
