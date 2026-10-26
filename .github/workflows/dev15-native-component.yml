@@ -1,0 +1,84 @@
+name: DEV-15 native components on disposable IAM CP
+on:
+  pull_request:
+    paths:
+      - 'tests/platform-integration/development/dev15_*.py'
+      - 'tests/platform-integration/development/adapter.py'
+      - 'tests/platform-integration/development/dev.py'
+      - 'tests/platform-integration/development/dev15-owner-lock.json'
+      - '.devcontainer/platform-integration/**'
+      - '.github/workflows/dev15-native-component.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+concurrency:
+  group: dev15-native-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  real-native:
+    name: Native ${{ matrix.profile }} / DEV-01 private topology
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [pulse-intelligence, payments-sandbox]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/shared
+          ref: 9fa1bbd6ad9b5c9d4ec406c721bd75227803dcea
+          path: tests/platform-integration/.runtime/dev15-shared
+          persist-credentials: false
+      - name: Install pinned development integration CLI
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Start exact Codespaces development integration container
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up --frozen-lockfile \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: Run real private owner image and exact native health
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env BAOBAB_ENVIRONMENT=development \
+            python3 -B tests/platform-integration/development/dev15_runtime.py \
+              --profile "${{ matrix.profile }}" \
+              --shared-root tests/platform-integration/.runtime/dev15-shared \
+              --lease-seconds 3600
+      - name: Prove native-only result, source custody, and independent teardown
+        run: |
+          python3 - <<'PY'
+          import glob,json
+          files=glob.glob("tests/platform-integration/evidence/dev01-*/completed/receipt.json")
+          assert len(files)==1, "one disposable DEV-15 run receipt required"
+          row=json.load(open(files[0]))
+          assert row["teardown_verified"] is True
+          assert row["dev15_native_component"]=="PRIVATE_REAL_COMPONENT_OBSERVED"
+          assert row["dev15_iam_issued"] is False
+          assert row["dev15_eng_onb_qualified"] is False
+          assert row["protected_acceptance"] is False
+          assert row["production_authorized"] is False
+          assert "dev15-subject" in row["image_ids"]
+          assert row["domain_qualification"]=="NOT_EXECUTED"
+          PY
+      - name: Recover independent DEV-01 runtime and credentials
+        if: always()
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Independent host-side resource recovery
+        if: always()
+        run: python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Retain sanitized DEV-15 native-only receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev15-native-${{ matrix.profile }}-evidence
+          path: tests/platform-integration/evidence/dev01-*/completed/*.json
+          if-no-files-found: warn
+          retention-days: 14
