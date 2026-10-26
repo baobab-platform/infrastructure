@@ -49,7 +49,7 @@ def read(name): return json.loads((ROOT/name).read_text())
 def request(method,url,data=None,token=None,form=False,basic=None,headers=None,opener=None,timeout=8):
     # Private provider admin planes are the only permitted cleartext origins.
     parsed=urllib.parse.urlsplit(url)
-    require((parsed.scheme=='https' and parsed.hostname in ('hydra.int03.test','kratos.baobab-dev.test','cp.baobab-dev.test','cms.baobab-dev.test','nabhold.baobab-dev.test','pulse.baobab-dev.test','subscriptions.baobab-dev.test')) or
+    require((parsed.scheme=='https' and parsed.hostname in ('hydra.int03.test','kratos.baobab-dev.test','cp.baobab-dev.test','cms.baobab-dev.test','nabhold.baobab-dev.test','pulse.baobab-dev.test','subscriptions.baobab-dev.test','engine.baobab-dev.test')) or
             (parsed.scheme=='http' and parsed.netloc in ('hydra:4445','kratos:4434')),'UNTRUSTED_ENDPOINT')
     body=(urllib.parse.urlencode(data).encode() if form else json.dumps(data).encode()) if data is not None else None
     h={'Accept':'application/json',**(headers or {})}
@@ -79,6 +79,10 @@ def subjects():
         ids[role]=native_id;value['humans'][role]={'id':native_id,'email':email,'password':password}
     require(ids['maker']!=ids['checker'],'DISTINCT_REAL_IDENTITIES')
     clients=list(WORKLOADS)+['baobab-dev-human','baobab-dev-introspection']
+    state=read('state.json');profile=state.get('engine_profile')
+    identities={v['client_id']:v for v in profile['iam'].values()} if profile else {}
+    require(not set(identities).intersection(clients),'PROFILE_CLIENT_COLLISION')
+    clients+=sorted(identities)
     for name in clients:
         secret=(os.environ['DEV03_INTROSPECTION_SECRET'] if name=='baobab-dev-introspection' else
                 os.environ['DEV04_VERIFIER_SECRET'] if name=='baobab-int03c-issuer-verifier' else secrets.token_urlsafe(32))
@@ -89,6 +93,10 @@ def subjects():
                 'audience':['baobab-control-plane'],'token_endpoint_auth_method':'client_secret_post' if proof else 'client_secret_basic',
                 'redirect_uris':[CALLBACK] if human else [],'metadata':{'development_run_id':os.environ['DEV01_RUN_ID'],'environment':'development','owner':'baobab-platform/infrastructure',**({'int03c_run_id':os.environ['DEV01_RUN_ID']} if proof else {})},
                 'client_credentials_grant_access_token_lifespan':PROOF_LIFESPAN if proof else '120s','authorization_code_grant_access_token_lifespan':'120s'}
+        if name in identities:
+            role=next(role for role,item in profile['iam'].items() if item['client_id']==name)
+            secret=state['secrets']['engine_'+role]
+            config.update(client_secret=secret,scope=' '.join(identities[name]['scopes']),audience=identities[name]['audiences'],token_endpoint_auth_method='client_secret_post')
         code,_=api('GET','/admin/clients/'+name);require(code==404,'REFUSE_EXISTING_ISSUER_CLIENT')
         code,created=api('POST','/admin/clients',config);require(code==201 and created['client_id']==name,'HYDRA_CREATE')
         code,actual=api('GET','/admin/clients/'+name)
@@ -103,13 +111,16 @@ class Hook(BaseHTTPRequestHandler):
         # Private run-owned OCI publication, not an identity or provider stub.
         # Only content-addressed actual built-image bytes can be read.
         import re, hashlib, shutil
-        match=re.fullmatch(r'/v2/(baobab-pulse|baobab-cms)/(manifests|blobs)/sha256:([0-9a-f]{64})',self.path)
+        match=re.fullmatch(r'/v2/(baobab-[a-z0-9-]{1,56})/(manifests|blobs)/sha256:([0-9a-f]{64})',self.path)
         try:
             require(match is not None)
             engine,kind,digest=match.groups();state=read('state.json')
-            if engine=='baobab-pulse':require(state.get('external_api') is True)
-            else:require(isinstance(state.get('cms'),dict) and state.get('cms_oci_manifest_digest'))
-            root=ROOT/('external-oci' if engine=='baobab-pulse' else 'cms-oci')
+            if state.get('engine_profile') and engine==state['engine_profile']['subject_engine']:
+                require(state.get('engine_oci_manifest_digest'));root=ROOT/'engine-oci'
+            elif engine=='baobab-pulse':
+                require(state.get('external_api') is True);root=ROOT/'external-oci'
+            else:
+                require(engine=='baobab-cms' and isinstance(state.get('cms'),dict) and state.get('cms_oci_manifest_digest'));root=ROOT/'cms-oci'
             path=root/'manifest.json' if kind=='manifests' else root/'blobs'/digest
             require(path.is_file())
             if kind=='manifests':require(hashlib.sha256(path.read_bytes()).hexdigest()==digest)
@@ -131,7 +142,7 @@ class Hook(BaseHTTPRequestHandler):
             native=read('native.json');require(client in native['clients'] and session['client_id']==client)
             human=client in ('baobab-dev-human','nabhold-dev-bff');require(grant==(['authorization_code'] if human else ['client_credentials']))
             if human: require(session['id_token']['subject'] in {x['id'] for x in native['humans'].values()})
-            else: require(client in WORKLOADS+('baobab-int03-cms-consumer','baobab-int03-cms-validator','baobab-dev-external-api','baobab-dev-pulse-validator','baobab-dev-cp-subscriptions','baobab-dev-subscriptions-assessor') and session['id_token']['subject']==client)
+            else: require(client in tuple(v['client_id'] for v in read('state.json').get('engine_profile',{}).get('iam',{}).values())+WORKLOADS+('baobab-int03-cms-consumer','baobab-int03-cms-validator','baobab-dev-external-api','baobab-dev-pulse-validator','baobab-dev-cp-subscriptions','baobab-dev-subscriptions-assessor') and session['id_token']['subject']==client)
             # Identity normalisation only. No tenant/org/capability/grant claims.
             claims={'actor_type':'human' if human else 'workload','azp':client}
             if human: claims['realm_access']={'roles':['cp:platform-admin']}

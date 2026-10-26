@@ -221,6 +221,11 @@ def main():
         return 2
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[2] == "engines":
+        sys.dont_write_bytecode = True
+        sys.path.insert(0,str(BASE/'development'))
+        from engines import main as engine_main
+        sys.exit(engine_main([sys.argv[1],*sys.argv[3:]]))
     if len(sys.argv) >= 3 and sys.argv[2] == "development":
         sys.dont_write_bytecode = True
         sys.path.insert(0, str(BASE / 'development'))

@@ -1,0 +1,86 @@
+name: DEV-15 connected authority and native evidence
+on:
+  pull_request:
+    paths:
+      - 'tests/platform-integration/development/**'
+      - 'tests/platform-integration/l4.py'
+      - '.github/workflows/dev15-connected.yml'
+      - '.devcontainer/platform-integration/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+concurrency:
+  group: dev15-connected-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  connected:
+    name: Connected ${{ matrix.profile }} / all case outcomes
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [pulse-intelligence, payments-sandbox]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/shared
+          ref: 9fa1bbd6ad9b5c9d4ec406c721bd75227803dcea
+          path: tests/platform-integration/.runtime/engine-shared
+          persist-credentials: false
+      - name: Install pinned integration CLI
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Start the Codespaces and Actions integration container
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up --frozen-lockfile \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: Source contracts and fail-closed receipt checks
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_*.py' -q
+      - name: Execute every declared case with real IAM CP and native processes
+        env:
+          ENGINE_PROFILE: ${{ matrix.profile }}
+        run: |
+          set +e
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env BAOBAB_ENVIRONMENT=development \
+            python3 -B tests/platform-integration/l4.py run engines --profile "$ENGINE_PROFILE"
+          result=$?
+          set -e
+          # The qualifier itself remains strict. Payments' incomplete legal
+          # and event-relay cells must return nonzero; the next independent
+          # step verifies the exact retained BLOCKED matrix and every PASS.
+          if [ "$ENGINE_PROFILE" = pulse-intelligence ]; then test "$result" -eq 0; else test "$result" -eq 2; fi
+      - name: Independently verify source custody and every unchanged case outcome
+        run: |
+          python3 - <<'PY'
+          import glob,subprocess,os
+          files=glob.glob('tests/platform-integration/evidence/dev01-*/completed/receipt.json')
+          assert len(files)==1, 'one final independently cleaned receipt required'
+          subprocess.run(['python3','-B','tests/platform-integration/development/engine_evidence.py',files[0],
+            '--shared-root','tests/platform-integration/.runtime/engine-shared','--harness-sha',os.environ['GITHUB_SHA']],check=True)
+          PY
+      - name: Recover private resources through the same lifecycle
+        if: always()
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Independent host-side recovery
+        if: always()
+        run: python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Retain only sanitized final receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev15-connected-${{ matrix.profile }}-attempt-${{ github.run_attempt }}
+          path: tests/platform-integration/evidence/dev01-*/completed/*.json
+          if-no-files-found: warn
+          retention-days: 14

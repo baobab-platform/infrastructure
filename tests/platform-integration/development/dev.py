@@ -122,7 +122,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                 # Closed DEV-06 diagnostics never expose arbitrary issuer or
                 # engine bodies, token material, context IDs or credentials.
                 if re.fullmatch(r'SUBSCRIPTIONS_REVOCATION=[1-5][0-9]{2}:[1-5][0-9]{2}:(true|false|unknown):[1-5][0-9]{2}',line):print(line,flush=True)
-                if line in {prefix+'_OWNER_STAGE='+name for prefix in ('DEV05','DEV06') for name in ('REGISTER','OCI','READINESS','HEALTH','RELEASE','RELEASE_APPROVAL','PROVIDER_ACTIVATION','COMPOSITION','SUBSCRIPTION','EXPANSION','BINDING','CONTROL')}:print(line,flush=True)
+                if line in {prefix+'_OWNER_STAGE='+name for prefix in ('DEV05','DEV06','ENGINE') for name in ('REGISTER','OCI','READINESS','HEALTH','RELEASE','RELEASE_APPROVAL','PROVIDER_ACTIVATION','COMPOSITION','SUBSCRIPTION','EXPANSION','BINDING','CONTROL')}:print(line,flush=True)
                 if line.startswith('SUBSCRIPTIONS_CASE='):
                     import subscriptions_contract
                     if line.removeprefix('SUBSCRIPTIONS_CASE=') in subscriptions_contract.NATIVE:print(line,flush=True)
@@ -189,7 +189,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
 
 
 def load_lock(lock_name='lock.json'):
-    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
+    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
     data = json.loads((BASE / lock_name).read_text(), object_pairs_hook=unique)
     require(set(data) == {'schema', 'profile', 'authority', 'infrastructure_baseline', 'sources',
                          'images', 'max_lease_seconds', 'synthetic_only', 'protected_acceptance'}, 'LOCK_SHAPE')
@@ -265,7 +265,7 @@ def tls(directory, state):
         ['req', '-newkey', 'rsa:2048', '-nodes', '-subj', '/CN=baobab-dev.test',
          '-keyout', str(folder / 'edge.key'), '-out', str(directory / 'edge.csr')],
     ]
-    (directory / 'edge.ext').write_text('subjectAltName=DNS:hydra.int03.test,DNS:kratos.baobab-dev.test,DNS:cp.baobab-dev.test,DNS:rp.baobab-dev.test,DNS:cms.baobab-dev.test,DNS:nabhold.baobab-dev.test,DNS:redis.baobab-dev.test,DNS:pulse.baobab-dev.test,DNS:subscriptions.baobab-dev.test\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature,keyEncipherment\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\nbasicConstraints=CA:FALSE\n')
+    (directory / 'edge.ext').write_text('subjectAltName=DNS:hydra.int03.test,DNS:kratos.baobab-dev.test,DNS:cp.baobab-dev.test,DNS:rp.baobab-dev.test,DNS:cms.baobab-dev.test,DNS:nabhold.baobab-dev.test,DNS:redis.baobab-dev.test,DNS:pulse.baobab-dev.test,DNS:subscriptions.baobab-dev.test,DNS:engine.baobab-dev.test\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature,keyEncipherment\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\nbasicConstraints=CA:FALSE\n')
     for command in commands:
         call(['openssl', *command], state=state)
     call(['openssl', 'x509', '-req', '-in', str(directory / 'edge.csr'), '-CA', str(folder / 'ca.pem'),
@@ -451,7 +451,9 @@ def bootstrap(directory, state, check_fixtures=False):
         state['bootstrap_lease'] = remaining
         persist(directory, state, state['phase'])
     raw = compose(directory, state, 'run', '--rm', '--no-deps',
+                  *(['--volume', adapter.host(directory/'engine-profile.json')+':/engine-profile.json:ro'] if state.get('engine_profile') else []),
                   '-e', 'BAOBAB_DEV_BOOTSTRAP_ENABLED=true', '--entrypoint', '/development-bootstrap', 'cp',
+                  *(['--engine-profile','/engine-profile.json'] if state.get('engine_profile') else []),
                   '--run-id', state['run_id'], '--issuer', adapter.ISSUER,
                   '--maker-subject', subjects['maker'], '--checker-subject', subjects['checker'],
                   '--lease', str(state['bootstrap_lease']) + 's', *(['--external-api'] if state.get('external_api') else []), *(['--check-fixtures'] if check_fixtures else []))
@@ -459,7 +461,7 @@ def bootstrap(directory, state, check_fixtures=False):
     if check_fixtures:
         validate_fixture_report(value, state['run_id'])
         return value
-    require(value['schema'] == 'baobab.development-bootstrap.v1' and value.get('fixture_version') == (3 if state.get('external_api') else 2) and value['run_id'] == state['run_id']
+    require(value['schema'] == 'baobab.development-bootstrap.v1' and value.get('fixture_version') == (4 if state.get('engine_profile') else 3 if state.get('external_api') else 2) and value['run_id'] == state['run_id']
             and value['synthetic_only'] is True and value['protected_acceptance'] is False
             and value['maker_id'] != value['checker_id'] and len(value['enterprises']) == 5, 'CP_BOOTSTRAP_RESULT_INVALID')
     require(datetime.fromisoformat(value['expires_at'].replace('Z', '+00:00')).timestamp() <= state['deadline'],
@@ -618,6 +620,7 @@ def down(run_id):
                   'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA' if state['tests'] else 'SOURCE',
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
+                  'engine_integration':state.get('engine_integration'), 'engine_runtime_identity_verified':state.get('engine_runtime_identity_verified',False), 'engine_oci_manifest_digest':state.get('engine_oci_manifest_digest'), 'engine_lock_sha256':state.get('engine_lock_sha256'),
                   'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_oci_manifest_digest':state.get('cms_oci_manifest_digest'), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
@@ -674,6 +677,13 @@ def publish_receipt(folder, run_id):
         report['int03c_qualified'] = report['lifecycle_passed'] and all(
             item['result'] == 'PASS' for item in qualification['cases'].values())
         report['domain_qualification'] = 'DEV04_INT03C_DEVELOPMENT_ONLY'
+    if report.get('engine_integration'):
+        import engine_contract
+        result=engine_contract.validate(report['engine_integration'],run_id)
+        result['independent_observations']['host_cleanup']=True
+        if report['teardown_verified'] and result['independent_observations']['issuer_cleanup'] and result['cases']['ENG-ONB-08']['reason']=='TEARDOWN_PENDING':
+            result['cases']['ENG-ONB-08']={'result':'PASS','reason':'OBSERVED'}
+        engine_contract.validate(result,run_id)
     if report.get('external'):
         import external_contract
         external = external_contract.validate(report['external'], run_id)
