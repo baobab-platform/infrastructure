@@ -122,7 +122,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                 # Closed DEV-06 diagnostics never expose arbitrary issuer or
                 # engine bodies, token material, context IDs or credentials.
                 if re.fullmatch(r'SUBSCRIPTIONS_REVOCATION=[1-5][0-9]{2}:[1-5][0-9]{2}:(true|false|unknown):[1-5][0-9]{2}',line):print(line,flush=True)
-                if line in {'DEV06_OWNER_STAGE='+name for name in ('REGISTER','OCI','READINESS','HEALTH','RELEASE','RELEASE_APPROVAL','PROVIDER_ACTIVATION','COMPOSITION','SUBSCRIPTION','EXPANSION','BINDING','CONTROL')}:print(line,flush=True)
+                if line in {prefix+'_OWNER_STAGE='+name for prefix in ('DEV05','DEV06') for name in ('REGISTER','OCI','READINESS','HEALTH','RELEASE','RELEASE_APPROVAL','PROVIDER_ACTIVATION','COMPOSITION','SUBSCRIPTION','EXPANSION','BINDING','CONTROL')}:print(line,flush=True)
                 if line.startswith('SUBSCRIPTIONS_CASE='):
                     import subscriptions_contract
                     if line.removeprefix('SUBSCRIPTIONS_CASE=') in subscriptions_contract.NATIVE:print(line,flush=True)
@@ -132,8 +132,9 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                 if line in {'DEV06_RESOURCE_HTTP='+str(code) for code in (200,400,401,403,404,500,502,503,504)}:print(line,flush=True)
                 if line in {'DEV06_RESOURCE_CODE='+code for code in ('AUTH_TOKEN_INVALID','CAPABILITY_AUTHORITY_UNAVAILABLE','CAPABILITY_ACCESS_DENIED','CONTEXT_NOT_FOUND','PULSE_INTERNAL_ERROR','CAPABILITY_RUNTIME_UNAVAILABLE','SEMANTIC_RETRIEVAL_UNAVAILABLE')}:print(line,flush=True)
                 if line in {'DEV05_PROBE_STAGE='+name for name in ('BFF_LOGIN','BFF_KRATOS_FLOW','BFF_KRATOS_LOGIN','BFF_INITIATE','BFF_PKCE','BFF_AUTHORIZE','BFF_CALLBACK',
-                        'BFF_SESSION','BFF_LOGOUT','CMS_CONTEXT','CMS_RECORDS','CANONICAL_RESOLUTION')}:
+                        'BFF_SESSION','BFF_LOGOUT','CMS_CONTEXT','CMS_RECORDS','CANONICAL_RESOLUTION','ESTATE_PUBLISHED_CONTENT')}:
                     print(line,flush=True)
+                if re.fullmatch(r'DEV05_ESTATE_HTTP=[1-5][0-9]{2}_MARKERS_(PRESENT|ABSENT)',line):print(line,flush=True)
                 # Only static keys/reason classes may cross the native CMS
                 # runner boundary; actual responses and identity data stay private.
                 if re.fullmatch(r'DEV05_RECORD_DIAGNOSTIC=(HOME|NAVIGATION|FOOTER)_(CONFIG_NOT_READY|CALLER_STATUS_UNAVAILABLE|VALIDATOR_UNAVAILABLE|PROJECTION_UNAVAILABLE|CONTEXT_UNAVAILABLE|HTTP_500|HTTP_502|HTTP_503|HTTP_504|HTTP_DENIED|HTTP_UNAVAILABLE|INVALID_BODY|NO_RECORD|NOT_PUBLISHED|WRONG_CONTENT_KEY|WRONG_TENANT|UNEXPECTED)',line):
@@ -188,7 +189,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
 
 
 def load_lock(lock_name='lock.json'):
-    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
+    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
     data = json.loads((BASE / lock_name).read_text(), object_pairs_hook=unique)
     require(set(data) == {'schema', 'profile', 'authority', 'infrastructure_baseline', 'sources',
                          'images', 'max_lease_seconds', 'synthetic_only', 'protected_acceptance'}, 'LOCK_SHAPE')
@@ -605,7 +606,7 @@ def down(run_id):
                   'evidence_class': 'REAL_COMPONENT_SYNTHETIC_DATA' if state['tests'] else 'SOURCE',
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
-                  'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
+                  'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_oci_manifest_digest':state.get('cms_oci_manifest_digest'), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         folder = EVIDENCE / ('dev01-' + run_id)
@@ -664,7 +665,9 @@ def publish_receipt(folder, run_id):
         cms['component_checks'].update(private_state_absent=True, owned_resources_absent=True)
         if cms['cases']['teardown']['reason'] == 'TEARDOWN_PENDING' and cms['component_checks'].get('native_clients_deleted') and cms['component_checks'].get('native_tokens_inactive'):
             cms['cases']['teardown'] = {'result':'PASS','reason':'OBSERVED'}
-        cms['nab03_qualified'] = all(row['result']=='PASS' for row in cms['cases'].values()) and not cms['component_checks'].get('provider_declared_partial', True)
+        cms['nab03_qualified'] = (all(row['result']=='PASS' for row in cms['cases'].values())
+            and cms['component_checks'].get('provider_declared_partial') is False
+            and all(cms['component_checks'].get(key) is True for key in cms_contract.BOUND_COMPONENTS))
         cms_contract.validate(cms, run_id)
         report['nab03_qualified'] = cms['nab03_qualified']
         report['domain_qualification'] = 'DEV05_NATIVE_CMS_DEVELOPMENT_ONLY'

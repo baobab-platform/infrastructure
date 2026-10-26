@@ -12,8 +12,52 @@ from unittest.mock import patch
 import cms_contract
 import cms_vertical
 import dev
+import ci_cms
 
 class CMSContracts(unittest.TestCase):
+    def test_estate_failure_logs_publish_only_closed_classes(self):
+        raw='private secret body\nserver | {"event":"content.capability","key":"home","outcome":"unavailable:CAPABILITY_NOT_RESOLVED"}\nserver | {"event":"content.capability","key":"private-tenant","outcome":"private body"}\nRequired published content unavailable'
+        with patch.object(dev,'compose',return_value=raw),patch('builtins.print') as output:
+            cms_vertical.estate_diagnostics(Path('/private'),{})
+        self.assertEqual([x.args[0] for x in output.call_args_list],[
+            'DEV05_ESTATE_DIAGNOSTIC=HOME_UNAVAILABLE_CAPABILITY_NOT_RESOLVED',
+            'DEV05_ESTATE_DIAGNOSTIC=UNAVAILABLE_CONTENT'])
+
+    def test_estate_requires_rendered_heading_and_footer_not_metadata_or_serialized_data(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        expected=['Synthetic & current','Native footer']
+        self.assertTrue(probe.rendered_markers('<h1><span>Synthetic &amp; current</span></h1><footer><p>Native footer</p></footer>',expected))
+        for page in ('<title>Synthetic &amp; current</title><footer>Native footer</footer>',
+                     '<h1>Synthetic &amp; current</h1><script>Native footer</script>',
+                     '<h1>Other</h1><footer>Native footer</footer><script>Synthetic &amp; current</script>'):
+            self.assertFalse(probe.rendered_markers(page,expected))
+
+    def test_revoked_grant_cannot_substitute_for_original_missing_grant_case(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        for action,reason,expected in (('revoked-grant','GRANT_REVOKED','BLOCKED'),
+                                       ('unentitled','GRANT_NOT_FOUND','PASS'),
+                                       ('unentitled','GRANT_REVOKED','FAIL')):
+            with self.subTest(action=action,reason=reason),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);run='a'*32;value=cms_contract.fresh(run)
+                value['cases']['published-home-nav-footer'].update(result='PASS',reason='OBSERVED')
+                (root/'cms-report.json').write_text(json.dumps(value))
+                (root/'cms-capability.json').write_text(json.dumps({'source_present':action!='unentitled',
+                    'source_active':action!='unentitled','grant_active':action=='unentitled','binding_active':True}))
+                (root/'cms-published-markers.json').write_text('[]')
+                with patch.object(probe.p,'ROOT',root),patch.dict(os.environ,{'DEV01_RUN_ID':run}), \
+                     patch.object(probe,'config',return_value=({}, {}, {})), \
+                     patch.object(probe,'context',return_value=('cp',{'context_id':'context'})), \
+                     patch.object(probe,'token',return_value='cms'), \
+                     patch.object(probe.p,'request',return_value=(200,{'decision':'DENIED','reason_code':reason},None)), \
+                     patch.object(probe,'resolve',return_value=(403,{'code':'CONTENT_CONTEXT_REJECTED'},None)), \
+                     patch.object(probe,'estate_page',return_value=(500,True)):
+                    if expected=='FAIL':
+                        with self.assertRaises(SystemExit):probe.main(action)
+                    else:probe.main(action)
+                self.assertEqual(json.loads((root/'cms-report.json').read_text())['cases']['missing-grant']['result'],expected)
+
     def test_issuer_client_readback_uses_native_duration_and_rejects_changed_ttl(self):
         with patch('ssl.create_default_context',return_value=SimpleNamespace()):
             probe=importlib.import_module('cms_probe')
@@ -90,12 +134,63 @@ class CMSContracts(unittest.TestCase):
     def test_original_inventory_cannot_omit_or_promote_a_blocker(self):
         run='a'*32;report=cms_contract.fresh(run)
         self.assertEqual(len(report['cases']),14)
+        self.assertEqual(set(report['cases']),{'published-home-nav-footer','wrong-audience-token','wrong-credential','disabled-caller',
+            'expired-caller-token','revoked-caller-token','missing-grant','wrong-owner-or-context','neighbour-tenant',
+            'draft-or-preview','withdrawn-content','dependency-outage-and-restoration','validator-negatives','teardown'})
         cms_contract.validate(report,run)
         for change in (lambda r:r['cases'].pop('missing-grant'),lambda r:r.update(nab03_qualified=True),
             lambda r:r.update(protected_acceptance=True),lambda r:r['component_checks'].update(private_token=True),
             lambda r:r['cases']['teardown'].update(result='PASS')):
             bad=copy.deepcopy(report);change(bad)
             with self.assertRaises(ValueError):cms_contract.validate(bad,run)
+
+    def test_fourteen_pass_labels_cannot_replace_native_binding_and_audit_evidence(self):
+        report=cms_contract.fresh('a'*32)
+        for row in report['cases'].values():row.update(result='PASS',reason='OBSERVED')
+        report['nab03_qualified']=True;report['component_checks']['provider_declared_partial']=False
+        with self.assertRaises(ValueError):cms_contract.validate(report,'a'*32)
+        report['component_checks'].update({key:True for key in cms_contract.BOUND_COMPONENTS})
+        cms_contract.validate(report,'a'*32)
+        for key in cms_contract.BOUND_COMPONENTS:
+            changed=copy.deepcopy(report);changed['component_checks'][key]=False
+            with self.subTest(key=key),self.assertRaises(ValueError):cms_contract.validate(changed,'a'*32)
+
+    def test_preparation_failure_removes_previous_green_suite(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            for name in ('dev05-cms-suite.json','dev05-cms-suite.sha256.json'):(root/name).write_text('stale')
+            with patch.object(dev,'EVIDENCE',root),patch.object(ci_cms.cms_vertical,'prepare',side_effect=ValueError('private-bearer')),patch.object(dev,'recover'):
+                with self.assertRaisesRegex(dev.Refused,'^DEV05_PREPARATION_FAILED$'):ci_cms.main()
+            self.assertFalse((root/'dev05-cms-suite.json').exists())
+            self.assertFalse((root/'dev05-cms-suite.sha256.json').exists())
+
+    def test_owner_proof_uses_file_owner_without_public_or_root_override(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);run='a'*32
+            dev.write(root/'subjects.json',{'maker':'maker','checker':'checker'})
+            dev.write(root/'cms-source.json',{'source_sha':'b'*40})
+            state={'uid':1234,'gid':1235,'run_id':run,'bootstrap_lease':300}
+            with patch.object(dev,'compose',return_value=json.dumps({'run_id':run})) as compose:
+                cms_vertical.owner_fixture(root,state,'register')
+            args=compose.call_args.args
+            self.assertEqual(args[args.index('--user')+1],'1234:1235')
+            self.assertEqual(args[args.index('--volume')+1],cms_vertical.adapter.host(root/'cms-source.json')+':/cms-source.json:ro')
+            self.assertEqual((root/'cms-source.json').stat().st_mode & 0o777,0o600)
+
+    def test_native_read_audit_requires_independent_matching_cp_decision(self):
+        run='a'*32
+        owner={'tenant_id':'tn_fixture','grant_id':'1'*32,'binding_id':'2'*32,'provider_id':'3'*32,'engine_instance_id':'4'*32}
+        proof={'grant_id':'grant_'+'1'*32,'binding_id':'bind_'+'2'*32,'provider_id':'provider_'+'3'*32,
+            'engine_instance_id':'ei_'+'4'*32,'resolution_id':'res_'+'5'*32,'context_id':'actual-context',
+            'content_key':'home','record_id':'actual-record'}
+        audit={'count':1,'latest':{'actor_id':cms_vertical.CONSUMER,'resource_id':'actual-record','correlation_id':'actual-correlation','resulting_state':proof}}
+        with patch.object(dev,'read',return_value=owner),patch.object(cms_vertical,'read_audit',return_value=audit), \
+             patch.object(dev,'compose',return_value='f') as compose:
+            with self.assertRaisesRegex(dev.Refused,'DEV05_INDEPENDENT_CP_AUDIT_REQUIRED'):
+                cms_vertical.verify_audit(Path('/private'),{'run_id':run})
+            sql=compose.call_args.args[-1]
+            self.assertIn("context_id='actual-context'",sql)
+            self.assertIn("correlation_id::text='actual-correlation'",sql)
 
     def test_bff_epoch_matches_nabhold_store_and_preserves_all_run_bits(self):
         # Nabhold permits a lowercase initial letter and at most 32 characters.

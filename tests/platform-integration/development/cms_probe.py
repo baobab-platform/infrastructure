@@ -1,6 +1,7 @@
 """Private actual CMS/Nabhold protocol driver. No provider activation is inferred."""
 import http.cookiejar
 import html
+from html.parser import HTMLParser
 import urllib.error
 import json
 import os
@@ -60,9 +61,11 @@ def clients():
     os.replace(p.ROOT/'.native.tmp',p.ROOT/'native.json')
 
 
-def token(name=CONSUMER,audience='baobab-cms',scope='content:entry:resolve',secret=None):
+def token(name=CONSUMER,audience=None,scope='context:resolve content:entry:resolve',secret=None):
     native=p.read('native.json');credential=native['clients'][name]['secret'] if secret is None else secret
-    code,body,_=p.request('POST',p.ISSUER+'/oauth2/token',{'grant_type':'client_credentials','client_id':name,'client_secret':credential,'audience':audience,'scope':scope},form=True)
+    audiences=[audience] if audience else ['baobab-control-plane','baobab-cms']
+    fields=[('grant_type','client_credentials'),('client_id',name),('client_secret',credential),('scope',scope)]+[('audience',value) for value in audiences]
+    code,body,_=p.request('POST',p.ISSUER+'/oauth2/token',fields,form=True)
     p.require(code==200 and body.get('access_token'),'SIGNED_TOKEN_ISSUANCE');return body['access_token']
 
 def status(bearer):
@@ -162,7 +165,27 @@ def record_failure_class(result, key):
     return 'UNEXPECTED'
 
 
-def estate_page(expected):
+def rendered_markers(text,expected):
+    """Prove rendered content, not a matching metadata or RSC payload string."""
+    class Content(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True);self.active=[];self.ignored=0;self.parts={'h1':[],'footer':[]}
+        def handle_starttag(self,tag,attrs):
+            if tag in self.parts:self.active.append(tag)
+            if tag in ('script','style'):self.ignored+=1
+        def handle_endtag(self,tag):
+            if tag in ('script','style'):self.ignored=max(0,self.ignored-1)
+            if tag in self.active:self.active.remove(tag)
+        def handle_data(self,data):
+            if not self.ignored:
+                for tag in self.active:self.parts[tag].append(data)
+    parsed=Content();parsed.feed(text);parsed.close()
+    normal=lambda value:' '.join(value.split())
+    return len(expected)==2 and all(normal(marker) in normal(''.join(parsed.parts[tag]))
+        for tag,marker in zip(('h1','footer'),expected))
+
+
+def estate_page(expected,absent=False):
     """Bounded private HTML observation; only booleans enter custody.
 
     Next may commit an HTML error response before an async failure is rendered,
@@ -176,7 +199,7 @@ def estate_page(expected):
         code=response.status;raw=response.read(1024*1024+1)
     p.require(len(raw)<=1024*1024)
     text=raw.decode('utf-8','strict')
-    return code,all(html.escape(value) in text for value in expected)
+    return code,all(html.escape(value) not in text for value in expected) if absent else rendered_markers(text,expected)
 
 
 def bff(report):
@@ -246,7 +269,7 @@ def main(action):
                 continue
         print(json.dumps(result));return
     value=report();current={'initial':'published-home-nav-footer','draft':'draft-or-preview','withdraw':'withdrawn-content',
-        'outage':'dependency-outage-and-restoration','restored':'dependency-outage-and-restoration','finish':'disabled-caller'}.get(action,'published-home-nav-footer')
+        'outage':'dependency-outage-and-restoration','restored':'dependency-outage-and-restoration','finish':'disabled-caller','unentitled':'missing-grant','revoked-grant':'missing-grant'}.get(action,'published-home-nav-footer')
     def record(case,ok):
         nonlocal current
         current=case;ok=ok() if callable(ok) else ok;p.require(ok,'DEV05_ASSERTION_FAILED');value['cases'][case]={'result':'PASS','reason':'OBSERVED'};checkpoint(value)
@@ -274,25 +297,20 @@ def main(action):
             declaration=(p.ROOT/'sources/baobab-cms/.baobab/capability-provider.yaml').read_text()
             partial='implementation_status: PARTIAL' in declaration
             value['component_checks']['provider_declared_partial']=partial
-            if partial or decision.get('decision')!='RESOLVED':
-                p.require(code==200 and decision.get('decision')=='DENIED' and not decision.get('invocation'))
-                value['component_checks']['canonical_capability_denied']=True
-                value['cases']['published-home-nav-footer']={'result':'BLOCKED','reason':'PROVIDER_NOT_ELIGIBLE'}
-                value['cases']['missing-grant']={'result':'BLOCKED','reason':'CANONICAL_CAPABILITY_NOT_RESOLVED'}
-                # The actual estate must fail closed rather than serve defaults.
-                _,visible=estate_page(expected);p.require(not visible)
-                value['component_checks']['estate_canonical_path_unavailable']=True
-            else:
-                p.require(code==200 and decision.get('invocation'))
-                estate_status,visible=estate_page(expected);p.require(estate_status==200 and visible)
-                record('published-home-nav-footer',lambda:True)
-                # A separate real tenant/context lacking this grant is the
-                # control. An unknown capability is not a missing-grant proof.
-                other=next(e for e in bootstrap['enterprises'] if e['key']=='zuribeans')
-                separate=p.token(other['client_id'],native);code,otherctx,_=p.context(separate,other);p.require(code==200)
-                code,denied,_=p.request('POST',p.CP+'/v1/capabilities/resolve',{'context_id':otherctx['context_id'],
-                    'capability_key':'content.entry.resolve','required_contract_version':1,'correlation_id':str(uuid.uuid4())},separate)
-                record('missing-grant',lambda:code==200 and denied.get('decision')=='DENIED' and denied.get('reason_code')=='GRANT_NOT_FOUND' and not denied.get('invocation'))
+            p.require(not partial and 'implementation_status: COMPLETE' in declaration)
+            owner=p.read('cms-capability.json')
+            p.require(code==200 and decision.get('decision')=='RESOLVED' and decision.get('grant_id')=='grant_'+owner['grant_id'].replace('-','')
+                and decision.get('binding_id')=='bind_'+owner['binding_id'].replace('-','')
+                and decision.get('invocation',{}).get('provider_id')=='provider_'+owner['provider_id'].replace('-','')
+                and decision.get('invocation',{}).get('engine_instance_id')=='ei_'+owner['engine_instance_id'].replace('-',''))
+            value['component_checks']['current_capability_authority']=True
+            stage('ESTATE_PUBLISHED_CONTENT')
+            estate_status,visible=estate_page(expected)
+            print('DEV05_ESTATE_HTTP='+str(estate_status)+'_MARKERS_'+('PRESENT' if visible else 'ABSENT'),flush=True)
+            p.require(estate_status==200 and visible)
+            value['component_checks']['estate_bound_content_visible']=True
+            p.write('cms-published-markers.json',expected)
+            record('published-home-nav-footer',lambda:True)
             record('wrong-audience-token',lambda:deny(resolve(cp_token,ctx['context_id']),'AUTHENTICATION_REQUIRED',401))
             record('wrong-credential',lambda:deny(resolve('invalid-credential',ctx['context_id']),'AUTHENTICATION_REQUIRED',401))
             # Actual short lifespan, not an edited signed token.
@@ -317,6 +335,22 @@ def main(action):
             current='validator-negatives'
             code,actual,_=p.request('POST',p.CP+'/v1/platform-context/validate',{'context_id':ctx['context_id'],'subject_token':'invalid.subject.bearer'},validator)
             record('validator-negatives',lambda:code==401 and actual.get('code')=='SUBJECT_TOKEN_INVALID' and deny(resolve(fresh,str(uuid.uuid4())),'CONTENT_CONTEXT_REJECTED',403))
+        elif action in ('unentitled','revoked-grant'):
+            p.require(value['cases']['published-home-nav-footer']['result']=='PASS')
+            owner=p.read('cms-capability.json')
+            if action=='unentitled':p.require(not owner['source_present'] and owner['grant_active'] and owner['binding_active'])
+            else:p.require(owner['source_active'] and not owner['grant_active'] and owner['binding_active'])
+            cp_token,ctx=context();bearer=token()
+            code,denied,_=p.request('POST',p.CP+'/v1/capabilities/resolve',{'context_id':ctx['context_id'],
+                'capability_key':'content.entry.resolve','required_contract_version':1,'correlation_id':str(uuid.uuid4())},cp_token)
+            p.require(code==200 and denied.get('decision')=='DENIED' and denied.get('reason_code')==('GRANT_NOT_FOUND' if action=='unentitled' else 'GRANT_REVOKED') and not denied.get('invocation'))
+            for _ in range(2):p.require(deny(resolve(bearer,ctx['context_id']),'CONTENT_CONTEXT_REJECTED',403))
+            _,absent=estate_page(p.read('cms-published-markers.json'),absent=True);p.require(absent)
+            value['component_checks'].update(canonical_capability_denied=True,estate_canonical_path_unavailable=True)
+            if action=='unentitled':record('missing-grant',lambda:True)
+        elif action=='rebound':
+            _,ctx=context();p.require(published(resolve(token(),ctx['context_id']),'home'))
+            code,visible=estate_page(p.read('cms-published-markers.json'));p.require(code==200 and visible)
         elif action=='draft':
             _,ctx=context();bearer=token()
             record('draft-or-preview',lambda:deny(resolve(bearer,ctx['context_id'],preview=True),'CONTENT_PREVIEW_NOT_PERMITTED',403) and empty(resolve(bearer,ctx['context_id'])))

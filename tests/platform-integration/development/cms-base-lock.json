@@ -1,0 +1,21 @@
+{
+  "schema": "infrastructure.development-lifecycle.v1",
+  "profile": "iam-cp-development",
+  "authority": "ADR-SHARED-043",
+  "infrastructure_baseline": "ad3c501932db7b5e5cfb5a3a5bab0c47ada44318",
+  "sources": {
+    "shared": "0d95d9c546caae570a20cce7187c8dfbc18c4b68",
+    "baobab-cp": "8cab5cc534ffce1d7b3e64b625d8214eb810c4c1",
+    "baobab-iam": "0ad103606b9705fcb33c468ea01b54d8ce76f9ae"
+  },
+  "images": {
+    "postgres": "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+    "probe": "python@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c",
+    "edge": "nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
+    "hydra": "oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9",
+    "kratos": "oryd/kratos:v26.2.0@sha256:2a13bb8d362c7a7ae33bd7c0f5168aee46921f15c916a06346db91c06dc76643"
+  },
+  "max_lease_seconds": 3600,
+  "synthetic_only": true,
+  "protected_acceptance": false
+}

@@ -18,6 +18,7 @@ import sys
 import adapter
 import dev
 import cms_contract
+import external_oci
 
 BASE=Path(__file__).resolve().parent
 CONSUMER='baobab-int03-cms-consumer'
@@ -72,7 +73,7 @@ def lock():
 
 def prepare():
     print('DEV05_PHASE=PREPARE',flush=True)
-    run=dev.prepare();directory,state=dev.current(run);value=lock()
+    run=dev.prepare(lock_name='cms-base-lock.json');directory,state=dev.current(run);value=lock()
     state['runtime_images'].update({key:value[key] for key in ('redis','node','frontend')})
     state['cms_lock_sha256']=hashlib.sha256((BASE/'cms-lock.json').read_bytes()).hexdigest()
     state['cms']=cms_contract.fresh(run)
@@ -106,6 +107,15 @@ def up(run):
         dev.call([*args,str(directory/'sources/baobab-cms')],timeout=1800,state=state)
         state['image_ids'][name]=dev.call(['docker','image','inspect',image,'--format','{{.Id}}'])
         dev.persist(directory,state,'RUNNING')
+    # Publish actual saved runtime config/layers using the DEV-06 OCI proof.
+    # A tag or image/config ID is not an OCI manifest digest.
+    archive=directory/'cms-image.tar'
+    dev.call(['docker','image','save','--output',str(archive),state['images']['cms']],timeout=180,state=state)
+    manifest=external_oci.publish(archive,directory/'cms-oci',state['image_ids']['cms']);archive.unlink()
+    dev.write(directory/'cms-source.json',{'source_sha':state['sources']['baobab-cms'],'manifest_digest':manifest,
+        'declaration_digest':'sha256:'+hashlib.sha256((directory/'sources/baobab-cms/.baobab/capability-provider.yaml').read_bytes()).hexdigest()})
+    state['cms_oci_manifest_digest']=manifest;dev.persist(directory,state,'RUNNING')
+    authority=owner_fixture(directory,state,'register')
     print('DEV05_PHASE=ESTATE_IMAGE',flush=True)
     image=state['project']+'-nabhold';state['images']['nabhold']=image;dev.persist(directory,state,'RUNNING')
     with package_access(directory,state) as (build_env,tokenfile):
@@ -129,6 +139,8 @@ def up(run):
       'PAYLOAD_SECRET':secret['cms_payload'],'BAOBAB_ENVIRONMENT':'ci','CI':'true','NODE_ENV':'production',
       'CMS_INT03_FIXTURE':'synthetic-disposable','CMS_INT03_RUN_ID':run[:16],'CMS_INT03_REFERENCE_DECLARATION':declaration,
       'CMS_TOKEN_ISSUER':adapter.ISSUER,'CMS_TOKEN_AUDIENCE':'baobab-cms','CMS_TOKEN_JWKS_URL':adapter.ISSUER+'/.well-known/jwks.json',
+      'CMS_CAPABILITY_PROVIDER_ID':'provider_'+authority['provider_id'].replace('-',''),
+      'CMS_ENGINE_INSTANCE_ID':'ei_'+authority['engine_instance_id'].replace('-',''),
       'CONTROL_PLANE_URL':'https://cp.baobab-dev.test','CMS_CONTEXT_VALIDATOR_MODE':'development-proof',
       'CMS_WORKLOAD_ENVIRONMENT':'development','CMS_WORKLOAD_CLIENT_ID':VALIDATOR,'CMS_WORKLOAD_CLIENT_SECRET':secret['cms_validator'],
       'CMS_WORKLOAD_TOKEN_ENDPOINT':adapter.ISSUER+'/oauth2/token','CMS_WORKLOAD_INTROSPECTION_ENDPOINT':adapter.ISSUER+'/oauth2/introspect/dev05',
@@ -152,6 +164,7 @@ def up(run):
       'NABHOLD_WORKLOAD_INTROSPECTION_ENDPOINT':adapter.ISSUER+'/oauth2/introspect/dev05','NABHOLD_WORKLOAD_CLIENT_SECRET':secret['cms_consumer'],
       'NABHOLD_CMS_PROOF_DEADLINE':deadline,'BAOBAB_CONTROL_PLANE_API_URL':'https://cp.baobab-dev.test',
       'NABHOLD_CONTENT_TENANT_ID':refs['tenant'],'NABHOLD_CONTENT_ORGANISATION_ID':refs['organisation'],
+      'NABHOLD_CONTENT_LEGAL_ENTITY_ID':refs['legalEntity'],
       'NABHOLD_CONTENT_COUNTRY_CODE':'ZA','NABHOLD_CONTENT_DIGITAL_ESTATE_ID':refs['digitalEstate'],
       'NABHOLD_CONTENT_MARKET_ID':refs['market'],'NABHOLD_SERVICE_ORIGINS':json.dumps({'baobab-cms':CMS}),
       'NEXT_PUBLIC_SITE_URL':ESTATE}}
@@ -191,6 +204,7 @@ def up(run):
             pass
         time.sleep(2)
     else:raise dev.Refused('DEV05_SERVICES_UNAVAILABLE')
+    owner_fixture(directory,state,'activate')
     dev.test(run)
     directory,state=dev.current(run)
     verify_runtime(directory,state)
@@ -228,7 +242,12 @@ def qualify(run):
     directory,state=dev.current(run);dev.verify_sources(directory,state)
     dev.require(state['cms_lock_sha256']==hashlib.sha256((BASE/'cms-lock.json').read_bytes()).hexdigest(),'DEV05_SOURCE_DRIFT')
     verify_runtime(directory,state)
-    state['cms']=cms_contract.fresh(run);dev.persist(directory,state,'TESTED')
+    state['cms']=cms_contract.fresh(run)
+    state['cms']['component_checks'].update(normal_provider_activation=True,actual_oci_publication=True)
+    dev.persist(directory,state,'TESTED')
+    owner_fixture(directory,state,'read')
+    # Retry cannot reuse a former green probe report.
+    dev.write(directory/'cms-report.json',state['cms'])
     try:
         # Execute the *maintained* CMS token provider in the same isolated
         # toolchain/environment/network before delivery probes. A fixed result
@@ -245,6 +264,26 @@ def qualify(run):
         print(observed if observed in {'DEV05_CMS_VALIDATOR=READY','DEV05_CMS_VALIDATOR=UNAVAILABLE'}
               else 'DEV05_CMS_VALIDATOR=UNAVAILABLE',flush=True)
         for action in ('initial','draft','withdraw','outage','finish'):
+            if action=='draft':
+                verify_audit(directory,state)
+                before=read_audit(directory,state)['count']
+                owner_fixture(directory,state,'unentitled')
+                dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','revoked-grant',timeout=90)
+                dev.require(read_audit(directory,state)['count']==before,'DEV05_DENIED_RESOURCE_EFFECT')
+                owner_fixture(directory,state,'regrant')
+                dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','rebound',timeout=90)
+                verify_audit(directory,state)
+                before=read_audit(directory,state)['count']
+                # Keep the original GRANT_NOT_FOUND case distinct from an
+                # existing grant's GRANT_REVOKED control. Removing this owned
+                # source makes its grant ineligible through current provenance.
+                owner_fixture(directory,state,'absent')
+                dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','unentitled',timeout=90)
+                dev.require(read_audit(directory,state)['count']==before,'DEV05_DENIED_RESOURCE_EFFECT')
+                report=dev.read(directory/'cms-report.json');report['component_checks']['denied_resource_no_read_effect']=True;dev.write(directory/'cms-report.json',report)
+                owner_fixture(directory,state,'restore')
+                dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','rebound',timeout=90)
+                verify_audit(directory,state)
             if action=='draft':fixture(directory,state,'draft')
             if action=='withdraw':fixture(directory,state,'withdraw')
             if action=='outage':
@@ -253,8 +292,98 @@ def qualify(run):
             if action=='outage':
                 dev.compose(directory,state,'up','-d','cp');time.sleep(3)
                 dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','restored',timeout=30)
+    except Exception:
+        estate_diagnostics(directory,state)
+        raise
     finally:
         if (directory/'cms-report.json').exists():
             report=dev.read(directory/'cms-report.json');cms_contract.validate(report,run);state['cms']=report;dev.persist(directory,state,'TESTED')
     return state['cms']
 
+
+def owner_fixture(directory,state,phase):
+    subjects=dev.read(directory/'subjects.json')
+    print('DEV05_PHASE=OWNER_'+phase.upper(),flush=True)
+    raw=dev.compose(directory,state,'run','--rm','--no-deps','--user',str(state['uid'])+':'+str(state['gid']),
+        '--volume',adapter.host(directory/'cms-source.json')+':/cms-source.json:ro','-e','BAOBAB_DEV_BOOTSTRAP_ENABLED=true',
+        '--entrypoint','/development-bootstrap','cp','--run-id',state['run_id'],'--issuer',adapter.ISSUER,
+        '--maker-subject',subjects['maker'],'--checker-subject',subjects['checker'],'--lease',str(state['bootstrap_lease'])+'s',
+        '--cms-capability-phase',phase,'--cms-capability-source','/cms-source.json',timeout=120)
+    actual=json.loads(raw.splitlines()[-1]);dev.require(actual['run_id']==state['run_id'],'DEV05_OWNER_FIXTURE_IDENTITY')
+    if phase in ('activate','regrant','restore','read'):
+        dev.require(all(actual[k] for k in ('source_present','source_active','grant_active','binding_active','projection_current','provider_active')),'DEV05_NORMAL_AUTHORITY_REQUIRED')
+    dev.write(directory/'cms-capability.json',actual)
+    return actual
+
+
+def literal(value):
+    return "'"+value.replace("'","''")+"'"
+
+
+def read_audit(directory,state):
+    owner=dev.read(directory/'cms-capability.json')
+    where="tenant="+literal(owner['tenant_id'])+" AND action='content.entry.resolve' AND outcome='ALLOWED'"
+    # Metadata reads may finish last. Verify a core NAB-03 content audit while
+    # counting every allowed read for the denial/no-effect comparison.
+    sql="SELECT json_build_object('count',(SELECT count(*) FROM payload.audit_logs WHERE "+where+"),'latest',(SELECT row_to_json(a) FROM (SELECT actor_id,correlation_id,resource_id,resulting_state FROM payload.audit_logs WHERE "+where+" AND resulting_state->>'content_key' IN ('home','navigation','footer') ORDER BY created_at DESC,id DESC LIMIT 1) a))"
+    raw=dev.compose(directory,state,'exec','-T','cms-db','psql','-U','payload','-d','cms_int03_'+state['run_id'][:16],'-tAc',sql)
+    return json.loads(raw)
+
+
+def verify_audit(directory,state):
+    owner=dev.read(directory/'cms-capability.json');actual=read_audit(directory,state);last=actual['latest']
+    dev.require(actual['count']>0 and isinstance(last,dict) and last['actor_id']==CONSUMER,'DEV05_NATIVE_READ_AUDIT_REQUIRED')
+    proof=last['resulting_state']
+    expected={'grant_id':'grant_'+owner['grant_id'].replace('-',''),'binding_id':'bind_'+owner['binding_id'].replace('-',''),
+        'provider_id':'provider_'+owner['provider_id'].replace('-',''),'engine_instance_id':'ei_'+owner['engine_instance_id'].replace('-','')}
+    dev.require(all(proof.get(k)==v for k,v in expected.items()) and proof.get('content_key') in {'home','navigation','footer'}
+        and proof.get('record_id')==last['resource_id'] and isinstance(proof.get('resolution_id'),str)
+        and re.fullmatch(r'res_[0-9a-f]{32}',proof['resolution_id']),'DEV05_NATIVE_READ_AUDIT_IDENTITY')
+    clauses=["decision='RESOLVED'","capability_key='content.entry.resolve'","resolution_id="+literal(proof['resolution_id']),
+        "tenant_id="+literal(owner['tenant_id']),"context_id="+literal(proof['context_id']),"correlation_id::text="+literal(last['correlation_id'])]
+    clauses += [key+'::text='+literal(owner[key]) for key in ('grant_id','binding_id','provider_id','engine_instance_id')]
+    sql='SELECT EXISTS(SELECT 1 FROM capability.capability_resolution WHERE '+' AND '.join(clauses)+')'
+    found=dev.compose(directory,state,'exec','-T','cp-db','psql','-U','baobab_dev','-d','baobab_dev_'+state['run_id'],'-tAc',sql)
+    dev.require(found=='t','DEV05_INDEPENDENT_CP_AUDIT_REQUIRED')
+    report=dev.read(directory/'cms-report.json');report['component_checks'].update(native_read_audit_persisted=True,independent_cp_resolution_readback=True)
+    dev.write(directory/'cms-report.json',report)
+
+
+
+def estate_diagnostics(directory,state):
+    """Classify captured private logs; never publish lines or error bodies."""
+    try:
+        raw=dev.compose(directory,state,'logs','--no-color','--tail','200','nabhold',timeout=15)
+    except Exception:
+        print('DEV05_ESTATE_DIAGNOSTIC=UNAVAILABLE',flush=True);return
+    keys={'home','navigation','footer','site-settings','group-profile'}
+    outcomes={'none','unavailable:PROVIDER_SCOPE_REJECTED','unavailable:PROVIDER_RECORD_REJECTED',
+        'unavailable:RECORD_DATA_INVALID','unavailable:CONTENT_TOKEN_UNAVAILABLE',
+        'unavailable:CAPABILITY_NOT_RESOLVED','unavailable:CAPABILITY_UNAVAILABLE',
+        'unavailable:CONTEXT_UNAVAILABLE','unavailable:PROVIDER_UNREACHABLE',
+        'unavailable:PROVIDER_RESPONSE_INVALID','unavailable:PROVIDER_RESPONSE_NOT_JSON',
+        'unavailable:PROOF_WINDOW_CLOSED'} | {'unavailable:PROVIDER_HTTP_'+str(c) for c in (400,401,403,404,500,502,503,504)}
+    seen=set()
+    diagnostic_markers={
+        'NABHOLD_DEV05_WORKLOAD='+audience+'_'+phase for audience in ('CP','CMS')
+        for phase in ('TOKEN_REQUEST','TOKEN_RESPONSE','INTROSPECTION_CLAIMS','AUDIENCES','EXPIRY_SUBJECT','EXPIRY_CURRENT','EXPIRY_DEADLINE','EXPIRY_ISSUANCE','SUBJECT')
+    } | {'NABHOLD_DEV05_CONTEXT='+phase for phase in ('TOKEN','RESPONSE_SHAPE','FRESHNESS')} | {
+        'NABHOLD_DEV05_CAPABILITY='+phase for phase in ('TRANSPORT','BODY','CONTRACT','REQUEST_BINDING','EXPIRY','VERSION',
+            'PROTOCOL','SERVICE_MAPPING','ORIGIN','SERVICE_REFERENCE','ROUTE','AUTH_OR_UNAVAILABLE',
+            'DECISION_DENIED','DECISION_UNAVAILABLE','DECISION_AMBIGUOUS','DECISION_INCOMPATIBLE')}
+    for line in raw.splitlines():
+        for marker in diagnostic_markers:
+            if re.search(r'(?<![A-Z0-9_=])'+re.escape(marker)+r'(?![A-Z0-9_=])',line):seen.add(marker)
+
+        start=line.find('{"event":"content.capability"')
+        if start>=0:
+            try:value=json.loads(line[start:])
+            except (ValueError,TypeError):continue
+            if value.get('key') in keys and value.get('outcome') in outcomes:
+                seen.add(value['key'].upper().replace('-','_')+'_'+value['outcome'].upper().replace(':','_'))
+    for fixed,label in [('Required published content incomplete','INCOMPLETE_CONTENT'),
+        ('Required published content unavailable','UNAVAILABLE_CONTENT'),
+        ('Failed to download `Inter`','FONT_FETCH_FAILED'),
+        ('Module not found','MODULE_UNAVAILABLE')]:
+        if fixed in raw:seen.add(label)
+    for label in sorted(seen or {'UNCLASSIFIED'}):print('DEV05_ESTATE_DIAGNOSTIC='+label,flush=True)

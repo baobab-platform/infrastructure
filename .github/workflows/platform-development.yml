@@ -61,7 +61,7 @@ jobs:
             --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
             --remote-env BAOBAB_ENVIRONMENT=development \
             python3 -B tests/platform-integration/development/ci_int03c.py
-      - name: Observe DEV-05 native CMS and BFF with precise canonical blockers
+      - name: Qualify all fourteen NAB-03 cases with current CMS authority
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           DEV05_NPM_TOKEN: ${{ github.token }}
