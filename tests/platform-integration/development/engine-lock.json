@@ -8,7 +8,7 @@
     },
     "payments-sandbox": {
       "repository": "baobab-payments",
-      "source_sha": "e821889161ca90d29413f121ac0fd12114451fe5",
+      "source_sha": "65ea800f03cfe3ebb7f12a47f54b78607804bb41",
       "profile_path": "development/v1/examples/engines/payments-sandbox.json"
     }
   },
