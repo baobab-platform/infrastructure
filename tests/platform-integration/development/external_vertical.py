@@ -178,7 +178,11 @@ def qualify(run):
 
 def owner_fixture(directory,state,phase):
     subjects=dev.read(directory/'subjects.json')
-    raw=dev.compose(directory,state,'run','--rm','--no-deps','--volume',adapter.host(directory/'external-source.json')+':/external-source.json:ro',
+    # The proof is a private 0600 inode owned by the development operator.
+    # Match that unprivileged identity for this one-shot CP command rather
+    # than making the proof public or running the provider as root.
+    print('DEV06_PHASE=OWNER_'+phase.upper(),flush=True)
+    raw=dev.compose(directory,state,'run','--rm','--no-deps','--user',str(state['uid'])+':'+str(state['gid']),'--volume',adapter.host(directory/'external-source.json')+':/external-source.json:ro',
         '-e','BAOBAB_DEV_BOOTSTRAP_ENABLED=true','--entrypoint','/development-bootstrap','cp','--external-api',
         '--run-id',state['run_id'],'--issuer',adapter.ISSUER,'--maker-subject',subjects['maker'],'--checker-subject',subjects['checker'],
         '--lease',str(state['bootstrap_lease'])+'s','--external-capability-phase',phase,'--external-capability-source','/external-source.json',timeout=120)
@@ -206,3 +210,4 @@ def verify_audit(directory,state):
     report=dev.read(directory/'external-report.json');report['component_checks'].update(resource_audit_persisted=True,independent_cp_resolution_readback=True)
     dev.write(directory/'external-report.json',report)
     return actual
+

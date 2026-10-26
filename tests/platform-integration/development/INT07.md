@@ -140,3 +140,24 @@ INT-07-API acceptance matrix's separately certified-provider requirement, EA-09,
 protected acceptance and production permission are not manufactured by permissive
 nonproduction release approval. Qualification flags remain false until their
 independent gates are satisfied. DEV-10 remains paused.
+
+## Private proof ownership and failed-run diagnosis
+
+Run 40256362565 built Pulse and published its OCI manifest, but did not reach
+provider startup or acceptance. Its original completed receipt records host
+teardown as verified and runtime identity as unverified. These are separate
+observations; failed startup must not be diagnosed as failed cleanup.
+
+The source proof is written with mode 0600 by the development operator. The
+one-shot CP fixture command must use that operator's UID/GID to read the mounted
+proof; the CP image's default nonroot UID is different in Codespaces. The mount
+remains read-only, the proof remains private, and the normal CP service keeps
+its image identity. No root or public-file workaround is required.
+
+The runner emits the closed execution error before recovery and marks each
+owner-fixture phase. It retains a hashed failed suite after verified host cleanup
+even when runtime identity was never established. That receipt cannot satisfy
+the eighteen-case exit. Raw subprocess output and arbitrary exception text stay
+out of public logs and artifacts. Container and independent host recovery still
+run on every workflow outcome.
+
