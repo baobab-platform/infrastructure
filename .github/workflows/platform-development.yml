@@ -34,6 +34,30 @@ jobs:
           persist-credentials: false
       - run: python3 -B tests/platform-integration/l4.py preflight development --static
       - run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_*.py' -v
+      - name: Checkout exact accepted Shared DEV-14 source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/shared
+          ref: 9fa1bbd6ad9b5c9d4ec406c721bd75227803dcea
+          path: .shared-dev14
+          persist-credentials: false
+      - name: Install pinned Shared validator dependencies
+        run: python3 -m pip install --disable-pip-version-check -r .shared-dev14/.github/foundation-tests/requirements.txt
+      - name: Plan both DEV-14 profiles without inventing native readiness
+        run: |
+          for profile in pulse-intelligence payments-sandbox; do
+            python3 -B tests/platform-integration/development/engine_onboarding.py plan \
+              --profile "$profile" --shared-root .shared-dev14 > "$RUNNER_TEMP/dev14-$profile.json"
+            python3 - "$RUNNER_TEMP/dev14-$profile.json" <<'PY'
+          import json,sys
+          x=json.load(open(sys.argv[1]))
+          assert x["result"]=="BLOCKED"
+          assert x["eng_onb_runtime_cases"]=="NOT_EXECUTED"
+          assert x["protected_acceptance"] is False
+          assert x["production_authorized"] is False
+          assert {"iam","control-plane","subject"} <= set(x["required_service_order"])
+          PY
+          done
   runtime:
     name: DEV-01 real IAM CP bootstrap and recoverable teardown
     needs: source
