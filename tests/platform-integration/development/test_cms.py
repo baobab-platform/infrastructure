@@ -23,6 +23,16 @@ class CMSContracts(unittest.TestCase):
             'DEV05_ESTATE_DIAGNOSTIC=HOME_UNAVAILABLE_CAPABILITY_NOT_RESOLVED',
             'DEV05_ESTATE_DIAGNOSTIC=UNAVAILABLE_CONTENT'])
 
+    def test_estate_requires_rendered_heading_and_footer_not_metadata_or_serialized_data(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        expected=['Synthetic & current','Native footer']
+        self.assertTrue(probe.rendered_markers('<h1><span>Synthetic &amp; current</span></h1><footer><p>Native footer</p></footer>',expected))
+        for page in ('<title>Synthetic &amp; current</title><footer>Native footer</footer>',
+                     '<h1>Synthetic &amp; current</h1><script>Native footer</script>',
+                     '<h1>Other</h1><footer>Native footer</footer><script>Synthetic &amp; current</script>'):
+            self.assertFalse(probe.rendered_markers(page,expected))
+
     def test_issuer_client_readback_uses_native_duration_and_rejects_changed_ttl(self):
         with patch('ssl.create_default_context',return_value=SimpleNamespace()):
             probe=importlib.import_module('cms_probe')

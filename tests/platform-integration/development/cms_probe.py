@@ -1,6 +1,7 @@
 """Private actual CMS/Nabhold protocol driver. No provider activation is inferred."""
 import http.cookiejar
 import html
+from html.parser import HTMLParser
 import urllib.error
 import json
 import os
@@ -164,6 +165,26 @@ def record_failure_class(result, key):
     return 'UNEXPECTED'
 
 
+def rendered_markers(text,expected):
+    """Prove rendered content, not a matching metadata or RSC payload string."""
+    class Content(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True);self.active=[];self.ignored=0;self.parts={'h1':[],'footer':[]}
+        def handle_starttag(self,tag,attrs):
+            if tag in self.parts:self.active.append(tag)
+            if tag in ('script','style'):self.ignored+=1
+        def handle_endtag(self,tag):
+            if tag in ('script','style'):self.ignored=max(0,self.ignored-1)
+            if tag in self.active:self.active.remove(tag)
+        def handle_data(self,data):
+            if not self.ignored:
+                for tag in self.active:self.parts[tag].append(data)
+    parsed=Content();parsed.feed(text);parsed.close()
+    normal=lambda value:' '.join(value.split())
+    return len(expected)==2 and all(normal(marker) in normal(''.join(parsed.parts[tag]))
+        for tag,marker in zip(('h1','footer'),expected))
+
+
 def estate_page(expected,absent=False):
     """Bounded private HTML observation; only booleans enter custody.
 
@@ -178,7 +199,7 @@ def estate_page(expected,absent=False):
         code=response.status;raw=response.read(1024*1024+1)
     p.require(len(raw)<=1024*1024)
     text=raw.decode('utf-8','strict')
-    return code,all(html.escape(value) not in text for value in expected) if absent else all(html.escape(value) in text for value in expected)
+    return code,all(html.escape(value) not in text for value in expected) if absent else rendered_markers(text,expected)
 
 
 def bff(report):
