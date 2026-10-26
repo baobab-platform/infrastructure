@@ -35,14 +35,16 @@ def observed(profile: str) -> bool:
     if profile == "pulse-intelligence":
         checks = doc.get("dependencies")
         return (doc.get("status") == "ready" and isinstance(checks, dict)
-                and checks.get("database") is True)
+                and checks.get("database") is True
+                and checks.get("semantic_retrieval") is True)
     return (doc.get("status") == "READY"
             and doc.get("environment") == "development"
-            and doc.get("payment_provider") == {"kind": "sandbox", "simulated": True}
+            and doc.get("payment_provider") == {"kind": "SANDBOX", "simulated": True}
             and doc.get("real_payments") == "NOT_CONFIGURED"
             and doc.get("store") == "in-memory"
             and isinstance(doc.get("checks"), dict)
-            and doc["checks"].get("payment_provider") == "UP")
+            and doc["checks"].get("payment_provider") == "UP"
+            and doc["checks"].get("store") == "UP")
 
 
 def main() -> int:

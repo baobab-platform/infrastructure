@@ -19,7 +19,6 @@ import secrets
 import sys
 import time
 
-import adapter
 import dev
 import dev15_compose
 import dev15_registry_overlay
@@ -64,6 +63,7 @@ def plan_native(run_id: str, profile_name: str, shared: Path) -> None:
     directory, state = dev.current(run_id)
     state["dev15_profile"] = profile_name
     state["dev15_owner_sha"] = sha
+    state["dev15_profile_sha256"] = receipt["source"]["profile_sha256"]
     state["dev15_native_component"] = "NOT_STARTED"
     dev.persist(directory, state, "PREPARED")
 
@@ -88,6 +88,7 @@ def build_and_run(run_id: str, shared: Path, name: str) -> dict:
     args = ["docker", "build", "--tag", image, "--file", str(source / filename)]
     for key, value in {**dev.labels(state), "org.opencontainers.image.revision": source_sha}.items():
         args.extend(["--label", key + "=" + value])
+    print("DEV15_PHASE=BUILD",flush=True)
     dev.call([*args, str(source)], state=state, timeout=1800)
     image_id = dev.call(["docker", "image", "inspect", image, "--format", "{{.Id}}"], state=state)
     dev.require(bool(dev15_compose.IMAGE_ID.fullmatch(image_id)),
@@ -137,6 +138,7 @@ def build_and_run(run_id: str, shared: Path, name: str) -> dict:
                     "DEV15_NATIVE_MIGRATION_NOT_OBSERVED")
     dev.compose(directory, state, "up", "-d", "dev15-subject", timeout=120)
 
+    print("DEV15_PHASE=NATIVE_HEALTH",flush=True)
     verified = False
     for _ in range(30):
         try:
@@ -148,7 +150,7 @@ def build_and_run(run_id: str, shared: Path, name: str) -> dict:
                 verified = True
                 break
         except (dev.Refused, ValueError, KeyError, TypeError):
-            pass
+            pass  # Transient startup failures cannot advance readiness; retry to deadline.
         time.sleep(2)
     dev.require(verified, "DEV15_NATIVE_COMPONENT_UNAVAILABLE")
 
@@ -184,16 +186,20 @@ def run_native(name: str, shared: Path, lease: int) -> int:
         lock_name = "external-base-lock.json" if name == "pulse-intelligence" else "lock.json"
         run_id = dev.prepare(lease=lease, lock_name=lock_name)
         with dev.guarded(run_id):
+            print("DEV15_PHASE=PLAN",flush=True)
             plan_native(run_id, name, shared)
+            print("DEV15_PHASE=BASE_UP",flush=True)
             dev.up(run_id)
             build_and_run(run_id, shared, name)
             # This only qualifies the already-existing generic DEV-01 base
             # lifecycle. No capability grant or ENG-ONB case is promoted.
+            print("DEV15_PHASE=BASE_TEST",flush=True)
             dev.test(run_id)
         return 0
     finally:
         if run_id is not None:
             with dev.guarded(run_id):
+                print("DEV15_PHASE=TEARDOWN",flush=True)
                 dev.down(run_id)
         # Host-owned resource labels must disappear even after exceptions.
         dev.recover()
@@ -209,8 +215,10 @@ def main(argv=None) -> int:
         result = run_native(args.profile, args.shared_root, args.lease_seconds)
         print("DEV15_NATIVE_COMPONENT_RUN_COMPLETED_NO_ENG_ONB_ACCEPTANCE")
         return result
-    except (dev.Refused, onboard.Refused, OSError, ValueError, KeyError, TypeError):
-        print("DEV15_NATIVE_RUN_BLOCKED", file=sys.stderr)
+    except (dev.Refused, onboard.Refused, OSError, ValueError, KeyError, TypeError) as error:
+        code=str(error) if isinstance(error,(dev.Refused,onboard.Refused)) else "INVALID_OR_UNAVAILABLE_STATE"
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]{2,79}",code):code="INVALID_OR_UNAVAILABLE_STATE"
+        print("DEV15_NATIVE_RUN_BLOCKED "+code, file=sys.stderr)
         return 2
 
 

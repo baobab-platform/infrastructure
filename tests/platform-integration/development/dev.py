@@ -625,6 +625,10 @@ def down(run_id):
             # The final receipt preserves source provenance but NEVER claims
             # that registered DEV-15 clients were issued by IAM or authorised.
             report['dev15_registry_sha256'] = state['dev15_registry_sha256']
+            report['dev15_registry_source_sha'] = state['dev15_registry_source_sha']
+            report['dev15_profile'] = state.get('dev15_profile')
+            report['dev15_profile_sha256'] = state.get('dev15_profile_sha256')
+            report['dev15_owner_sha'] = state.get('dev15_owner_sha')
             report['dev15_iam_issued'] = False
             report['dev15_eng_onb_qualified'] = False
             report['dev15_native_component'] = state.get('dev15_native_component', 'NOT_STARTED')

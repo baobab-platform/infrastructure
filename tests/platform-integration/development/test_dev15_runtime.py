@@ -1,7 +1,6 @@
 """DEV-15 runner keeps the real DEV-01 teardown and no authority shortcuts."""
 from contextlib import nullcontext
 import importlib.util
-import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
