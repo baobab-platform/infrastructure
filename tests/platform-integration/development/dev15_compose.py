@@ -112,6 +112,7 @@ def apply(profile: dict, base: dict, *, subject_image: str,
         })
         subject_env = {
             "PULSE_ENVIRONMENT": "development",
+            "BAOBAB_ENVIRONMENT": "development",
             "PULSE_DATABASE_URL": f"postgresql://pulse:{passwd}@pulse-db:5432/pulse",
             "PULSE_QDRANT_URL": "http://pulse-qdrant:6333",
             "PULSE_EMBEDDING_PROVIDER": "mock",
