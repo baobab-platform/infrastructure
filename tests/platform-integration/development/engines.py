@@ -350,7 +350,21 @@ def test(run):
                 phase_observed(report,engine_tool(directory,state,'restored'));break
             except (dev.Refused,ValueError):pass  # Readiness alone is insufficient.
             time.sleep(1)
-        else:raise dev.Refused('ENGINE_RECOVERY_UNOBSERVED')
+        else:
+            # An independently observed boundary diagnosis never supplies
+            # authority or changes a case result. Keep the original refusal.
+            try:
+                diagnostic=json.loads(dev.compose(directory,state,'exec','-T','probe','python','/engine_probe.py','diagnose',timeout=60).splitlines()[-1])
+                dev.require(set(diagnostic)=={'validation_http','context_matches','market_matches','capability_http','capability_resolved'} and
+                    type(diagnostic['validation_http']) is int and 100<=diagnostic['validation_http']<=599 and
+                    all(type(diagnostic[k]) is bool for k in ('context_matches','market_matches')) and
+                    isinstance(diagnostic['capability_http'],list) and isinstance(diagnostic['capability_resolved'],list) and
+                    len(diagnostic['capability_http'])==len(diagnostic['capability_resolved'])==len(state['engine_profile']['capabilities']) and
+                    all(type(v) is int and 100<=v<=599 for v in diagnostic['capability_http']) and
+                    all(type(v) is bool for v in diagnostic['capability_resolved']),'ENGINE_DIAGNOSTIC_REFUSED')
+                print('ENGINE_RECOVERY_AUTHORITY='+json.dumps(diagnostic,sort_keys=True),flush=True)
+            except (dev.Refused,ValueError,KeyError,TypeError):print('ENGINE_RECOVERY_AUTHORITY=UNAVAILABLE',flush=True)
+            raise dev.Refused('ENGINE_RECOVERY_UNOBSERVED')
         current=independent_effects(directory,state)
         for key in ('canonical_sets','missions','mutation_audits','outbox'):
             if key in baseline['effects']:dev.require(current['effects'][key]==baseline['effects'][key],'ENGINE_RECOVERY_CHANGED_CANONICAL_DATA')

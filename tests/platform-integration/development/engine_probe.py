@@ -41,6 +41,17 @@ def witness(state,descriptor,bootstrap):
 
 def main(action):
     state,descriptor,bootstrap=profile()
+    if action=='diagnose':
+        observed=p.read('engine-witness.json');context=observed['context'];caller=observed['caller_token']
+        code,validated,_=p.request('POST',p.CP+'/v1/platform-context/validate',{'context_id':context['context_id'],'subject_token':caller},token('validator'))
+        valid=isinstance(validated,dict)
+        expected_market=bootstrap['market_ids'][next(e for e in bootstrap['enterprises'] if e['key']==descriptor['enterprise_seed'])['markets'][0]]
+        report={'validation_http':code,'context_matches':valid and validated.get('context_id')==context['context_id'] and validated.get('tenant_id')==context['tenant_id'] and validated.get('authority_purpose')=='RUNTIME',
+            'market_matches':valid and validated.get('market_id')==expected_market,'capability_http':[],'capability_resolved':[]}
+        for cap in descriptor['capabilities']:
+            code,decision,_=p.request('POST',p.CP+'/v1/capabilities/resolve',{'context_id':context['context_id'],'capability_key':cap['capability_key'],'required_contract_version':cap['contract_version'],'correlation_id':str(uuid.uuid4())},caller)
+            report['capability_http'].append(code);report['capability_resolved'].append(isinstance(decision,dict) and decision.get('decision')=='RESOLVED')
+        print(json.dumps(report,sort_keys=True));return
     if action=='principal':
         bearer=token();claims=p.claims(bearer)
         code,status,_=p.request('POST',p.ISSUER+'/oauth2/introspect',{'token':bearer},form=True,basic=('baobab-dev-introspection',state['secrets']['introspection']))
