@@ -11,6 +11,9 @@ on:
       - 'tests/platform-integration/development/dev15_registry_overlay.py'
       - 'tests/platform-integration/development/dev15_compose.py'
       - 'tests/platform-integration/development/test_dev15_compose.py'
+      - 'tests/platform-integration/development/dev15_health.py'
+      - 'tests/platform-integration/development/test_dev15_runtime.py'
+      - 'tests/platform-integration/development/dev15_runtime.py'
       - '.github/workflows/dev15-first-adopters.yml'
   push:
     branches: [main]
@@ -85,6 +88,8 @@ jobs:
           PY
       - name: Verify private profile-driven native Compose graph
         run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev15_compose.py' -v
+      - name: Test real-native DEV-01 driver source, cleanup and protected refusal
+        run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev15_runtime.py' -v
       - name: Qualify native owner declarations without runtime promotion
         run: |
           python3 -B tests/platform-integration/development/dev15_source.py \
