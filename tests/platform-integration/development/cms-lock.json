@@ -1,8 +1,8 @@
 {
   "schema": "infrastructure.dev05.sources.v1",
   "sources": {
-    "baobab-cms": "7fa06c05f1512503e148dfa751bcbc7d124fe9a6",
-    "nabhold": "9ea9453d1154da1d12a9a05bd64b7173a1935bdd"
+    "baobab-cms": "d42c2d3a4ff0886e6bbec058bbb715539df46612",
+    "nabhold": "d168b8f19654597886fba0145c62ca44dc7884f5"
   },
   "redis": "redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
   "node": "node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",

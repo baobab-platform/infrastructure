@@ -21,7 +21,9 @@ def validate(report,run):
         if set(row)!={'result','reason'} or row['result'] not in {'PASS','BLOCKED','FAIL'} or row['reason'] not in REASONS:raise ValueError('DEV05_REPORT_INVALID')
         if (row['result']=='PASS')!=(row['reason']=='OBSERVED'):raise ValueError('DEV05_REPORT_INVALID')
     if not isinstance(report['component_checks'],dict) or any(k not in COMPONENTS or type(v) is not bool for k,v in report['component_checks'].items()):raise ValueError('DEV05_REPORT_INVALID')
-    if report['nab03_qualified'] and not all(row['result']=='PASS' for row in report['cases'].values()):raise ValueError('DEV05_REPORT_INVALID')
+    if report['nab03_qualified'] and (not all(row['result']=='PASS' for row in report['cases'].values())
+        or report['component_checks'].get('provider_declared_partial') is not False
+        or not all(report['component_checks'].get(key) is True for key in BOUND_COMPONENTS)):raise ValueError('DEV05_REPORT_INVALID')
     return report
 
 COMPONENTS={'native_cms_published_home_navigation_footer','native_bff_login_session','native_bff_logout_custody',
@@ -29,3 +31,6 @@ COMPONENTS={'native_cms_published_home_navigation_footer','native_bff_login_sess
  'issuer_readback_active','cp_validator_subject_accepted','wrong_audience_active','revoked_before_expiry',
  'fresh_after_revoke','disabled_principal_before_expiry','native_clients_deleted','native_tokens_inactive',
  'private_state_absent','owned_resources_absent','provider_outage_restored','cp_outage_observed','estate_canonical_path_unavailable'}
+BOUND_COMPONENTS={'normal_provider_activation','actual_oci_publication','current_capability_authority',
+    'native_read_audit_persisted','independent_cp_resolution_readback','denied_resource_no_read_effect','estate_bound_content_visible'}
+COMPONENTS |= BOUND_COMPONENTS

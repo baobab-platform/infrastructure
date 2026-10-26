@@ -103,11 +103,13 @@ class Hook(BaseHTTPRequestHandler):
         # Private run-owned OCI publication, not an identity or provider stub.
         # Only content-addressed actual built-image bytes can be read.
         import re, hashlib, shutil
-        match=re.fullmatch(r'/v2/baobab-pulse/(manifests|blobs)/sha256:([0-9a-f]{64})',self.path)
+        match=re.fullmatch(r'/v2/(baobab-pulse|baobab-cms)/(manifests|blobs)/sha256:([0-9a-f]{64})',self.path)
         try:
-            require(read('state.json').get('external_api') is True)
             require(match is not None)
-            kind,digest=match.groups();root=ROOT/'external-oci'
+            engine,kind,digest=match.groups();state=read('state.json')
+            if engine=='baobab-pulse':require(state.get('external_api') is True)
+            else:require(isinstance(state.get('cms'),dict) and state.get('cms_oci_manifest_digest'))
+            root=ROOT/('external-oci' if engine=='baobab-pulse' else 'cms-oci')
             path=root/'manifest.json' if kind=='manifests' else root/'blobs'/digest
             require(path.is_file())
             if kind=='manifests':require(hashlib.sha256(path.read_bytes()).hexdigest()==digest)
