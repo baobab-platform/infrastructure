@@ -132,8 +132,9 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                 if line in {'DEV06_RESOURCE_HTTP='+str(code) for code in (200,400,401,403,404,500,502,503,504)}:print(line,flush=True)
                 if line in {'DEV06_RESOURCE_CODE='+code for code in ('AUTH_TOKEN_INVALID','CAPABILITY_AUTHORITY_UNAVAILABLE','CAPABILITY_ACCESS_DENIED','CONTEXT_NOT_FOUND','PULSE_INTERNAL_ERROR','CAPABILITY_RUNTIME_UNAVAILABLE','SEMANTIC_RETRIEVAL_UNAVAILABLE')}:print(line,flush=True)
                 if line in {'DEV05_PROBE_STAGE='+name for name in ('BFF_LOGIN','BFF_KRATOS_FLOW','BFF_KRATOS_LOGIN','BFF_INITIATE','BFF_PKCE','BFF_AUTHORIZE','BFF_CALLBACK',
-                        'BFF_SESSION','BFF_LOGOUT','CMS_CONTEXT','CMS_RECORDS','CANONICAL_RESOLUTION')}:
+                        'BFF_SESSION','BFF_LOGOUT','CMS_CONTEXT','CMS_RECORDS','CANONICAL_RESOLUTION','ESTATE_PUBLISHED_CONTENT')}:
                     print(line,flush=True)
+                if re.fullmatch(r'DEV05_ESTATE_HTTP=[1-5][0-9]{2}_MARKERS_(PRESENT|ABSENT)',line):print(line,flush=True)
                 # Only static keys/reason classes may cross the native CMS
                 # runner boundary; actual responses and identity data stay private.
                 if re.fullmatch(r'DEV05_RECORD_DIAGNOSTIC=(HOME|NAVIGATION|FOOTER)_(CONFIG_NOT_READY|CALLER_STATUS_UNAVAILABLE|VALIDATOR_UNAVAILABLE|PROJECTION_UNAVAILABLE|CONTEXT_UNAVAILABLE|HTTP_500|HTTP_502|HTTP_503|HTTP_504|HTTP_DENIED|HTTP_UNAVAILABLE|INVALID_BODY|NO_RECORD|NOT_PUBLISHED|WRONG_CONTENT_KEY|WRONG_TENANT|UNEXPECTED)',line):

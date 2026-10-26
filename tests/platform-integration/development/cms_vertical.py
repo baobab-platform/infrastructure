@@ -282,6 +282,9 @@ def qualify(run):
             if action=='outage':
                 dev.compose(directory,state,'up','-d','cp');time.sleep(3)
                 dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','restored',timeout=30)
+    except Exception:
+        estate_diagnostics(directory,state)
+        raise
     finally:
         if (directory/'cms-report.json').exists():
             report=dev.read(directory/'cms-report.json');cms_contract.validate(report,run);state['cms']=report;dev.persist(directory,state,'TESTED')
@@ -333,3 +336,32 @@ def verify_audit(directory,state):
     report=dev.read(directory/'cms-report.json');report['component_checks'].update(native_read_audit_persisted=True,independent_cp_resolution_readback=True)
     dev.write(directory/'cms-report.json',report)
 
+
+
+def estate_diagnostics(directory,state):
+    """Classify captured private logs; never publish lines or error bodies."""
+    try:
+        raw=dev.compose(directory,state,'logs','--no-color','--tail','200','nabhold',timeout=15)
+    except Exception:
+        print('DEV05_ESTATE_DIAGNOSTIC=UNAVAILABLE',flush=True);return
+    keys={'home','navigation','footer','site-settings','group-profile'}
+    outcomes={'none','unavailable:PROVIDER_SCOPE_REJECTED','unavailable:PROVIDER_RECORD_REJECTED',
+        'unavailable:RECORD_DATA_INVALID','unavailable:CONTENT_TOKEN_UNAVAILABLE',
+        'unavailable:CAPABILITY_NOT_RESOLVED','unavailable:CAPABILITY_UNAVAILABLE',
+        'unavailable:CONTEXT_UNAVAILABLE','unavailable:PROVIDER_UNREACHABLE',
+        'unavailable:PROVIDER_RESPONSE_INVALID','unavailable:PROVIDER_RESPONSE_NOT_JSON',
+        'unavailable:PROOF_WINDOW_CLOSED'} | {'unavailable:PROVIDER_HTTP_'+str(c) for c in (400,401,403,404,500,502,503,504)}
+    seen=set()
+    for line in raw.splitlines():
+        start=line.find('{"event":"content.capability"')
+        if start>=0:
+            try:value=json.loads(line[start:])
+            except (ValueError,TypeError):continue
+            if value.get('key') in keys and value.get('outcome') in outcomes:
+                seen.add(value['key'].upper().replace('-','_')+'_'+value['outcome'].upper().replace(':','_'))
+    for fixed,label in [('Required published content incomplete','INCOMPLETE_CONTENT'),
+        ('Required published content unavailable','UNAVAILABLE_CONTENT'),
+        ('Failed to download `Inter`','FONT_FETCH_FAILED'),
+        ('Module not found','MODULE_UNAVAILABLE')]:
+        if fixed in raw:seen.add(label)
+    for label in sorted(seen or {'UNCLASSIFIED'}):print('DEV05_ESTATE_DIAGNOSTIC='+label,flush=True)

@@ -15,6 +15,14 @@ import dev
 import ci_cms
 
 class CMSContracts(unittest.TestCase):
+    def test_estate_failure_logs_publish_only_closed_classes(self):
+        raw='private secret body\nserver | {"event":"content.capability","key":"home","outcome":"unavailable:CAPABILITY_NOT_RESOLVED"}\nserver | {"event":"content.capability","key":"private-tenant","outcome":"private body"}\nRequired published content unavailable'
+        with patch.object(dev,'compose',return_value=raw),patch('builtins.print') as output:
+            cms_vertical.estate_diagnostics(Path('/private'),{})
+        self.assertEqual([x.args[0] for x in output.call_args_list],[
+            'DEV05_ESTATE_DIAGNOSTIC=HOME_UNAVAILABLE_CAPABILITY_NOT_RESOLVED',
+            'DEV05_ESTATE_DIAGNOSTIC=UNAVAILABLE_CONTENT'])
+
     def test_issuer_client_readback_uses_native_duration_and_rejects_changed_ttl(self):
         with patch('ssl.create_default_context',return_value=SimpleNamespace()):
             probe=importlib.import_module('cms_probe')
