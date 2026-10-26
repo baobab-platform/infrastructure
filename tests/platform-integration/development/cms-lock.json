@@ -2,7 +2,7 @@
   "schema": "infrastructure.dev05.sources.v1",
   "sources": {
     "baobab-cms": "7d5af361977c7df31a2f63e296ac25e955378e59",
-    "nabhold": "36441cd4466764030366c0a2551072a73ad8e77b"
+    "nabhold": "403a14e6510767d1b5ee586126dafd52a85059a9"
   },
   "redis": "redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
   "node": "node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",

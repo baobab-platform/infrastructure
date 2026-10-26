@@ -356,7 +356,7 @@ def estate_diagnostics(directory,state):
     seen=set()
     diagnostic_markers={
         'NABHOLD_DEV05_WORKLOAD='+audience+'_'+phase for audience in ('CP','CMS')
-        for phase in ('TOKEN_REQUEST','TOKEN_RESPONSE','INTROSPECTION_CLAIMS','AUDIENCES','EXPIRY_SUBJECT')
+        for phase in ('TOKEN_REQUEST','TOKEN_RESPONSE','INTROSPECTION_CLAIMS','AUDIENCES','EXPIRY_SUBJECT','EXPIRY_CURRENT','EXPIRY_DEADLINE','EXPIRY_ISSUANCE','SUBJECT')
     } | {'NABHOLD_DEV05_CONTEXT='+phase for phase in ('TOKEN','RESPONSE_SHAPE','FRESHNESS')} | {
         'NABHOLD_DEV05_CAPABILITY='+phase for phase in ('TRANSPORT','BODY','CONTRACT','REQUEST_BINDING','EXPIRY','VERSION',
             'PROTOCOL','SERVICE_MAPPING','ORIGIN','SERVICE_REFERENCE','ROUTE','AUTH_OR_UNAVAILABLE',
