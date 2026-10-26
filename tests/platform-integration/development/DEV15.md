@@ -46,6 +46,52 @@ and validates owner-provenance and the negative case inventory. The generated
 source inventory is a diagnostic, not a protected receipt. CI intentionally
 does not convert missing runtime evidence into PASS or activate a provider.
 
+## New executable native-component run (DEV-14 technical admission)
+
+Use the **same pinned Codespaces/Actions devcontainer** as DEV-01. Check out
+Shared at the exact accepted source revision into the ignored private
+`tests/platform-integration/.runtime/dev15-shared` directory. The runtime
+requires that checkout and Infrastructure's own worktree to be clean:
+
+```sh
+export BAOBAB_ENVIRONMENT=development
+python3 -B tests/platform-integration/development/dev15_runtime.py \
+  --profile pulse-intelligence \
+  --shared-root tests/platform-integration/.runtime/dev15-shared
+
+python3 -B tests/platform-integration/development/dev15_runtime.py \
+  --profile payments-sandbox \
+  --shared-root tests/platform-integration/.runtime/dev15-shared
+```
+
+The `dev15-native-component.yml` Actions workflow runs both profiles in
+separate disposable environments and retains only redacted, completed
+receipts. The driver:
+1. Uses DEV-01's source-locked and TTL-watched IAM/CP preparation.
+2. Atomically stages the *Shared-registered* six DEV-15 development workload
+   client descriptions as an exact private CP registry mount; it **does not
+   create Hydra clients or issue credentials**.
+3. Retrieves the exact accepted native owner SHA from the reviewable DEV-15
+   source lock; validates owner implementation declarations against Shared.
+4. Builds the real owner Dockerfile and records the resulting actual Docker
+   image ID; Pulse also starts real PostgreSQL/Qdrant and applies its
+   private-development-only migration path.
+5. Observes native health from the existing probe on the Docker network with
+   no host-published engine port, and independently verifies image ownership,
+   internal network policy and lifecycle resource labels.
+6. Runs unchanged DEV-01 baseline checks, then always cleans labelled native
+   and IAM/CP containers and volumes with the existing recovery/witness
+   mechanism. The completed receipt records the distinct
+   `dev15_native_component=PRIVATE_REAL_COMPONENT_OBSERVED`, never actual
+   client issuance or ENG-ONB qualification.
+
+A native readiness PASS is **not** a real IAM-issued, CP-context-authorised
+business operation. There is no approval, provider activation, live payment,
+or qualified authority claim in this lane. Every canonical ENG-ONB and native
+domain acceptance case still requires its own authenticated positive/negative
+effect evidence. Treat a missing image, stale source or failed teardown as
+BLOCKED, and do not promote a source-only or native-only receipt.
+
 ## Remaining **real execution** critical path
 
 1. Adopt the real DEV-15 IAM clients in the disposable Hydra issuer and
