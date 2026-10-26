@@ -114,10 +114,7 @@ def build_and_run(run_id: str, shared: Path, name: str) -> dict:
         descriptor, baseline, subject_image=image_id,
         images=owned_images, secrets=state["secrets"], labels=dev.labels(state),
     )
-    # Reuse the one real DEV-01 private network; no public native endpoints.
-    composition["services"]["probe"]["volumes"].append(
-        adapter.host(NATIVE_HEALTH) + ":/dev15_health.py:ro"
-    )
+    # Probe's fixed health witness was mounted before DEV-01 bootstrap.
     dev.write(directory / "compose.json", composition)
     state["compose_sha256"] = hashlib.sha256((directory / "compose.json").read_bytes()).hexdigest()
     dev.persist(directory, state, "RUNNING")
