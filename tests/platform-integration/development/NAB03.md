@@ -28,7 +28,7 @@ projection unverified; no official legal or provider verification is invented.
 | disabled-caller | Native client DELETE/404, issuer inactive and same unexpired bearer CMS 401. This is terminal issuer disable, not a fabricated Hydra enabled flag or CP Principal toggle. |
 | expired-caller-token | Actual issuer short lifetime, natural expiry then CMS 401; no JWT editing. |
 | revoked-caller-token | Positive control, real native revoke, independent inactive readback, same-token CMS 401 before expiry, fresh-token positive control. |
-| missing-grant | Only after a real RESOLVED positive: the same active tenant/context loses its grant through the CP owner fixture and CP returns DENIED/GRANT_NOT_FOUND without invocation. An unknown capability cannot pass this case. |
+| missing-grant | Only after a real RESOLVED positive: the same active tenant/context loses its current entitlement source through the CP owner fixture and CP returns DENIED/GRANT_NOT_FOUND without invocation. An unknown capability cannot pass this case. |
 | wrong-owner-or-context | Genuinely separate CP Principal's issued context is refused for the consumer. |
 | neighbour-tenant | Exact consumer context with a real neighbour's CP tenant ID receives 403 and no record. |
 | draft-or-preview | Actual CMS draft transition; no preview scope gives 403; ordinary lookup must be 200 record:null. |
@@ -166,3 +166,10 @@ estate's configured Market selector receives EXACT content without accepting
 estate-wide fallback. Fixed development workload diagnostics distinguish token,
 context and capability failures before cleanup; only the closed classes leave
 private runtime logs.
+
+The additional withdrawn-grant control requires GRANT_REVOKED. It cannot mark
+the original missing-grant case PASS. The owner then separately removes the
+run-owned current entitlement source, and the unchanged missing-grant case
+requires DENIED/GRANT_NOT_FOUND with no invocation, native CMS 403, absent
+estate markers and no new allowed-read audit. Normal owner restoration must
+recover published content and independently matching native audit afterward.

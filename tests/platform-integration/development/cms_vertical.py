@@ -268,10 +268,20 @@ def qualify(run):
                 verify_audit(directory,state)
                 before=read_audit(directory,state)['count']
                 owner_fixture(directory,state,'unentitled')
+                dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','revoked-grant',timeout=90)
+                dev.require(read_audit(directory,state)['count']==before,'DEV05_DENIED_RESOURCE_EFFECT')
+                owner_fixture(directory,state,'regrant')
+                dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','rebound',timeout=90)
+                verify_audit(directory,state)
+                before=read_audit(directory,state)['count']
+                # Keep the original GRANT_NOT_FOUND case distinct from an
+                # existing grant's GRANT_REVOKED control. Removing this owned
+                # source makes its grant ineligible through current provenance.
+                owner_fixture(directory,state,'absent')
                 dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','unentitled',timeout=90)
                 dev.require(read_audit(directory,state)['count']==before,'DEV05_DENIED_RESOURCE_EFFECT')
                 report=dev.read(directory/'cms-report.json');report['component_checks']['denied_resource_no_read_effect']=True;dev.write(directory/'cms-report.json',report)
-                owner_fixture(directory,state,'regrant')
+                owner_fixture(directory,state,'restore')
                 dev.compose(directory,state,'exec','-T','probe','python','/cms_probe.py','rebound',timeout=90)
                 verify_audit(directory,state)
             if action=='draft':fixture(directory,state,'draft')

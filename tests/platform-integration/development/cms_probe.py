@@ -269,7 +269,7 @@ def main(action):
                 continue
         print(json.dumps(result));return
     value=report();current={'initial':'published-home-nav-footer','draft':'draft-or-preview','withdraw':'withdrawn-content',
-        'outage':'dependency-outage-and-restoration','restored':'dependency-outage-and-restoration','finish':'disabled-caller','unentitled':'missing-grant'}.get(action,'published-home-nav-footer')
+        'outage':'dependency-outage-and-restoration','restored':'dependency-outage-and-restoration','finish':'disabled-caller','unentitled':'missing-grant','revoked-grant':'missing-grant'}.get(action,'published-home-nav-footer')
     def record(case,ok):
         nonlocal current
         current=case;ok=ok() if callable(ok) else ok;p.require(ok,'DEV05_ASSERTION_FAILED');value['cases'][case]={'result':'PASS','reason':'OBSERVED'};checkpoint(value)
@@ -335,16 +335,19 @@ def main(action):
             current='validator-negatives'
             code,actual,_=p.request('POST',p.CP+'/v1/platform-context/validate',{'context_id':ctx['context_id'],'subject_token':'invalid.subject.bearer'},validator)
             record('validator-negatives',lambda:code==401 and actual.get('code')=='SUBJECT_TOKEN_INVALID' and deny(resolve(fresh,str(uuid.uuid4())),'CONTENT_CONTEXT_REJECTED',403))
-        elif action=='unentitled':
+        elif action in ('unentitled','revoked-grant'):
             p.require(value['cases']['published-home-nav-footer']['result']=='PASS')
+            owner=p.read('cms-capability.json')
+            if action=='unentitled':p.require(not owner['source_present'] and owner['grant_active'] and owner['binding_active'])
+            else:p.require(owner['source_active'] and not owner['grant_active'] and owner['binding_active'])
             cp_token,ctx=context();bearer=token()
             code,denied,_=p.request('POST',p.CP+'/v1/capabilities/resolve',{'context_id':ctx['context_id'],
                 'capability_key':'content.entry.resolve','required_contract_version':1,'correlation_id':str(uuid.uuid4())},cp_token)
-            p.require(code==200 and denied.get('decision')=='DENIED' and denied.get('reason_code')=='GRANT_NOT_FOUND' and not denied.get('invocation'))
+            p.require(code==200 and denied.get('decision')=='DENIED' and denied.get('reason_code')==('GRANT_NOT_FOUND' if action=='unentitled' else 'GRANT_REVOKED') and not denied.get('invocation'))
             for _ in range(2):p.require(deny(resolve(bearer,ctx['context_id']),'CONTENT_CONTEXT_REJECTED',403))
             _,absent=estate_page(p.read('cms-published-markers.json'),absent=True);p.require(absent)
             value['component_checks'].update(canonical_capability_denied=True,estate_canonical_path_unavailable=True)
-            record('missing-grant',lambda:True)
+            if action=='unentitled':record('missing-grant',lambda:True)
         elif action=='rebound':
             _,ctx=context();p.require(published(resolve(token(),ctx['context_id']),'home'))
             code,visible=estate_page(p.read('cms-published-markers.json'));p.require(code==200 and visible)

@@ -33,6 +33,31 @@ class CMSContracts(unittest.TestCase):
                      '<h1>Other</h1><footer>Native footer</footer><script>Synthetic &amp; current</script>'):
             self.assertFalse(probe.rendered_markers(page,expected))
 
+    def test_revoked_grant_cannot_substitute_for_original_missing_grant_case(self):
+        with patch('ssl.create_default_context',return_value=SimpleNamespace()):
+            probe=importlib.import_module('cms_probe')
+        for action,reason,expected in (('revoked-grant','GRANT_REVOKED','BLOCKED'),
+                                       ('unentitled','GRANT_NOT_FOUND','PASS'),
+                                       ('unentitled','GRANT_REVOKED','FAIL')):
+            with self.subTest(action=action,reason=reason),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);run='a'*32;value=cms_contract.fresh(run)
+                value['cases']['published-home-nav-footer'].update(result='PASS',reason='OBSERVED')
+                (root/'cms-report.json').write_text(json.dumps(value))
+                (root/'cms-capability.json').write_text(json.dumps({'source_present':action!='unentitled',
+                    'source_active':action!='unentitled','grant_active':action=='unentitled','binding_active':True}))
+                (root/'cms-published-markers.json').write_text('[]')
+                with patch.object(probe.p,'ROOT',root),patch.dict(os.environ,{'DEV01_RUN_ID':run}), \
+                     patch.object(probe,'config',return_value=({}, {}, {})), \
+                     patch.object(probe,'context',return_value=('cp',{'context_id':'context'})), \
+                     patch.object(probe,'token',return_value='cms'), \
+                     patch.object(probe.p,'request',return_value=(200,{'decision':'DENIED','reason_code':reason},None)), \
+                     patch.object(probe,'resolve',return_value=(403,{'code':'CONTENT_CONTEXT_REJECTED'},None)), \
+                     patch.object(probe,'estate_page',return_value=(500,True)):
+                    if expected=='FAIL':
+                        with self.assertRaises(SystemExit):probe.main(action)
+                    else:probe.main(action)
+                self.assertEqual(json.loads((root/'cms-report.json').read_text())['cases']['missing-grant']['result'],expected)
+
     def test_issuer_client_readback_uses_native_duration_and_rejects_changed_ttl(self):
         with patch('ssl.create_default_context',return_value=SimpleNamespace()):
             probe=importlib.import_module('cms_probe')
