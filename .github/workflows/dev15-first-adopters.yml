@@ -7,6 +7,8 @@ on:
       - 'tests/platform-integration/development/test_dev15_source.py'
       - 'tests/platform-integration/development/dev15_registry.py'
       - 'tests/platform-integration/development/test_dev15_registry.py'
+      - 'tests/platform-integration/development/dev15_compose.py'
+      - 'tests/platform-integration/development/test_dev15_compose.py'
       - '.github/workflows/dev15-first-adopters.yml'
   push:
     branches: [main]
@@ -16,6 +18,8 @@ on:
       - 'tests/platform-integration/development/test_dev15_source.py'
       - 'tests/platform-integration/development/dev15_registry.py'
       - 'tests/platform-integration/development/test_dev15_registry.py'
+      - 'tests/platform-integration/development/dev15_compose.py'
+      - 'tests/platform-integration/development/test_dev15_compose.py'
       - '.github/workflows/dev15-first-adopters.yml'
   workflow_dispatch:
 permissions:
@@ -76,6 +80,8 @@ jobs:
           assert row["effective_cp_runtime_registry"] == "NOT_INSPECTED"
           assert row["production_authorized"] is False
           PY
+      - name: Verify private profile-driven native Compose graph
+        run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev15_compose.py' -v
       - name: Qualify native owner declarations without runtime promotion
         run: |
           python3 -B tests/platform-integration/development/dev15_source.py \
