@@ -47,6 +47,18 @@ class EngineReceiptTests(unittest.TestCase):
                 self.assertEqual(engines.main([action,'--static']),2)
                 prepare.assert_not_called()
 
+    def test_profile_bootstrap_reads_private_file_as_its_operator(self):
+        state={'engine_profile':{'profile_key':'future-engine'},'uid':1001,'gid':1001,
+            'run_id':self.run,'lease_seconds':600,'deadline':engines.time.time()+600,'bootstrap_lease':500}
+        class CapturedCommand(Exception):pass
+        with patch.object(engines.dev,'read',return_value={'maker':'maker','checker':'checker'}), \
+             patch.object(engines.dev,'compose',side_effect=CapturedCommand) as compose, \
+             patch.object(engines.dev.adapter,'host',side_effect=str):
+            with self.assertRaises(CapturedCommand):engines.dev.bootstrap(Path('/private'),state)
+        args=compose.call_args.args
+        self.assertEqual(args[args.index('--user')+1],'1001:1001')
+        self.assertIn('/private/engine-profile.json:/engine-profile.json:ro',args)
+
     def test_multiple_engine_owned_stores_cannot_share_dns(self):
         profile={'subject_engine':'baobab-future','services':{'required':[{'key':'canonical-store','kind':'postgresql'},{'key':'history-store','kind':'postgresql'}]}}
         names={engines.native_service_name(profile,node) for node in profile['services']['required']}

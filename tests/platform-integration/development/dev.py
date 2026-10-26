@@ -451,7 +451,8 @@ def bootstrap(directory, state, check_fixtures=False):
         state['bootstrap_lease'] = remaining
         persist(directory, state, state['phase'])
     raw = compose(directory, state, 'run', '--rm', '--no-deps',
-                  *(['--volume', adapter.host(directory/'engine-profile.json')+':/engine-profile.json:ro'] if state.get('engine_profile') else []),
+                  *(['--user',str(state['uid'])+':'+str(state['gid']),
+                     '--volume', adapter.host(directory/'engine-profile.json')+':/engine-profile.json:ro'] if state.get('engine_profile') else []),
                   '-e', 'BAOBAB_DEV_BOOTSTRAP_ENABLED=true', '--entrypoint', '/development-bootstrap', 'cp',
                   *(['--engine-profile','/engine-profile.json'] if state.get('engine_profile') else []),
                   '--run-id', state['run_id'], '--issuer', adapter.ISSUER,
