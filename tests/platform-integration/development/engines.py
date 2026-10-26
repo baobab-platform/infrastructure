@@ -221,7 +221,7 @@ def up(run):
     for _ in range(60):
         try:
             if json.loads(dev.compose(directory,state,'exec','-T','probe','python','/engine_probe.py','health',timeout=15))=={'status':'READY'}:break
-        except (dev.Refused,ValueError):pass
+        except (dev.Refused,ValueError):pass  # Startup may briefly refuse HTTP or return a non-JSON response.
         time.sleep(2)
     else:raise dev.Refused('ENGINE_READINESS_UNAVAILABLE')
     refresh_witness(directory,state)

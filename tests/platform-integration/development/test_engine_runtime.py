@@ -3,7 +3,6 @@ import copy
 import contextlib
 import io
 import subprocess
-import json
 from pathlib import Path
 import sys
 import unittest
