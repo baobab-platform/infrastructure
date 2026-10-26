@@ -313,7 +313,9 @@ def literal(value):
 def read_audit(directory,state):
     owner=dev.read(directory/'cms-capability.json')
     where="tenant="+literal(owner['tenant_id'])+" AND action='content.entry.resolve' AND outcome='ALLOWED'"
-    sql="SELECT json_build_object('count',(SELECT count(*) FROM payload.audit_logs WHERE "+where+"),'latest',(SELECT row_to_json(a) FROM (SELECT actor_id,correlation_id,resource_id,resulting_state FROM payload.audit_logs WHERE "+where+" ORDER BY created_at DESC,id DESC LIMIT 1) a))"
+    # Metadata reads may finish last. Verify a core NAB-03 content audit while
+    # counting every allowed read for the denial/no-effect comparison.
+    sql="SELECT json_build_object('count',(SELECT count(*) FROM payload.audit_logs WHERE "+where+"),'latest',(SELECT row_to_json(a) FROM (SELECT actor_id,correlation_id,resource_id,resulting_state FROM payload.audit_logs WHERE "+where+" AND resulting_state->>'content_key' IN ('home','navigation','footer') ORDER BY created_at DESC,id DESC LIMIT 1) a))"
     raw=dev.compose(directory,state,'exec','-T','cms-db','psql','-U','payload','-d','cms_int03_'+state['run_id'][:16],'-tAc',sql)
     return json.loads(raw)
 
@@ -352,7 +354,17 @@ def estate_diagnostics(directory,state):
         'unavailable:PROVIDER_RESPONSE_INVALID','unavailable:PROVIDER_RESPONSE_NOT_JSON',
         'unavailable:PROOF_WINDOW_CLOSED'} | {'unavailable:PROVIDER_HTTP_'+str(c) for c in (400,401,403,404,500,502,503,504)}
     seen=set()
+    diagnostic_markers={
+        'NABHOLD_DEV05_WORKLOAD='+audience+'_'+phase for audience in ('CP','CMS')
+        for phase in ('TOKEN_REQUEST','TOKEN_RESPONSE','INTROSPECTION_CLAIMS','AUDIENCES','EXPIRY_SUBJECT')
+    } | {'NABHOLD_DEV05_CONTEXT='+phase for phase in ('TOKEN','RESPONSE_SHAPE','FRESHNESS')} | {
+        'NABHOLD_DEV05_CAPABILITY='+phase for phase in ('TRANSPORT','BODY','CONTRACT','REQUEST_BINDING','EXPIRY','VERSION',
+            'PROTOCOL','SERVICE_MAPPING','ORIGIN','SERVICE_REFERENCE','ROUTE','AUTH_OR_UNAVAILABLE',
+            'DECISION_DENIED','DECISION_UNAVAILABLE','DECISION_AMBIGUOUS','DECISION_INCOMPATIBLE')}
     for line in raw.splitlines():
+        for marker in diagnostic_markers:
+            if re.search(r'(?<![A-Z0-9_=])'+re.escape(marker)+r'(?![A-Z0-9_=])',line):seen.add(marker)
+
         start=line.find('{"event":"content.capability"')
         if start>=0:
             try:value=json.loads(line[start:])

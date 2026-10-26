@@ -160,3 +160,9 @@ fixture and direct probes. DIGITAL_ESTATE records carry that scope dimension;
 omitting it correctly resolves no matching content. This selector only chooses
 content within already validated tenant/Organisation authority and grants no legal
 mandate. The estate's exact-scope checks and disabled fallback remain unchanged.
+
+CP-supplied Market fixtures declare native MARKET scope (CMS #52), so the
+estate's configured Market selector receives EXACT content without accepting
+estate-wide fallback. Fixed development workload diagnostics distinguish token,
+context and capability failures before cleanup; only the closed classes leave
+private runtime logs.
