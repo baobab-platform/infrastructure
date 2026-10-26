@@ -283,7 +283,10 @@ def main(action):
                 and decision.get('invocation',{}).get('provider_id')=='provider_'+owner['provider_id'].replace('-','')
                 and decision.get('invocation',{}).get('engine_instance_id')=='ei_'+owner['engine_instance_id'].replace('-',''))
             value['component_checks']['current_capability_authority']=True
-            estate_status,visible=estate_page(expected);p.require(estate_status==200 and visible)
+            stage('ESTATE_PUBLISHED_CONTENT')
+            estate_status,visible=estate_page(expected)
+            print('DEV05_ESTATE_HTTP='+str(estate_status)+'_MARKERS_'+('PRESENT' if visible else 'ABSENT'),flush=True)
+            p.require(estate_status==200 and visible)
             value['component_checks']['estate_bound_content_visible']=True
             p.write('cms-published-markers.json',expected)
             record('published-home-nav-footer',lambda:True)

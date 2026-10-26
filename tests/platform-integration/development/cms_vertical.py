@@ -164,6 +164,7 @@ def up(run):
       'NABHOLD_WORKLOAD_INTROSPECTION_ENDPOINT':adapter.ISSUER+'/oauth2/introspect/dev05','NABHOLD_WORKLOAD_CLIENT_SECRET':secret['cms_consumer'],
       'NABHOLD_CMS_PROOF_DEADLINE':deadline,'BAOBAB_CONTROL_PLANE_API_URL':'https://cp.baobab-dev.test',
       'NABHOLD_CONTENT_TENANT_ID':refs['tenant'],'NABHOLD_CONTENT_ORGANISATION_ID':refs['organisation'],
+      'NABHOLD_CONTENT_LEGAL_ENTITY_ID':refs['legalEntity'],
       'NABHOLD_CONTENT_COUNTRY_CODE':'ZA','NABHOLD_CONTENT_DIGITAL_ESTATE_ID':refs['digitalEstate'],
       'NABHOLD_CONTENT_MARKET_ID':refs['market'],'NABHOLD_SERVICE_ORIGINS':json.dumps({'baobab-cms':CMS}),
       'NEXT_PUBLIC_SITE_URL':ESTATE}}

@@ -154,3 +154,9 @@ CMS OCI manifest digest and immutable source/configuration identities. Stale
 suite/report success is cleared before preparation; failures still require cleanup
 and remain failures. DEV-06's unchanged eighteen cases rerun against the same CP
 refactor using its separate external-client profile.
+
+The BFF receives the same CP-issued synthetic LegalEntity selector as the CMS
+fixture and direct probes. DIGITAL_ESTATE records carry that scope dimension;
+omitting it correctly resolves no matching content. This selector only chooses
+content within already validated tenant/Organisation authority and grants no legal
+mandate. The estate's exact-scope checks and disabled fallback remain unchanged.
