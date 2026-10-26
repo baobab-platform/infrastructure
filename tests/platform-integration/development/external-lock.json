@@ -1,7 +1,7 @@
 {
   "schema": "infrastructure.dev06.sources.v1",
   "source": {
-    "baobab-pulse": "4a24c29833374d15e50c2559b3b4173400563a81"
+    "baobab-pulse": "d58143f72bcdfa02ec0c99fab74896e183a0912f"
   },
   "qdrant": "qdrant/qdrant@sha256:12364fe851b9f17356fc88189fc06d1b521262e04659ec7345975b00c9246a10"
 }

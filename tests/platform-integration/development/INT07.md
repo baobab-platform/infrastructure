@@ -25,7 +25,7 @@ and actual Qdrant server. The owner-provided deterministic reference embedder is
 explicitly a synthetic algorithm; it proves neither model quality nor an external
 LLM. No IAM token, CP context or database/provider response is mocked at runtime.
 
-## Current boundary and truthful acceptance
+## Historical initial boundary (superseded for development by the bound rerun)
 
 This increment implements component qualification and all INT-07 obligations as
 visible outcomes. It DOES NOT establish a commercial subscription, canonical
@@ -99,9 +99,23 @@ also enabled in the lighter Python 3.12 tool image. Verification and hostname
 checks are never disabled; no arbitrary trust fallback or insecure adapter is
 used. The generated private CA key is destroyed after signing as before.
 
-## Current bound-resource rerun
+## Current bound-resource rerun and source refresh
 
 The selected external-base-lock keeps historical DEV-01..05 locks unchanged.
+The current-source refresh adopts Shared #403, CP #445 and Pulse #62 only through
+immutable merged revisions. This brings the canonical PostgreSQL scope,
+classification and projection guards proved by DEV-15 into the independent
+external API-only journey; no Digital Estate, CMS or Payments dependency is added.
+All eighteen original DEV-06 cases and the 21 component checks must run again at
+those pins. Earlier accepted and failed receipts retain their original source
+identity and are not relabelled as current qualification.
+
+The four BLOCKED cases described in the historical section above were resolved
+by the bound development rerun. They must not be presented as the current DEV-06
+status. Canonical INT-07's independent certified-provider requirement remains a
+separate gate: neither these development passes nor normal development provider
+activation supplies that certification or protected approval.
+
 Merged owner pins enforce current subscription/projection provenance, current
 provider/support and normal binding resolution at actual Pulse resource use.
 The actual caller requests both CP and Pulse audiences with context:resolve and
