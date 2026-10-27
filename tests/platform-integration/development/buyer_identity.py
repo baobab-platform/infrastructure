@@ -84,7 +84,11 @@ def run_native(run):
     image=state['project']+'-trade-buyer-tool'
     state['images']['trade-buyer-tool']=image;dev.persist(directory,state,'RUNNING')
     dockerfile=source/'Dockerfile.dev07';dev.check_dockerfile(dockerfile)
-    args=['docker','build','--tag',image,'--file',str(dockerfile)]
+    # The disposable tool runs as the private packet owner, not root and not
+    # an image's hardcoded node UID (Codespaces remaps the remote user).
+    args=['docker','build','--tag',image,'--file',str(dockerfile),
+          '--build-arg','BAOBAB_DEV07_UID='+str(state['uid']),
+          '--build-arg','BAOBAB_DEV07_GID='+str(state['gid'])]
     for key,value in {**dev.labels(state),'org.opencontainers.image.revision':sha}.items():args+=['--label',key+'='+value]
     print('DEV07_STAGE=TRADE_BUILD',flush=True)
     dev.call([*args,str(source)],state=state,timeout=1800)
