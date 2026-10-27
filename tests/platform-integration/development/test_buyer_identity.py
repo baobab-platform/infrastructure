@@ -134,3 +134,14 @@ class BuyerIdentityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'DEV07_UNSUPPORTED_CLIENT_AUTH'):
             probe.revoke_and_readback(native,name,'token',('verifier','secret'))
         transport.assert_not_called()
+
+    def test_native_context_diagnostics_are_closed_and_cannot_release_response_text(self):
+        self.assertTrue(dev.is_dev07_native_diagnostic(
+            'DEV07_NATIVE_CONTEXT=HTTP_503_REASON_SOURCE_UNAVAILABLE'))
+        self.assertTrue(dev.is_dev07_native_diagnostic(
+            'DEV07_NATIVE_CONTEXT=HTTP_200_REASON_CONTEXT_MISMATCH'))
+        for line in ('DEV07_NATIVE_CONTEXT=HTTP_503_REASON_private-token',
+                     'DEV07_NATIVE_CONTEXT=HTTP_503_REASON_SOURCE_UNAVAILABLE token=private',
+                     'DEV07_NATIVE_CONTEXT=HTTP_503_REASON_SOURCE_UNAVAILABLE\nsecret',
+                     'DEV07_NATIVE_CONTEXT=HTTP_999_REASON_OTHER'):
+            self.assertFalse(dev.is_dev07_native_diagnostic(line))

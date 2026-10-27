@@ -150,6 +150,15 @@ def is_dev07_preflight_diagnostic(line):
     )}
 
 
+def is_dev07_native_diagnostic(line):
+    return re.fullmatch(
+        r'DEV07_NATIVE_CONTEXT=HTTP_(200|400|401|403|404|409|503|OTHER)_REASON_'
+        r'(CONTEXT_MISMATCH|BUYER_TOKEN_INVALID|ASSURANCE_INSUFFICIENT|IDENTITY_NOT_RESOLVED|'
+        r'PRINCIPAL_NOT_ACTIVE|BUYER_NOT_AUTHORISED|ORGANISATION_NOT_ATTESTED|ROLE_NOT_PERMITTED|'
+        r'MARKET_NOT_PERMITTED|CONTEXT_NOT_USABLE|OPERATION_NOT_ACTIVATED|SOURCE_UNAVAILABLE|OTHER)', line
+    ) is not None
+
+
 def call(args, *, timeout=120, stdin=None, state=None, env=None):
     if state is not None:
         timeout = min(timeout, state['deadline'] - time.time())
@@ -205,6 +214,10 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
             if args[-4:] == ['probe','python','/buyer_identity_probe.py','issuer-preflight']:
                 for line in result.stdout.splitlines():
                     if is_dev07_preflight_diagnostic(line):
+                        print(line,flush=True)
+            if args[-1:] == ['trade-buyer-tool']:
+                for line in result.stdout.splitlines():
+                    if is_dev07_native_diagnostic(line):
                         print(line,flush=True)
             raw=(result.stdout+result.stderr).lower()
             classification='COMMAND_FAILED'
