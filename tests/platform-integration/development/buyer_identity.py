@@ -72,6 +72,8 @@ def run_native(run):
     directory,state=dev.current(run)
     fixture=cp_fixture(directory,state,'prepare')
     dev.require(cp_fixture(directory,state,'read')==fixture,'DEV07_CP_READBACK_CHANGED')
+    print('DEV07_STAGE=ISSUER_PREFLIGHT',flush=True)
+    dev.compose(directory,state,'exec','-T','probe','python','/buyer_identity_probe.py','issuer-preflight',timeout=90)
     print('DEV07_STAGE=TRADE_SOURCE',flush=True)
     source=directory/'sources/baobab-trade'
     # Clone precisely the reviewed owner source into this run's private tree.
@@ -142,6 +144,11 @@ def run_native(run):
     dev.require(packet.is_file() and packet.stat().st_mode & 0o077==0,'DEV07_PRIVATE_PACKET_REQUIRED')
     config['services']['trade-buyer-tool']['volumes'].append(adapter.host(packet)+':/run/buyer-code-packet.json:ro')
     dev.write(directory/'compose.json',config);state['compose_sha256']=hashlib.sha256((directory/'compose.json').read_bytes()).hexdigest();dev.persist(directory,state,'RUNNING')
+    # Observe a fresh, actual CP binding independently before Trade begins.
+    # This also retains live issuer control tokens for owner teardown evidence
+    # if the subsequent Trade qualification fails.
+    print('DEV07_STAGE=BINDING_CONTROL',flush=True)
+    dev.compose(directory,state,'exec','-T','probe','python','/buyer_identity_probe.py','binding-control',timeout=30)
     print('DEV07_STAGE=TRADE_QUALIFIER',flush=True)
     try:
         dev.compose(directory,state,'run','--rm','--no-deps','trade-buyer-tool',timeout=180)
@@ -155,7 +162,6 @@ def run_native(run):
             contract.validate(value,sha);state['dev07_buyer']=value
             dev.persist(directory,state,'RUNNING')
     dev.require(state.get('dev07_buyer',{}).get('iam_cp_component_qualified') is True,'DEV07_COMPONENT_NOT_QUALIFIED')
-    dev.compose(directory,state,'exec','-T','probe','python','/buyer_identity_probe.py','binding-control',timeout=30)
 
 
 def cleanup_owners(run):
