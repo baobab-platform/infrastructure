@@ -85,6 +85,7 @@ def issuer_preflight():
         # the costly Trade build. No Principal or grant is manufactured here.
         import uuid
         validator=native['clients'][VALIDATOR]
+        print('DEV07_CP_PRINCIPAL_STAGE=CALLER_REQUEST',flush=True)
         status,owned,_=p.request('POST',p.ISSUER+'/oauth2/token',
             {'grant_type':'client_credentials','client_id':VALIDATOR,
              'client_secret':validator['secret'],
@@ -98,13 +99,16 @@ def issuer_preflight():
             print('DEV07_CP_CALLER_ISSUANCE=HTTP_'+http+'_CODE_'+category,flush=True)
             p.require(False,'DEV07_CP_CALLER_ISSUANCE_REFUSED')
         bearer=owned['access_token']
+        print('DEV07_CP_PRINCIPAL_STAGE=CALLER_ISSUED',flush=True)
         try:
             correlation=str(uuid.uuid4())
+            print('DEV07_CP_PRINCIPAL_STAGE=CP_REQUEST',flush=True)
             status,result,_=p.request('POST',p.CP+'/internal/identity/v1/principals/resolve',
                 {'subject_token':token,
                  'subject_token_type':'urn:ietf:params:oauth:token-type:access_token',
                  'correlation_id':correlation},bearer,
                  headers={'X-Correlation-ID':correlation})
+            print('DEV07_CP_PRINCIPAL_STAGE=CP_RESPONDED',flush=True)
             if status!=200:
                 code=result.get('code') if isinstance(result,dict) else None
                 allowed={'CALLER_NOT_PERMITTED','SUBJECT_TOKEN_INVALID',
@@ -208,7 +212,10 @@ if __name__=='__main__':
         # A closed, reviewed error vocabulary is the only information exported
         # from this private probe into Actions logs. No token/provider body.
         codes={'DEV07_BFF_CODE_EXCHANGE_REFUSED','DEV07_BFF_SIGNED_CLAIMS_REFUSED',
-               'DEV07_BFF_INTROSPECTION_REFUSED','DEV07_BFF_PREFLIGHT_REVOKE_REFUSED',
+               'DEV07_BFF_INTROSPECTION_REFUSED','DEV07_CP_CALLER_ISSUANCE_REFUSED',
+               'DEV07_CP_PRINCIPAL_PREFLIGHT_REFUSED',
+               'DEV07_CP_CALLER_REVOKE_REFUSED',
+               'DEV07_BFF_PREFLIGHT_REVOKE_REFUSED',
                'DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED','DEV07_UNSUPPORTED_CLIENT_AUTH'}
         if isinstance(error,ValueError) and str(error) in codes:
             print('DEV07_PRIVATE_FAILURE_CLASS='+str(error),flush=True)
