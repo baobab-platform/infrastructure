@@ -104,7 +104,11 @@ def run_native(run):
     # Private source tool receives only its own DB and issuer/client evidence;
     # no CP database credentials or Docker socket are mounted into it.
     specs=dev.read(directory/'buyer-client-spec.json');output=directory/'buyer-report';output.mkdir(mode=0o700)
-    env={'NODE_ENV':'test','BAOBAB_ENVIRONMENT':'development','DATABASE_URL':f'postgres://dev07_trade:{dbsecret}@trade-buyer-db:5432/{database}',
+    env={'NODE_ENV':'test','BAOBAB_ENVIRONMENT':'development',# This is an isolated Docker-internal PG17 service without TLS.
+        # Medusa treats non-localhost hosts as remote and otherwise forces SSL,
+        # unlike the explicitly sslmode=disable CP integration configuration.
+        # Never copy this development-only setting into staging/production.
+        'DATABASE_URL':f'postgres://dev07_trade:{dbsecret}@trade-buyer-db:5432/{database}?sslmode=disable',
         'BAOBAB_DEV07_TEST_DB':database,'BAOBAB_DEV07_CODE_PACKET':'/run/buyer-code-packet.json',
         'BAOBAB_BUYER_IDENTITY_ENABLED':'true','BAOBAB_IAM_BUYER_ISSUER':adapter.ISSUER,'BAOBAB_IAM_BUYER_AUTHORISED_PARTIES':BFF,
         'BAOBAB_BUYER_ACCEPTED_ACR':'aal1','BAOBAB_BUYER_ASSURANCE_APPROVAL_REFERENCE':'ADR-SHARED-043:'+run,
