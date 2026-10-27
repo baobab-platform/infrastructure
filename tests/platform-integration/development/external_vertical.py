@@ -114,7 +114,7 @@ def up(run):
     dev.compose(directory,state,'up','-d','--wait','--wait-timeout','120','pulse-db','pulse-qdrant','probe','edge',timeout=180)
     dev.compose(directory,state,'exec','-T','probe','python','/external_probe.py','clients')
     dev.compose(directory,state,'run','--rm','--no-deps','pulse-tool','scripts/migrate.py',timeout=180)
-    native=json.loads(dev.compose(directory,state,'run','--rm','--no-deps','pulse-tool','/pulse_native.py',timeout=180).splitlines()[-1])
+    native=json.loads(dev.compose(directory,state,'run','--rm','--no-deps','pulse-tool','/pulse_native.py','--canonical-hydration',timeout=180).splitlines()[-1])
     required={'pulse_native_persisted_search','pulse_native_canonical_hydration','pulse_native_classification_denied','pulse_native_neighbour_denied','pulse_native_stale_projection_observed','pulse_native_actual_dependencies'}
     dev.require(set(native)=={'checks'} and set(native['checks'])==required and all(v is True for v in native['checks'].values()),'DEV06_NATIVE_PROVIDER_FAILED')
     state['external']['component_checks'].update(native_pulse_dependencies=True,native_canonical_hydration=True,native_cross_tenant_no_leak=True)

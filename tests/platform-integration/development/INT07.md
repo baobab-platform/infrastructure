@@ -67,9 +67,9 @@ executed; they cannot overwrite an earlier zero-estate result or become PASS.
 The source tests validate closed receipt vocabulary, refusal of fake estate facts,
 negative case attribution and cleanup that never promotes canonical acceptance.
 These tests are not runtime evidence. Source CI cannot turn an unexecuted case
-into PASS. A successful runtime job requires all 14 currently implemented cases
-PASS, exactly four canonical prerequisites BLOCKED, all component observations
-and verified final teardown, while `int07_qualified=false`.
+into PASS. The initial historical job required 14 cases PASS and four canonical
+prerequisites BLOCKED. The current bound rerun requires all 18 cases PASS, all
+component observations and verified final teardown, while `int07_qualified=false`.
 
 ## Custody, cleanup and rollback
 
@@ -174,4 +174,19 @@ even when runtime identity was never established. That receipt cannot satisfy
 the eighteen-case exit. Raw subprocess output and arbitrary exception text stay
 out of public logs and artifacts. Container and independent host recovery still
 run on every workflow outcome.
+
+## Current Pulse canonical hydration clearance
+
+Run 40422774328 failed during native provider conformance after adopting Pulse
+#62. The synthetic evidence is CONFIDENTIAL. Search passed that clearance, but
+the reused fixture omitted it during canonical hydration; current Pulse correctly
+refuses that read under its lower TENANT default. DEV-06 now explicitly selects
+`pulse_native.py --canonical-hydration`, passing CONFIDENTIAL to both operations.
+The historical INT-02 source pin has no hydration-clearance argument and keeps
+its unchanged default invocation. There is no exception-driven API fallback.
+
+The fixture still requires classification and neighbour-tenant denials, a real
+PostgreSQL version change, stale Qdrant detection and restored current projection.
+No provider guard, source pin, negative case or qualification gate is relaxed.
+Only a fresh complete runtime receipt can establish success for the fixed head.
 
