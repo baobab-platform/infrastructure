@@ -45,8 +45,17 @@ def issuer_preflight():
             {'grant_type':'authorization_code','code':code['code'],
              'code_verifier':code['verifier'],'redirect_uri':code['redirect_uri']},
             form=True,basic=credentials)
-        p.require(status==200 and isinstance(body,dict) and
-                  isinstance(body.get('access_token'),str),'DEV07_BFF_CODE_EXCHANGE_REFUSED')
+        if status!=200 or not isinstance(body,dict) or not isinstance(body.get('access_token'),str):
+            # OAuth error codes are protocol-defined, not provider response text.
+            # Expose only a finite HTTP/error classification; never log details.
+            error=body.get('error') if isinstance(body,dict) else None
+            category=error if error in {
+                'invalid_client','invalid_grant','invalid_request',
+                'unauthorized_client','unsupported_grant_type','invalid_scope',
+                'server_error','temporarily_unavailable'} else 'other'
+            http=str(status) if status in (400,401,403,429,500,502,503,504) else 'other'
+            print('DEV07_BFF_OAUTH_REFUSAL=HTTP_'+http+'_ERROR_'+category,flush=True)
+            p.require(False,'DEV07_BFF_CODE_EXCHANGE_REFUSED')
         token=body['access_token']
         claims=p.claims(token)
         audience=claims.get('aud',[])
