@@ -170,6 +170,11 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                     # raw error description, credential, bearer or response.
                     if re.fullmatch(r'DEV07_BFF_OAUTH_REFUSAL=HTTP_(400|401|403|429|500|502|503|504|other)_ERROR_(invalid_client|invalid_grant|invalid_request|unauthorized_client|unsupported_grant_type|invalid_scope|server_error|temporarily_unavailable|other)',line):
                         print(line,flush=True)
+                    if line in {'DEV07_BFF_HOOK_REFUSAL='+name for name in
+                         ('DEV07_GRANT_REFUSED','DEV07_ASSURANCE_ABSENT',
+                          'MISSING_SUBJECT','MISSING_ID_TOKEN','MISSING_ACR',
+                          'MISSING_GRANT_TYPES','OTHER')}:
+                        print(line,flush=True)
             raw=(result.stdout+result.stderr).lower()
             classification='COMMAND_FAILED'
             for needle,code in (('toomanyrequests','IMAGE_RATE_LIMITED'),('429 too many','IMAGE_RATE_LIMITED'),
