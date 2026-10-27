@@ -122,6 +122,15 @@ def run_native(run):
     dev.write(directory/'compose.json',config);state['compose_sha256']=hashlib.sha256((directory/'compose.json').read_bytes()).hexdigest();dev.persist(directory,state,'RUNNING')
     dev.compose(directory,state,'up','-d','--wait','--wait-timeout','120','trade-buyer-db',timeout=180)
     print('DEV07_STAGE=TRADE_MIGRATE',flush=True)
+    # Prove the actual non-root run UID and its writable Medusa/npm paths
+    # before migration; no credentials or directory content are emitted.
+    dev.require(dev.compose(directory,state,'run','--rm','--no-deps','trade-buyer-tool','id','-u',timeout=30)
+        == str(state['uid']),'DEV07_TOOL_UID_MISMATCH')
+    try:
+        dev.compose(directory,state,'run','--rm','--no-deps','trade-buyer-tool','sh','-c',
+            'test -w /app && test -w /app/node_modules && test -w "$HOME"',timeout=30)
+    except dev.Refused:
+        raise dev.Refused('DEV07_TOOL_FILESYSTEM_NOT_WRITABLE') from None
     dev.compose(directory,state,'run','--rm','--no-deps','trade-buyer-tool','npm','run','migrate',timeout=240)
     print('DEV07_STAGE=NATIVE_PACKET',flush=True)
     dev.compose(directory,state,'exec','-T','probe','python','/buyer_identity_probe.py','packet',timeout=60)
@@ -176,7 +185,11 @@ def main():
         reason=str(error)
         if reason in {'IAM_CP_HEALTH_FAILED','COMMAND_FAILED','COMMAND_TIMEOUT','BOOTSTRAP_REPLAY_MISMATCH','LEASE_EXPIRED',
                       'DEV07_MIGRATE_DEPENDENCY_MISSING','DEV07_MIGRATE_DATABASE_CONNECT','DEV07_MIGRATE_PERMISSION',
-                      'DEV07_MIGRATE_CONFIG','DEV07_MIGRATE_NATIVE_MODULE','DEV07_MIGRATE_UNKNOWN'}:
+                      'DEV07_MIGRATE_CONFIG','DEV07_MIGRATE_NATIVE_MODULE','DEV07_MIGRATE_UNKNOWN',
+                      'DEV07_MIGRATE_HOME_PERMISSION','DEV07_MIGRATE_APP_PERMISSION',
+                      'DEV07_MIGRATE_DATABASE_PERMISSION','DEV07_MIGRATE_MOUNT_PERMISSION',
+                      'DEV07_MIGRATE_EXEC_PERMISSION','DEV07_TOOL_UID_MISMATCH',
+                      'DEV07_TOOL_FILESYSTEM_NOT_WRITABLE'}:
             print('DEV07_FAILURE_CLASS='+reason,flush=True)
         print('DEV07_RUNTIME_NOT_QUALIFIED',flush=True)
     finally:

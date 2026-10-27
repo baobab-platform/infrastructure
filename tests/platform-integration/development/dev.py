@@ -206,6 +206,21 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                     if marker in raw:
                         category = reason
                         break
+                if category == 'PERMISSION':
+                    # Only finite stage labels are released to Actions, never
+                    # an untrusted provider error message or a path.
+                    if 'schema public' in raw or 'permission denied for schema' in raw:
+                        category = 'DATABASE_PERMISSION'
+                    elif '/home/node' in raw or '/root/.npm' in raw or '/app/.npm-cache' in raw:
+                        category = 'HOME_PERMISSION'
+                    elif 'node_modules/.bin/' in raw or 'medusa: permission denied' in raw:
+                        category = 'EXEC_PERMISSION'
+                    elif 'mount' in raw or 'bind' in raw or 'error response from daemon' in raw:
+                        category = 'MOUNT_PERMISSION'
+                    elif '/app/' in raw or 'eacces' in raw:
+                        category = 'APP_PERMISSION'
+                    else:
+                        category = 'PERMISSION'
                 classification = 'DEV07_MIGRATE_' + category
             raise Refused(classification)
         return result.stdout.strip()
