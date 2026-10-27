@@ -51,11 +51,15 @@ def revoke_and_readback(native, name, token, verifier):
     code,_,_=p.request('POST',p.ISSUER+'/oauth2/revoke',
         {'token':token,'token_type_hint':'access_token',**fields},
         form=True,basic=basic)
-    p.require(code==200,'DEV07_CP_CALLER_REVOKE_REFUSED')
+    revoke_code=('DEV07_BFF_PREFLIGHT_REVOKE_REFUSED' if name==BFF
+                 else 'DEV07_CP_CALLER_REVOKE_REFUSED')
+    readback_code=('DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED' if name==BFF
+                   else 'DEV07_CP_CALLER_REVOKE_READBACK_REFUSED')
+    p.require(code==200,revoke_code)
     code,current,_=p.request('POST',p.ISSUER+'/oauth2/introspect',
         {'token':token},form=True,basic=verifier)
     p.require(code==200 and isinstance(current,dict) and
-              current.get('active') is False,'DEV07_CP_CALLER_REVOKE_READBACK_REFUSED')
+              current.get('active') is False,readback_code)
 
 
 def issuer_preflight():
@@ -240,6 +244,7 @@ if __name__=='__main__':
                'DEV07_BFF_INTROSPECTION_REFUSED','DEV07_CP_CALLER_ISSUANCE_REFUSED',
                'DEV07_CP_PRINCIPAL_PREFLIGHT_REFUSED',
                'DEV07_CP_CALLER_REVOKE_REFUSED','DEV07_CP_CALLER_REVOKE_READBACK_REFUSED',
+               'DEV07_BFF_PREFLIGHT_REVOKE_REFUSED','DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED',
                'DEV07_UNSUPPORTED_CLIENT_AUTH'}
         if isinstance(error,ValueError) and str(error) in codes:
             print('DEV07_PRIVATE_FAILURE_CLASS='+str(error),flush=True)
