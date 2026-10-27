@@ -26,6 +26,38 @@ def packet():
 
 
 
+
+def client_auth(native, name):
+    """Return the exact Hydra client auth shape recorded by IAM's owner.
+
+    Only issuer-owned client authentication is used. A client_secret_post
+    registration never authenticates by Basic just for token revocation.
+    """
+    credential=native['clients'][name]
+    method=credential['config']['token_endpoint_auth_method']
+    if method=='client_secret_post':
+        return {'client_id':name,'client_secret':credential['secret']},None
+    p.require(method=='client_secret_basic','DEV07_UNSUPPORTED_CLIENT_AUTH')
+    return {},(name,credential['secret'])
+
+
+def revoke_and_readback(native, name, token, verifier):
+    """Revoke the exact issued token and independently observe inactivity.
+
+    No cleanup flag is inferred from an HTTP 200 alone. Failure is terminal
+    for qualification; the surrounding owner still tears down its resources.
+    """
+    fields,basic=client_auth(native,name)
+    code,_,_=p.request('POST',p.ISSUER+'/oauth2/revoke',
+        {'token':token,'token_type_hint':'access_token',**fields},
+        form=True,basic=basic)
+    p.require(code==200,'DEV07_CP_CALLER_REVOKE_REFUSED')
+    code,current,_=p.request('POST',p.ISSUER+'/oauth2/introspect',
+        {'token':token},form=True,basic=verifier)
+    p.require(code==200 and isinstance(current,dict) and
+              current.get('active') is False,'DEV07_CP_CALLER_REVOKE_READBACK_REFUSED')
+
+
 def issuer_preflight():
     """Independently test a fresh real BFF authorization code, never the qualifier's code.
 
@@ -86,11 +118,12 @@ def issuer_preflight():
         import uuid
         validator=native['clients'][VALIDATOR]
         print('DEV07_CP_PRINCIPAL_STAGE=CALLER_REQUEST',flush=True)
+        caller_fields,caller_basic=client_auth(native,VALIDATOR)
         status,owned,_=p.request('POST',p.ISSUER+'/oauth2/token',
-            {'grant_type':'client_credentials','client_id':VALIDATOR,
-             'client_secret':validator['secret'],
+            {'grant_type':'client_credentials',
              'scope':'identity:principal:resolve',
-             'audience':'baobab-control-plane'},form=True)
+             'audience':'baobab-control-plane',**caller_fields},
+            form=True,basic=caller_basic)
         if status!=200 or not isinstance(owned,dict) or not owned.get('access_token'):
             category=owned.get('error') if isinstance(owned,dict) else None
             category=category if category in {'invalid_client','invalid_grant','invalid_request',
@@ -118,28 +151,27 @@ def issuer_preflight():
                 cause=code if code in allowed else 'OTHER'
                 http=str(status) if status in (400,401,403,404,500,503) else 'OTHER'
                 print('DEV07_CP_PRINCIPAL_REFUSAL=HTTP_'+http+'_CODE_'+cause,flush=True)
-            p.require(status==200 and isinstance(result,dict) and
+            is_resolved=(status==200 and isinstance(result,dict) and
                 result.get('outcome')=='RESOLVED' and
                 result.get('actor_type')=='human' and
-                result.get('status')=='ACTIVE',
-                'DEV07_CP_PRINCIPAL_PREFLIGHT_REFUSED')
-            print('DEV07_CP_PRINCIPAL_PREFLIGHT_OBSERVED',flush=True)
+                result.get('status')=='ACTIVE' and
+                isinstance(result.get('principal_id'),str) and
+                isinstance(result.get('external_identity_id'),str))
+            if status==200 and not is_resolved:
+                print('DEV07_CP_PRINCIPAL_RESULT=INVALID_RESPONSE',flush=True)
+            p.require(is_resolved,'DEV07_CP_PRINCIPAL_PREFLIGHT_REFUSED')
+            print('DEV07_CP_PRINCIPAL_RESULT=RESOLVED',flush=True)
         finally:
-            status,_,_=p.request('POST',p.ISSUER+'/oauth2/revoke',
-                {'token':bearer,'token_type_hint':'access_token'},
-                form=True,basic=(VALIDATOR,validator['secret']))
-            p.require(status==200,'DEV07_CP_CALLER_REVOKE_REFUSED')
+            # Revoke with the client's registered OAuth method. A successful
+            # CP response is insufficient if this token remains current.
+            revoke_and_readback(native,VALIDATOR,bearer,verifier)
+            print('DEV07_CP_PRINCIPAL_STAGE=CALLER_REVOKED',flush=True)
 
     finally:
         if token is not None:
-            status,_,_=p.request('POST',p.ISSUER+'/oauth2/revoke',
-                {'token':token,'token_type_hint':'access_token'},
-                form=True,basic=credentials)
-            p.require(status==200,'DEV07_BFF_PREFLIGHT_REVOKE_REFUSED')
-            status,actual,_=p.request('POST',p.ISSUER+'/oauth2/introspect',
-                {'token':token},form=True,basic=verifier)
-            p.require(status==200 and actual.get('active') is False,
-                      'DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED')
+            # BFF is registered for client_secret_basic. Independent
+            # introspection, not the revoke status alone, proves cleanup.
+            revoke_and_readback(native,BFF,token,verifier)
     print('DEV07_REAL_BFF_ISSUANCE_AND_REVOCATION_PREFLIGHT_OBSERVED')
 
 
@@ -150,15 +182,8 @@ def binding_control(revoked=False):
     if not revoked:
         control={}
         for name,scope,audience in ((BFF,'trade:buyer-handoff','baobab-trade'),(VALIDATOR,'estate:client-binding:resolve','baobab-control-plane')):
-            fields={'grant_type':'client_credentials','scope':scope,'audience':audience}
-            credential=native['clients'][name]
-            if credential['config']['token_endpoint_auth_method']=='client_secret_post':
-                fields.update(client_id=name,client_secret=credential['secret'])
-                basic=None
-            else:
-                p.require(credential['config']['token_endpoint_auth_method']=='client_secret_basic',
-                          'DEV07_UNSUPPORTED_CLIENT_AUTH')
-                basic=(name,credential['secret'])
+            auth,basic=client_auth(native,name)
+            fields={'grant_type':'client_credentials','scope':scope,'audience':audience,**auth}
             code,body,_=p.request('POST',p.ISSUER+'/oauth2/token',fields,form=True,basic=basic)
             p.require(code==200 and body.get('access_token'),'DEV07_BINDING_CONTROL_ISSUANCE')
             control[name]=body['access_token']
@@ -214,9 +239,8 @@ if __name__=='__main__':
         codes={'DEV07_BFF_CODE_EXCHANGE_REFUSED','DEV07_BFF_SIGNED_CLAIMS_REFUSED',
                'DEV07_BFF_INTROSPECTION_REFUSED','DEV07_CP_CALLER_ISSUANCE_REFUSED',
                'DEV07_CP_PRINCIPAL_PREFLIGHT_REFUSED',
-               'DEV07_CP_CALLER_REVOKE_REFUSED',
-               'DEV07_BFF_PREFLIGHT_REVOKE_REFUSED',
-               'DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED','DEV07_UNSUPPORTED_CLIENT_AUTH'}
+               'DEV07_CP_CALLER_REVOKE_REFUSED','DEV07_CP_CALLER_REVOKE_READBACK_REFUSED',
+               'DEV07_UNSUPPORTED_CLIENT_AUTH'}
         if isinstance(error,ValueError) and str(error) in codes:
             print('DEV07_PRIVATE_FAILURE_CLASS='+str(error),flush=True)
         raise SystemExit('DEV07_PRIVATE_PROTOCOL_FAILED') from None
