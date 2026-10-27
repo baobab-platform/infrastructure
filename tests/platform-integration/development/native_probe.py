@@ -260,7 +260,16 @@ def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=
             current();nonce=params['consent_challenge'][0]
             status,actual=api('GET','/admin/oauth2/auth/requests/consent?consent_challenge='+nonce)
             require(status==200 and actual['subject']==human['id'] and actual['client']['client_id']==client_id and set(actual['requested_scope'])<=set(scope.split()),'CONSENT_BINDING')
-            status,accepted=api('PUT','/admin/oauth2/auth/requests/consent/accept?consent_challenge='+nonce,{'grant_scope':actual['requested_scope'],'grant_access_token_audience':[audience],'remember':False})
+            consent={'grant_scope':actual['requested_scope'],
+                     'grant_access_token_audience':[audience],'remember':False}
+            if client_id=='baobab-dev-zuribeans-bff':
+                # Hydra's token hook reads assurance from the consent session.
+                # Bind it to this real Kratos login, which was independently
+                # checked above via WhoAmI, instead of synthesizing an acr.
+                kratos_acr=login['session'].get('authenticator_assurance_level')
+                require(kratos_acr in ('aal1','aal2'),'DEV07_KRATOS_ASSURANCE_ABSENT')
+                consent['session']={'id_token':{'acr':kratos_acr}}
+            status,accepted=api('PUT','/admin/oauth2/auth/requests/consent/accept?consent_challenge='+nonce,consent)
             require(status==200);location=accepted['redirect_to']
         elif url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path==urllib.parse.urlsplit(callback).path:
             if negative=='wrong_state':
