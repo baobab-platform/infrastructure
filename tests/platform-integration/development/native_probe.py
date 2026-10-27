@@ -211,7 +211,9 @@ class Hook(BaseHTTPRequestHandler):
                     if key in ('subject','id_token','acr','grant_types'):
                         reason='MISSING_'+key.upper()
                 try:write('dev07-token-hook-refusal.json',{'reason':reason})
-                except (FileExistsError,OSError):pass
+                except (FileExistsError,OSError):
+                    # Diagnostic custody is best-effort: never change the issuer's denial or leak hook internals.
+                    pass
             self.send_response(403);self.end_headers()
 
     def introspect(self):
