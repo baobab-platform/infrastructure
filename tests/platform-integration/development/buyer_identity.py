@@ -66,10 +66,15 @@ def cp_fixture(directory,state,phase):
 
 def run_native(run):
     directory,state=dev.current(run)
-    dev.up(run);dev.test(run)
+    print("DEV07_STAGE=BASE_UP",flush=True)
+    dev.up(run)
+    print("DEV07_STAGE=BASE_TEST",flush=True)
+    dev.test(run)
+    print("DEV07_STAGE=CP_FIXTURE",flush=True)
     directory,state=dev.current(run)
     fixture=cp_fixture(directory,state,'prepare')
     dev.require(cp_fixture(directory,state,'read')==fixture,'DEV07_CP_READBACK_CHANGED')
+    print('DEV07_STAGE=TRADE_SOURCE',flush=True)
     source=directory/'sources/baobab-trade'
     # Clone precisely the reviewed owner source into this run's private tree.
     dev.call(['git','init','-q',str(source)],state=state)
@@ -83,6 +88,7 @@ def run_native(run):
     dockerfile=source/'Dockerfile.dev07';dev.check_dockerfile(dockerfile)
     args=['docker','build','--tag',image,'--file',str(dockerfile)]
     for key,value in {**dev.labels(state),'org.opencontainers.image.revision':sha}.items():args+=['--label',key+'='+value]
+    print('DEV07_STAGE=TRADE_BUILD',flush=True)
     dev.call([*args,str(source)],state=state,timeout=1800)
     state['image_ids']['trade-buyer-tool']=dev.call(['docker','image','inspect',image,'--format','{{.Id}}'],state=state)
     dev.require(dev.DIGEST.fullmatch(state['image_ids']['trade-buyer-tool']),'DEV07_IMAGE_ID_REQUIRED')
@@ -113,12 +119,15 @@ def run_native(run):
         config['services'][name].update(labels=labels,restart='no',networks=['lab'])
     dev.write(directory/'compose.json',config);state['compose_sha256']=hashlib.sha256((directory/'compose.json').read_bytes()).hexdigest();dev.persist(directory,state,'RUNNING')
     dev.compose(directory,state,'up','-d','--wait','--wait-timeout','120','trade-buyer-db',timeout=180)
+    print('DEV07_STAGE=TRADE_MIGRATE',flush=True)
     dev.compose(directory,state,'run','--rm','--no-deps','trade-buyer-tool','npm','run','migrate',timeout=240)
+    print('DEV07_STAGE=NATIVE_PACKET',flush=True)
     dev.compose(directory,state,'exec','-T','probe','python','/buyer_identity_probe.py','packet',timeout=60)
     packet=directory/'buyer-code-packet.json'
     dev.require(packet.is_file() and packet.stat().st_mode & 0o077==0,'DEV07_PRIVATE_PACKET_REQUIRED')
     config['services']['trade-buyer-tool']['volumes'].append(adapter.host(packet)+':/run/buyer-code-packet.json:ro')
     dev.write(directory/'compose.json',config);state['compose_sha256']=hashlib.sha256((directory/'compose.json').read_bytes()).hexdigest();dev.persist(directory,state,'RUNNING')
+    print('DEV07_STAGE=TRADE_QUALIFIER',flush=True)
     try:
         dev.compose(directory,state,'run','--rm','--no-deps','trade-buyer-tool',timeout=180)
     finally:
@@ -159,8 +168,12 @@ def main():
     try:
         run=prepare()
         with dev.guarded(run):run_native(run)
-    except Exception:
+    except Exception as error:
         failed=True
+        # Closed orchestration classifications; no provider error text escapes.
+        reason=str(error)
+        if reason in {'IAM_CP_HEALTH_FAILED','COMMAND_FAILED','COMMAND_TIMEOUT','BOOTSTRAP_REPLAY_MISMATCH','LEASE_EXPIRED'}:
+            print('DEV07_FAILURE_CLASS='+reason,flush=True)
         print('DEV07_RUNTIME_NOT_QUALIFIED',flush=True)
     finally:
         if run:

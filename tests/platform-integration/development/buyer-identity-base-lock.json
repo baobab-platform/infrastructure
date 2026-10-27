@@ -5,7 +5,7 @@
   "infrastructure_baseline": "ad3c501932db7b5e5cfb5a3a5bab0c47ada44318",
   "sources": {
     "shared": "2fde03e2f5f3a8a6cbc1e2081b4859fdccc1bb53",
-    "baobab-cp": "5cc4fe56f2ba8b9ee072a5d53124cdd0b174a8dc",
+    "baobab-cp": "695f08112898f65b17a4ec90b680720526b64dc4",
     "baobab-iam": "98f27f1d0c5219051209504fe3409c9c2d3e7137"
   },
   "images": {
