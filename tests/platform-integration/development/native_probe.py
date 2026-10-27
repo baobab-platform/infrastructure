@@ -138,6 +138,7 @@ class Hook(BaseHTTPRequestHandler):
             self.send_response(404);self.end_headers()
 
     def do_POST(self):
+        client=None
         try:
             if self.path=='/introspect':
                 return self.introspect()
@@ -160,7 +161,21 @@ class Hook(BaseHTTPRequestHandler):
             if human: claims['realm_access']={'roles':['cp:platform-admin']}
             raw=json.dumps({'session':{'access_token':claims}}).encode()
             self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(raw)
-        except Exception: self.send_response(403);self.end_headers()
+        except Exception as error:
+            # Closed DEV-07 diagnostic for this one synthetic BFF only.
+            # The run directory stays private; no webhook/request/token body
+            # or exception text is copied into exported evidence or logs.
+            if client=='baobab-dev-zuribeans-bff':
+                reason='OTHER'
+                if isinstance(error,ValueError) and str(error) in ('DEV07_GRANT_REFUSED','DEV07_ASSURANCE_ABSENT'):
+                    reason=str(error)
+                elif isinstance(error,KeyError):
+                    key=error.args[0] if len(error.args)==1 else None
+                    if key in ('subject','id_token','acr','grant_types'):
+                        reason='MISSING_'+key.upper()
+                try:write('dev07-token-hook-refusal.json',{'reason':reason})
+                except (FileExistsError,OSError):pass
+            self.send_response(403);self.end_headers()
 
     def introspect(self):
         try:
