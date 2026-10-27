@@ -107,6 +107,58 @@ def guarded(run_id, nonblocking=False):
         os.close(handle)
 
 
+def is_dev07_preflight_diagnostic(line):
+    """Only static issuer/CP classifications may leave private probe stdout.
+
+    This function owns the single reviewed whitelist used by the subprocess
+    gateway and by unit tests. Unknown response bodies or appended bearer
+    values cannot be forwarded into GitHub Actions logs.
+    """
+    refusals={
+        'DEV07_BFF_CODE_EXCHANGE_REFUSED','DEV07_BFF_SIGNED_CLAIMS_REFUSED',
+        'DEV07_BFF_INTROSPECTION_REFUSED','DEV07_CP_CALLER_ISSUANCE_REFUSED',
+        'DEV07_CP_PRINCIPAL_PREFLIGHT_REFUSED',
+        'DEV07_CP_CALLER_REVOKE_REFUSED','DEV07_CP_CALLER_REVOKE_READBACK_REFUSED',
+        'DEV07_BFF_PREFLIGHT_REVOKE_REFUSED',
+        'DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED',
+        'DEV07_UNSUPPORTED_CLIENT_AUTH',
+    }
+    if line.startswith('DEV07_PRIVATE_FAILURE_CLASS='):
+        return line.removeprefix('DEV07_PRIVATE_FAILURE_CLASS=') in refusals
+    if line in {'DEV07_CP_PRINCIPAL_STAGE='+name for name in (
+        'CALLER_REQUEST','CALLER_ISSUED','CP_REQUEST','CP_RESPONDED','CALLER_REVOKED'
+    )}:
+        return True
+    if line in {'DEV07_CP_PRINCIPAL_RESULT='+name for name in ('RESOLVED','INVALID_RESPONSE')}:
+        return True
+    if re.fullmatch(
+        r'DEV07_BFF_OAUTH_REFUSAL=HTTP_(400|401|403|429|500|502|503|504|other)_ERROR_(invalid_client|invalid_grant|invalid_request|unauthorized_client|unsupported_grant_type|invalid_scope|server_error|temporarily_unavailable|other)', line
+    ):
+        return True
+    if re.fullmatch(
+        r'DEV07_CP_CALLER_ISSUANCE=HTTP_(400|401|403|429|500|503|OTHER)_CODE_(invalid_client|invalid_grant|invalid_request|unauthorized_client|invalid_scope|server_error|OTHER)', line
+    ):
+        return True
+    if re.fullmatch(
+        r'DEV07_CP_PRINCIPAL_REFUSAL=HTTP_(400|401|403|404|500|503|OTHER)_CODE_(CALLER_NOT_PERMITTED|SUBJECT_TOKEN_INVALID|SUBJECT_TOKEN_NOT_CURRENT|SUBJECT_TOKEN_NOT_FOR_CALLER|IDENTITY_NOT_RESOLVED|PRINCIPAL_NOT_ACTIVE|RESOLUTION_UNAVAILABLE|OTHER)', line
+    ):
+        return True
+    return line in {'DEV07_BFF_HOOK_REFUSAL='+name for name in (
+        'DEV07_GRANT_REFUSED','DEV07_ASSURANCE_ABSENT',
+        'MISSING_SUBJECT','MISSING_ID_TOKEN','MISSING_ACR',
+        'MISSING_GRANT_TYPES','OTHER',
+    )}
+
+
+def is_dev07_native_diagnostic(line):
+    return re.fullmatch(
+        r'DEV07_NATIVE_CONTEXT=HTTP_(200|400|401|403|404|409|503|OTHER)_REASON_'
+        r'(CONTEXT_MISMATCH|BUYER_TOKEN_INVALID|ASSURANCE_INSUFFICIENT|IDENTITY_NOT_RESOLVED|'
+        r'PRINCIPAL_NOT_ACTIVE|BUYER_NOT_AUTHORISED|ORGANISATION_NOT_ATTESTED|ROLE_NOT_PERMITTED|'
+        r'MARKET_NOT_PERMITTED|CONTEXT_NOT_USABLE|OPERATION_NOT_ACTIVATED|SOURCE_UNAVAILABLE|OTHER)', line
+    ) is not None
+
+
 def call(args, *, timeout=120, stdin=None, state=None, env=None):
     if state is not None:
         timeout = min(timeout, state['deadline'] - time.time())
@@ -157,6 +209,16 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                             print('DEV04_BINDING=' + json.dumps(value, sort_keys=True), flush=True)
                     except (ValueError, TypeError, Refused):
                         pass  # Unknown diagnostics never cross the custody boundary.
+            # The single closed, unit-tested vocabulary is the sole DEV-07
+            # escape hatch from private native probe stdout.
+            if args[-4:] == ['probe','python','/buyer_identity_probe.py','issuer-preflight']:
+                for line in result.stdout.splitlines():
+                    if is_dev07_preflight_diagnostic(line):
+                        print(line,flush=True)
+            if args[-1:] == ['trade-buyer-tool']:
+                for line in result.stdout.splitlines():
+                    if is_dev07_native_diagnostic(line):
+                        print(line,flush=True)
             raw=(result.stdout+result.stderr).lower()
             classification='COMMAND_FAILED'
             for needle,code in (('toomanyrequests','IMAGE_RATE_LIMITED'),('429 too many','IMAGE_RATE_LIMITED'),
@@ -183,6 +245,45 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                     if line.startswith(prefix) and line[len(prefix):] in fixture_stages:
                         classification='CMS_FIXTURE_'+line[len(prefix):]
                         break
+            # A DEV-07 migration failure must be actionable without leaking
+            # untrusted provider stdout, connection strings or secrets.
+            # The closed vocabulary is emitted only for this exact command.
+            if len(args) >= 4 and args[-4:] == ['trade-buyer-tool','npm','run','migrate']:
+                category = 'UNKNOWN'
+                for marker, reason in (
+                    ('cannot find module', 'DEPENDENCY_MISSING'),
+                    ('cannot find package', 'DEPENDENCY_MISSING'),
+                    ('module not found', 'DEPENDENCY_MISSING'),
+                    ('econnrefused', 'DATABASE_CONNECT'),
+                    ('connection refused', 'DATABASE_CONNECT'),
+                    ('database does not exist', 'DATABASE_CONNECT'),
+                    ('permission denied', 'PERMISSION'),
+                    ('eacces', 'PERMISSION'),
+                    ('invalid configuration', 'CONFIG'),
+                    ('invalid config', 'CONFIG'),
+                    ('error loading config', 'CONFIG'),
+                    ('native binding', 'NATIVE_MODULE'),
+                    ('not a valid elf', 'NATIVE_MODULE'),
+                ):
+                    if marker in raw:
+                        category = reason
+                        break
+                if category == 'PERMISSION':
+                    # Only finite stage labels are released to Actions, never
+                    # an untrusted provider error message or a path.
+                    if 'schema public' in raw or 'permission denied for schema' in raw:
+                        category = 'DATABASE_PERMISSION'
+                    elif '/home/node' in raw or '/root/.npm' in raw or '/app/.npm-cache' in raw:
+                        category = 'HOME_PERMISSION'
+                    elif 'node_modules/.bin/' in raw or 'medusa: permission denied' in raw:
+                        category = 'EXEC_PERMISSION'
+                    elif 'mount' in raw or 'bind' in raw or 'error response from daemon' in raw:
+                        category = 'MOUNT_PERMISSION'
+                    elif '/app/' in raw or 'eacces' in raw:
+                        category = 'APP_PERMISSION'
+                    else:
+                        category = 'PERMISSION'
+                classification = 'DEV07_MIGRATE_' + category
             raise Refused(classification)
         return result.stdout.strip()
     except (subprocess.SubprocessError, OSError) as error:
@@ -190,7 +291,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
 
 
 def load_lock(lock_name='lock.json'):
-    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
+    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json', 'buyer-identity-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
     data = json.loads((BASE / lock_name).read_text(), object_pairs_hook=unique)
     require(set(data) == {'schema', 'profile', 'authority', 'infrastructure_baseline', 'sources',
                          'images', 'max_lease_seconds', 'synthetic_only', 'protected_acceptance'}, 'LOCK_SHAPE')
@@ -615,6 +716,9 @@ def down(run_id):
         qualification = state.get('int03c')
         if qualification:
             int03c_contract.validate(qualification, run_id)
+        if state.get('dev07_buyer'):
+            import buyer_identity_contract
+            buyer_identity_contract.validate(state['dev07_buyer'], state['sources'].get('baobab-trade'))
         report = {'schema': 'infrastructure.dev01.lifecycle.observed.v1', 'run_id': run_id,
                   'harness_sha': state['harness_sha'], 'source_pins': state['sources'],
                   'image_ids': state['image_ids'], 'runtime_images': state.get('runtime_images', {}),
@@ -623,7 +727,7 @@ def down(run_id):
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
                   'engine_integration':state.get('engine_integration'), 'engine_runtime_identity_verified':state.get('engine_runtime_identity_verified',False), 'engine_oci_manifest_digest':state.get('engine_oci_manifest_digest'), 'engine_lock_sha256':state.get('engine_lock_sha256'),
-                  'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_oci_manifest_digest':state.get('cms_oci_manifest_digest'), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
+                  'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_oci_manifest_digest':state.get('cms_oci_manifest_digest'), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'dev07_buyer':state.get('dev07_buyer'), 'dev07_issuer_cleanup':state.get('dev07_issuer_cleanup',False), 'dev07_binding_revocation_verified':state.get('dev07_binding_revocation_verified',False), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         if state.get('dev15_registry_sha256'):
