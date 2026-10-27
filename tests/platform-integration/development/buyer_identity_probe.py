@@ -55,6 +55,14 @@ def issuer_preflight():
                 'server_error','temporarily_unavailable'} else 'other'
             http=str(status) if status in (400,401,403,429,500,502,503,504) else 'other'
             print('DEV07_BFF_OAUTH_REFUSAL=HTTP_'+http+'_ERROR_'+category,flush=True)
+            if status==403:
+                marker=p.ROOT/'dev07-token-hook-refusal.json'
+                if marker.is_file():
+                    reason=p.read('dev07-token-hook-refusal.json').get('reason')
+                    if reason in ('DEV07_GRANT_REFUSED','DEV07_ASSURANCE_ABSENT',
+                                  'MISSING_SUBJECT','MISSING_ID_TOKEN','MISSING_ACR',
+                                  'MISSING_GRANT_TYPES','OTHER'):
+                        print('DEV07_BFF_HOOK_REFUSAL='+reason,flush=True)
             p.require(False,'DEV07_BFF_CODE_EXCHANGE_REFUSED')
         token=body['access_token']
         claims=p.claims(token)
