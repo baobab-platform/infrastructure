@@ -157,6 +157,15 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                             print('DEV04_BINDING=' + json.dumps(value, sort_keys=True), flush=True)
                     except (ValueError, TypeError, Refused):
                         pass  # Unknown diagnostics never cross the custody boundary.
+            # Only a reviewed closed issuer-preflight error vocabulary may
+            # cross the private probe boundary; never echo raw provider output.
+            if args[-4:] == ['probe','python','/buyer_identity_probe.py','issuer-preflight']:
+                allowed={'DEV07_BFF_CODE_EXCHANGE_REFUSED','DEV07_BFF_SIGNED_CLAIMS_REFUSED',
+                         'DEV07_BFF_INTROSPECTION_REFUSED','DEV07_BFF_PREFLIGHT_REVOKE_REFUSED',
+                         'DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED','DEV07_UNSUPPORTED_CLIENT_AUTH'}
+                for line in result.stdout.splitlines():
+                    if line.startswith('DEV07_PRIVATE_FAILURE_CLASS=') and line.split('=',1)[1] in allowed:
+                        print(line,flush=True)
             raw=(result.stdout+result.stderr).lower()
             classification='COMMAND_FAILED'
             for needle,code in (('toomanyrequests','IMAGE_RATE_LIMITED'),('429 too many','IMAGE_RATE_LIMITED'),
