@@ -190,7 +190,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
 
 
 def load_lock(lock_name='lock.json'):
-    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
+    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json', 'buyer-identity-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
     data = json.loads((BASE / lock_name).read_text(), object_pairs_hook=unique)
     require(set(data) == {'schema', 'profile', 'authority', 'infrastructure_baseline', 'sources',
                          'images', 'max_lease_seconds', 'synthetic_only', 'protected_acceptance'}, 'LOCK_SHAPE')
@@ -615,6 +615,9 @@ def down(run_id):
         qualification = state.get('int03c')
         if qualification:
             int03c_contract.validate(qualification, run_id)
+        if state.get('dev07_buyer'):
+            import buyer_identity_contract
+            buyer_identity_contract.validate(state['dev07_buyer'], state['sources'].get('baobab-trade'))
         report = {'schema': 'infrastructure.dev01.lifecycle.observed.v1', 'run_id': run_id,
                   'harness_sha': state['harness_sha'], 'source_pins': state['sources'],
                   'image_ids': state['image_ids'], 'runtime_images': state.get('runtime_images', {}),
@@ -623,7 +626,7 @@ def down(run_id):
                   'lifecycle_passed': state['tests'], 'teardown_verified': True,
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
                   'engine_integration':state.get('engine_integration'), 'engine_runtime_identity_verified':state.get('engine_runtime_identity_verified',False), 'engine_oci_manifest_digest':state.get('engine_oci_manifest_digest'), 'engine_lock_sha256':state.get('engine_lock_sha256'),
-                  'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_oci_manifest_digest':state.get('cms_oci_manifest_digest'), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
+                  'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_oci_manifest_digest':state.get('cms_oci_manifest_digest'), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'dev07_buyer':state.get('dev07_buyer'), 'dev07_issuer_cleanup':state.get('dev07_issuer_cleanup',False), 'dev07_binding_revocation_verified':state.get('dev07_binding_revocation_verified',False), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         if state.get('dev15_registry_sha256'):

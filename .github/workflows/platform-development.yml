@@ -160,3 +160,42 @@ jobs:
             tests/platform-integration/evidence/dev06-external-suite*.json
           if-no-files-found: warn
           retention-days: 14
+
+  buyer-identity:
+    name: DEV-07 live IAM CP and native buyer-handler qualification
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned integration CLI
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Start the common integration laboratory
+        run: tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up --frozen-lockfile --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: Run actual DEV-07 issuer CP and native-handler observations
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env BAOBAB_ENVIRONMENT=development \
+            python3 -B tests/platform-integration/development/buyer_identity.py
+      - name: Recover all owned resources
+        if: always()
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Independent host recovery
+        if: always()
+        run: python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Retain only completed sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev07-buyer-identity-evidence
+          path: |
+            tests/platform-integration/evidence/dev07-buyer-suite*.json
+            tests/platform-integration/evidence/dev01-*/completed/*.json
+          if-no-files-found: warn
+          retention-days: 14

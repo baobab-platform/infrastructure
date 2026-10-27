@@ -34,7 +34,7 @@ def configure(directory, state):
     hydra=(source/'hydra/hydra.yml').read_text().replace('http://127.0.0.1:4444',ISSUER).replace('http://127.0.0.1:3000','https://rp.baobab-dev.test')
     hydra=hydra.replace('local_dev_only_hydra_system_secret_change_me',state['secrets']['admin']).replace('local_dev_only_pairwise_salt_change_me',state['secrets']['hook'])
     hydra=hydra.replace('  access_token: jwt','  access_token: jwt\n  jwt:\n    scope_claim: string')
-    hydra=hydra.replace('  expose_internal_errors: false', '  expose_internal_errors: false\n  allowed_top_level_claims: [actor_type, azp, realm_access]\n  mirror_top_level_claims: false\n  token_hook:\n    url: http://probe:8090/token-hook\n    auth:\n      type: api_key\n      config:\n        in: header\n        name: X-DEV03-Hook-Key\n        value: '+state['secrets']['hook'])
+    hydra=hydra.replace('  expose_internal_errors: false', '  expose_internal_errors: false\n  allowed_top_level_claims: [actor_type, azp, realm_access, client_id, acr]\n  mirror_top_level_claims: false\n  token_hook:\n    url: http://probe:8090/token-hook\n    auth:\n      type: api_key\n      config:\n        in: header\n        name: X-DEV03-Hook-Key\n        value: '+state['secrets']['hook'])
     hydra+='\nttl:\n  access_token: 2m\n'
     (directory/'hydra.yml').write_text(hydra)
     kratos=(source/'kratos/kratos.yml').read_text().replace('http://127.0.0.1:4433/','https://kratos.baobab-dev.test/').replace('http://127.0.0.1:4434/','http://kratos:4434/').replace('http://127.0.0.1:4455','https://rp.baobab-dev.test').replace('http://127.0.0.1:3000','https://rp.baobab-dev.test')
@@ -66,6 +66,13 @@ def composition(state,directory,images,namespace):
             PEO_SUBSCRIPTIONS_WORKLOAD_CLIENT_ID='baobab-dev-subscriptions-assessor',
             CP_SUBSCRIPTION_CURRENT_AUTHORITY_ENABLED='true',
             CP_SUBSCRIPTIONS_CURRENT_WORKLOAD_CLIENT_ID='baobab-dev-subscriptions-assessor')
+    if state.get('buyer_identity_profile'):
+        cp_env.update(BUYER_PRINCIPAL_RESOLUTION_ENABLED='true',
+            BUYER_SUBJECT_ISSUER=ISSUER, BUYER_SUBJECT_AUTHORISED_PARTIES='baobab-dev-zuribeans-bff',
+            BUYER_SUBJECT_INTROSPECTION_ENDPOINT=ISSUER+'/oauth2/introspect',
+            BUYER_SUBJECT_INTROSPECTION_CLIENT_ID='baobab-dev-introspection',
+            BUYER_SUBJECT_INTROSPECTION_CLIENT_SECRET=secret['introspection'],
+            ESTATE_CLIENT_BINDING_ENABLED='true')
     registry=directory/'sources/shared/contracts/identity/v1/workload-registry.yaml'
     if state.get('dev15_registry_sha256'):
         # Only a reviewed, private development overlay is permitted here.
@@ -88,6 +95,9 @@ def composition(state,directory,images,namespace):
             raise ValueError('DEV15_UNRECOGNISED_PROFILE')
         services['probe']['volumes'].append(
             host(Path(__file__).parent/'dev15_health.py')+':/dev15_health.py:ro')
+    if state.get('buyer_identity_profile'):
+        services['probe']['volumes'] += [host(Path(__file__).parent/'buyer_identity_probe.py')+':/buyer_identity_probe.py:ro',
+            host(directory/'sources/baobab-iam/scripts/dev07_buyer_fixture.py')+':/dev07_buyer_fixture.py:ro']
     if state.get('engine_profile'):
         services['probe']['volumes'] += [host(Path(__file__).parent/name)+':/'+name+':ro' for name in ('engine_probe.py','engine_contract.py')]
     for service in services.values(): service.update(labels=labels,restart='no');service.setdefault('networks',['lab'])

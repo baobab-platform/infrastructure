@@ -83,6 +83,9 @@ def subjects():
     identities={v['client_id']:v for v in profile['iam'].values()} if profile else {}
     require(not set(identities).intersection(clients),'PROFILE_CLIENT_COLLISION')
     clients+=sorted(identities)
+    buyer_configs = read('buyer-client-spec.json') if state.get('buyer_identity_profile') else {}
+    require(not set(buyer_configs).intersection(clients),'PROFILE_CLIENT_COLLISION')
+    clients+=sorted(buyer_configs)
     for name in clients:
         secret=(os.environ['DEV03_INTROSPECTION_SECRET'] if name=='baobab-dev-introspection' else
                 os.environ['DEV04_VERIFIER_SECRET'] if name=='baobab-int03c-issuer-verifier' else secrets.token_urlsafe(32))
@@ -97,6 +100,8 @@ def subjects():
             role=next(role for role,item in profile['iam'].items() if item['client_id']==name)
             secret=state['secrets']['engine_'+role]
             config.update(client_secret=secret,scope=' '.join(identities[name]['scopes']),audience=identities[name]['audiences'],token_endpoint_auth_method='client_secret_post')
+        if name in buyer_configs:
+            config=buyer_configs[name]; secret=config['client_secret']
         code,_=api('GET','/admin/clients/'+name);require(code==404,'REFUSE_EXISTING_ISSUER_CLIENT')
         code,created=api('POST','/admin/clients',config);require(code==201 and created['client_id']==name,'HYDRA_CREATE')
         code,actual=api('GET','/admin/clients/'+name)
@@ -140,6 +145,13 @@ class Hook(BaseHTTPRequestHandler):
             size=int(self.headers.get('Content-Length','0'));require(0<size<65536)
             body=json.loads(self.rfile.read(size)); req=body['request'];session=body['session'];client=req['client_id'];grant=req['grant_types']
             native=read('native.json');require(client in native['clients'] and session['client_id']==client)
+            if read('state.json').get('buyer_identity_profile') and client in ('baobab-dev-zuribeans-bff','baobab-dev-trade-buyer-validator'):
+                from dev07_buyer_fixture import normalised_claims
+                claims=normalised_claims(client,grant,session['id_token']['subject'],
+                    {x['id'] for x in native['humans'].values()},session['id_token'].get('acr'))
+                raw=json.dumps({'session':{'access_token':claims}}).encode()
+                self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(raw)
+                return
             human=client in ('baobab-dev-human','nabhold-dev-bff');require(grant==(['authorization_code'] if human else ['client_credentials']))
             if human: require(session['id_token']['subject'] in {x['id'] for x in native['humans'].values()})
             else: require(client in tuple(v['client_id'] for v in read('state.json').get('engine_profile',{}).get('iam',{}).values())+WORKLOADS+('baobab-int03-cms-consumer','baobab-int03-cms-validator','baobab-dev-external-api','baobab-dev-pulse-validator','baobab-dev-cp-subscriptions','baobab-dev-subscriptions-assessor') and session['id_token']['subject']==client)
@@ -211,12 +223,16 @@ def claims(token):
     # Expiry and subject are observations only: CP verifies signature and claims.
     part=token.split('.')[1];return json.loads(base64.urlsafe_b64decode(part+'='*((-len(part))%4)))
 
-def validate_callback(location,state):
+def validate_callback(location,state,callback=CALLBACK):
     url=urllib.parse.urlsplit(location);values=urllib.parse.parse_qs(url.query)
-    require(url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path=='/callback' and not url.fragment
+    require(url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path==urllib.parse.urlsplit(callback).path and callback in (CALLBACK,'https://rp.baobab-dev.test/dev07/callback') and not url.fragment
             and values.get('state')==[state] and len(values.get('code',[]))==1 and 'error' not in values,'CALLBACK_BINDING_DENIED')
 
-def native_human(role,native,negative=None):
+def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=ADMIN_SCOPES,audience='baobab-control-plane',callback=CALLBACK,return_code=False):
+    if client_id!='baobab-dev-human' or return_code:
+        require(read('state.json').get('buyer_identity_profile') is True, 'DEV07_PROFILE_REQUIRED')
+        require((client_id=='baobab-dev-human' and scope==ADMIN_SCOPES and audience=='baobab-control-plane' and callback==CALLBACK) or
+                (client_id=='baobab-dev-zuribeans-bff' and scope=='trade:buy' and audience=='baobab-trade' and callback=='https://rp.baobab-dev.test/dev07/callback'), 'DEV07_CODE_PROFILE_REFUSED')
     human=native['humans'][role]
     code,flow,_=request('GET',KRATOS+'/self-service/login/api');require(code==200)
     code,login,_=request('POST',KRATOS+'/self-service/login?flow='+flow['id'],{'method':'password','identifier':human['email'],'password':human['password']})
@@ -229,7 +245,7 @@ def native_human(role,native,negative=None):
     state=secrets.token_urlsafe(32);verifier=secrets.token_urlsafe(32)
     challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
     opener=urllib.request.build_opener(NoRedirect(),urllib.request.HTTPSHandler(context=TLS),urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
-    query=urllib.parse.urlencode({'client_id':'baobab-dev-human','response_type':'code','redirect_uri':CALLBACK,'scope':ADMIN_SCOPES,'state':state,'code_challenge':challenge,'code_challenge_method':'S256','audience':'baobab-control-plane'})
+    query=urllib.parse.urlencode({'client_id':client_id,'response_type':'code','redirect_uri':callback,'scope':scope,'state':state,'code_challenge':challenge,'code_challenge_method':'S256','audience':audience})
     code,_,location=request('GET',ISSUER+'/oauth2/auth?'+query,opener=opener)
     for _ in range(8):
         require(code in (302,303) and location,'REAL_AUTHORIZATION_REDIRECT')
@@ -237,30 +253,33 @@ def native_human(role,native,negative=None):
         if url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path=='/login':
             current();nonce=params['login_challenge'][0]
             status,actual=api('GET','/admin/oauth2/auth/requests/login?login_challenge='+nonce)
-            require(status==200 and actual['client']['client_id']=='baobab-dev-human','LOGIN_CHALLENGE_BINDING')
+            require(status==200 and actual['client']['client_id']==client_id,'LOGIN_CHALLENGE_BINDING')
             status,accepted=api('PUT','/admin/oauth2/auth/requests/login/accept?login_challenge='+nonce,{'subject':human['id'],'remember':False,'acr':login['session']['authenticator_assurance_level']})
             require(status==200);location=accepted['redirect_to']
         elif url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path=='/consent':
             current();nonce=params['consent_challenge'][0]
             status,actual=api('GET','/admin/oauth2/auth/requests/consent?consent_challenge='+nonce)
-            require(status==200 and actual['subject']==human['id'] and actual['client']['client_id']=='baobab-dev-human' and set(actual['requested_scope'])<=set(ADMIN_SCOPES.split()),'CONSENT_BINDING')
-            status,accepted=api('PUT','/admin/oauth2/auth/requests/consent/accept?consent_challenge='+nonce,{'grant_scope':actual['requested_scope'],'grant_access_token_audience':['baobab-control-plane'],'remember':False})
+            require(status==200 and actual['subject']==human['id'] and actual['client']['client_id']==client_id and set(actual['requested_scope'])<=set(scope.split()),'CONSENT_BINDING')
+            status,accepted=api('PUT','/admin/oauth2/auth/requests/consent/accept?consent_challenge='+nonce,{'grant_scope':actual['requested_scope'],'grant_access_token_audience':[audience],'remember':False})
             require(status==200);location=accepted['redirect_to']
-        elif url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path=='/callback':
+        elif url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path==urllib.parse.urlsplit(callback).path:
             if negative=='wrong_state':
-                try: validate_callback(location,state+'wrong')
+                try: validate_callback(location,state+'wrong',callback)
                 except ValueError: return True
                 raise ValueError('WRONG_STATE_ACCEPTED')
-            validate_callback(location,state)
-            exchange={'grant_type':'authorization_code','code':params['code'][0],'redirect_uri':CALLBACK,'code_verifier':verifier}
+            validate_callback(location,state,callback)
+            if return_code:
+                require(negative is None, 'CODE_PACKET_NEGATIVE_REFUSED')
+                return {'code':params['code'][0],'verifier':verifier,'redirect_uri':callback}
+            exchange={'grant_type':'authorization_code','code':params['code'][0],'redirect_uri':callback,'code_verifier':verifier}
             if negative=='wrong_pkce': exchange['code_verifier']=secrets.token_urlsafe(32)
-            status,body,_=request('POST',ISSUER+'/oauth2/token',exchange,form=True,basic=('baobab-dev-human',native['clients']['baobab-dev-human']['secret']))
+            status,body,_=request('POST',ISSUER+'/oauth2/token',exchange,form=True,basic=(client_id,native['clients'][client_id]['secret']))
             if negative=='wrong_pkce':
                 require(status==400 and body.get('error')=='invalid_grant','REAL_PKCE_MISMATCH_DENIED')
                 return True
             require(status==200 and claims(body['access_token'])['sub']==human['id'],'REAL_SIGNED_HUMAN_TOKEN')
             if negative=='code_replay':
-                bad_status,bad,_=request('POST',ISSUER+'/oauth2/token',exchange,form=True,basic=('baobab-dev-human',native['clients']['baobab-dev-human']['secret']))
+                bad_status,bad,_=request('POST',ISSUER+'/oauth2/token',exchange,form=True,basic=(client_id,native['clients'][client_id]['secret']))
                 require(bad_status==400 and bad.get('error')=='invalid_grant','CODE_REPLAY_DENIED')
                 return True
             return body['access_token']
