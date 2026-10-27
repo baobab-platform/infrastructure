@@ -21,7 +21,7 @@ from baobab_pulse.domain.shared.value_objects import Reference, TenantContext
 from baobab_pulse.tenancy.context import bind_tenant_context
 
 
-async def prove():
+async def prove(*, canonical_hydration=False):
     settings = get_settings()
     if settings.qdrant_location or not settings.qdrant_url:
         raise ValueError("actual Qdrant server required")
@@ -48,7 +48,11 @@ async def prove():
         with bind_tenant_context(TenantContext(tenant_id=tenant)):
             results = await retrieval.search(text, requester_clearance=Classification.CONFIDENTIAL)
             checks["pulse_native_persisted_search"] = len(results) == 1 and results[0].canonical_object_id == "evd_int02_native" and not results[0].is_stale
-            hydrated, contents = await retrieval.hydrate_for_pipeline(results)
+            # Current Pulse rechecks canonical clearance at hydration. Carry
+            # the same clearance as search; its TENANT default cannot read
+            # this CONFIDENTIAL fixture. INT-02 retains its older pinned API.
+            hydration = {"requester_clearance": Classification.CONFIDENTIAL} if canonical_hydration else {}
+            hydrated, contents = await retrieval.hydrate_for_pipeline(results, **hydration)
             checks["pulse_native_canonical_hydration"] = hydrated.id == document.id and hydrated.version == 1 and contents == {"evd_int02_native": text}
             checks["pulse_native_classification_denied"] = not await retrieval.search(text, requester_clearance=Classification.PUBLIC)
         with bind_tenant_context(TenantContext(tenant_id=neighbour)):
@@ -83,8 +87,12 @@ async def prove():
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--canonical-hydration", action="store_true")
+    args = parser.parse_args()
     try:
-        asyncio.run(prove())
+        asyncio.run(prove(canonical_hydration=args.canonical_hydration))
     except Exception:
         # Even native asyncpg/Haystack exceptions can include DSNs or records.
         # The orchestrator reports only a fixed failure class, never a traceback.
