@@ -170,6 +170,8 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                     # raw error description, credential, bearer or response.
                     if re.fullmatch(r'DEV07_BFF_OAUTH_REFUSAL=HTTP_(400|401|403|429|500|502|503|504|other)_ERROR_(invalid_client|invalid_grant|invalid_request|unauthorized_client|unsupported_grant_type|invalid_scope|server_error|temporarily_unavailable|other)',line):
                         print(line,flush=True)
+                    if re.fullmatch(r'DEV07_CP_CALLER_ISSUANCE=HTTP_(400|401|403|429|500|503|OTHER)_CODE_(invalid_client|invalid_grant|invalid_request|unauthorized_client|invalid_scope|server_error|OTHER)',line):
+                        print(line,flush=True)
                     if re.fullmatch(r'DEV07_CP_PRINCIPAL_REFUSAL=HTTP_(400|401|403|404|500|503|OTHER)_CODE_(CALLER_NOT_PERMITTED|SUBJECT_TOKEN_INVALID|SUBJECT_TOKEN_NOT_CURRENT|SUBJECT_TOKEN_NOT_FOR_CALLER|IDENTITY_NOT_RESOLVED|PRINCIPAL_NOT_ACTIVE|RESOLUTION_UNAVAILABLE|OTHER)',line):
                         print(line,flush=True)
                     if line in {'DEV07_BFF_HOOK_REFUSAL='+name for name in
