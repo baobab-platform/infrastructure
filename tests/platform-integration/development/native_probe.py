@@ -157,7 +157,34 @@ class Hook(BaseHTTPRequestHandler):
                 id_assurance=id_token.get('acr')
                 if id_assurance is not None and assurance is not None:
                     require(id_assurance==assurance,'DEV07_ASSURANCE_MISMATCH')
-                claims=normalised_claims(client,grant,id_token['subject'],
+                subject=id_token['subject']
+                if client=='baobab-dev-zuribeans-bff' and grant==['authorization_code']:
+                    # Hydra 26.2 does not expose consent AAL to this hook.
+                    # Re-authenticate the already verified private Kratos
+                    # session at issuance time, bound to exact BFF + subject.
+                    # This is synthetic dev identity evidence, not a policy
+                    # bypass and not a production IAM issuer implementation.
+                    witness=read('dev07-kratos-session.json')
+                    owner=read('state.json')
+                    require(owner.get('buyer_identity_profile') is True and
+                            witness['run_id']==owner['run_id'] and
+                            witness['client_id']==client and
+                            witness['subject']==subject and
+                            time.time()<witness['expires_at']<=owner['deadline'],
+                            'DEV07_KRATOS_WITNESS_REFUSED')
+                    status,kratos,_=request('GET',KRATOS+'/sessions/whoami',
+                        headers={'X-Session-Token':witness['session_token']})
+                    require(status==200 and kratos['active'] is True and
+                            kratos['identity']['id']==subject,
+                            'DEV07_KRATOS_SESSION_NOT_CURRENT')
+                    current_acr=kratos.get('authenticator_assurance_level')
+                    require(current_acr in ('aal1','aal2'),
+                            'DEV07_KRATOS_ASSURANCE_ABSENT')
+                    require(assurance in (None,current_acr) and
+                            id_assurance in (None,current_acr),
+                            'DEV07_ASSURANCE_MISMATCH')
+                    assurance=current_acr
+                claims=normalised_claims(client,grant,subject,
                     {x['id'] for x in native['humans'].values()},
                     assurance if assurance is not None else id_assurance)
                 raw=json.dumps({'session':{'access_token':claims}}).encode()
@@ -267,6 +294,17 @@ def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=
         code,actual,_=request('GET',KRATOS+'/sessions/whoami',headers={'X-Session-Token':session_token})
         require(code==200 and actual['active'] and actual['identity']['id']==human['id'],'KRATOS_CURRENT_SESSION')
     current()
+    if client_id=='baobab-dev-zuribeans-bff':
+        # Only this synthetic, run-owned qualification BFF may use a direct
+        # Kratos session witness. Never infer acr from client claims/consent.
+        owner=read('state.json')
+        require(owner.get('buyer_identity_profile') is True,'DEV07_PROFILE_REQUIRED')
+        witness=ROOT/'dev07-kratos-session.json'
+        witness.unlink(missing_ok=True)
+        write('dev07-kratos-session.json',{
+            'run_id':owner['run_id'],'client_id':client_id,
+            'subject':human['id'],'session_token':session_token,
+            'expires_at':min(owner['deadline'],time.time()+120)})
     state=secrets.token_urlsafe(32);verifier=secrets.token_urlsafe(32)
     challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
     opener=urllib.request.build_opener(NoRedirect(),urllib.request.HTTPSHandler(context=TLS),urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
