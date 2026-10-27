@@ -3,6 +3,9 @@ from copy import deepcopy
 from pathlib import Path
 import sys
 import tempfile
+import importlib.util
+import types
+from unittest.mock import Mock, patch
 import time
 import unittest
 
@@ -47,3 +50,87 @@ class BuyerIdentityTests(unittest.TestCase):
         with self.assertRaises(ValueError):c.validate(broken,sha)
         broken=deepcopy(value);broken['cases']['wrong-audience-denial']={'result':'BLOCKED','reason':'NOT_EXECUTED'}
         with self.assertRaises(ValueError):c.validate(broken,sha)
+
+    def test_closed_dev07_diagnostics_distinguish_cp_and_revoke_without_leaking(self):
+        allowed=(
+            'DEV07_CP_PRINCIPAL_STAGE=CP_RESPONDED',
+            'DEV07_CP_PRINCIPAL_STAGE=CALLER_REVOKED',
+            'DEV07_CP_PRINCIPAL_RESULT=RESOLVED',
+            'DEV07_CP_PRINCIPAL_RESULT=INVALID_RESPONSE',
+            'DEV07_PRIVATE_FAILURE_CLASS=DEV07_CP_PRINCIPAL_PREFLIGHT_REFUSED',
+            'DEV07_PRIVATE_FAILURE_CLASS=DEV07_CP_CALLER_REVOKE_REFUSED',
+            'DEV07_PRIVATE_FAILURE_CLASS=DEV07_CP_CALLER_REVOKE_READBACK_REFUSED',
+            'DEV07_CP_PRINCIPAL_REFUSAL=HTTP_403_CODE_CALLER_NOT_PERMITTED',
+        )
+        self.assertTrue(all(dev.is_dev07_preflight_diagnostic(x) for x in allowed))
+        refused=(
+            'DEV07_PRIVATE_FAILURE_CLASS=ANY_OTHER_REASON',
+            'DEV07_CP_PRINCIPAL_RESULT=RESOLVED token=private',
+            'DEV07_CP_PRINCIPAL_STAGE=CP_RESPONDED\\nsecret',
+            'DEV07_CP_PRINCIPAL_REFUSAL=HTTP_200_CODE_OTHER',
+            'DEV07_CP_CALLER_ISSUANCE=HTTP_401_CODE_private',
+            'Authorization: Bearer private',
+            '',
+        )
+        self.assertTrue(all(not dev.is_dev07_preflight_diagnostic(x) for x in refused))
+
+    def _private_buyer_probe(self, request):
+        # Fake transport only: this unit test is not native IAM/CP evidence.
+        fake=types.ModuleType('native_probe')
+        fake.ISSUER='https://hydra.int03.test'
+        fake.request=request
+        def require(ok,code='PROVIDER_OBSERVATION_FAILED'):
+            if not ok:
+                raise ValueError(code)
+        fake.require=require
+        iam=types.ModuleType('dev07_buyer_fixture')
+        iam.BFF='baobab-dev-zuribeans-bff'
+        iam.VALIDATOR='baobab-dev-trade-buyer-validator'
+        iam.CALLBACK='https://rp.baobab-dev.test/dev07/callback'
+        file=Path(__file__).with_name('buyer_identity_probe.py')
+        spec=importlib.util.spec_from_file_location('_dev07_probe_under_test',file)
+        module=importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules,{'native_probe':fake,'dev07_buyer_fixture':iam}):
+            spec.loader.exec_module(module)
+        return module
+
+    def test_revoke_uses_registered_method_and_independent_readback(self):
+        native={'clients':{
+            'baobab-dev-trade-buyer-validator':{
+                'secret':'private-validator','config':{'token_endpoint_auth_method':'client_secret_post'}},
+            'baobab-dev-zuribeans-bff':{
+                'secret':'private-bff','config':{'token_endpoint_auth_method':'client_secret_basic'}},
+        }}
+        for name,body_auth,basic in (
+            ('baobab-dev-trade-buyer-validator',True,None),
+            ('baobab-dev-zuribeans-bff',False,('baobab-dev-zuribeans-bff','private-bff')),
+        ):
+            with self.subTest(client=name):
+                transport=Mock(side_effect=[(200,{},None),(200,{'active':False},None)])
+                probe=self._private_buyer_probe(transport)
+                verifier=('verifier','private')
+                probe.revoke_and_readback(native,name,'single-use-token',verifier)
+                self.assertEqual(transport.call_count,2)
+                revoke=transport.call_args_list[0]
+                self.assertEqual(revoke.args[1],'https://hydra.int03.test/oauth2/revoke')
+                self.assertEqual(revoke.args[2]['token'],'single-use-token')
+                self.assertEqual(revoke.kwargs['basic'],basic)
+                self.assertEqual('client_id' in revoke.args[2],body_auth)
+                self.assertEqual('client_secret' in revoke.args[2],body_auth)
+                readback=transport.call_args_list[1]
+                self.assertEqual(readback.args[1],'https://hydra.int03.test/oauth2/introspect')
+                self.assertEqual(readback.kwargs['basic'],verifier)
+
+    def test_revoke_denies_current_token_or_unsupported_client_auth(self):
+        name='baobab-dev-trade-buyer-validator'
+        native={'clients':{name:{
+            'secret':'private-validator','config':{'token_endpoint_auth_method':'client_secret_post'}}}}
+        transport=Mock(side_effect=[(200,{},None),(200,{'active':True},None)])
+        probe=self._private_buyer_probe(transport)
+        with self.assertRaisesRegex(ValueError,'DEV07_CP_CALLER_REVOKE_READBACK_REFUSED'):
+            probe.revoke_and_readback(native,name,'still-current',('verifier','secret'))
+        native['clients'][name]['config']['token_endpoint_auth_method']='none'
+        transport.reset_mock()
+        with self.assertRaisesRegex(ValueError,'DEV07_UNSUPPORTED_CLIENT_AUTH'):
+            probe.revoke_and_readback(native,name,'token',('verifier','secret'))
+        transport.assert_not_called()
