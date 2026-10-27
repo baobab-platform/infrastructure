@@ -120,7 +120,6 @@ def issuer_preflight():
         # Independently check the real CP Principal endpoint before starting
         # the costly Trade build. No Principal or grant is manufactured here.
         import uuid
-        validator=native['clients'][VALIDATOR]
         print('DEV07_CP_PRINCIPAL_STAGE=CALLER_REQUEST',flush=True)
         caller_fields,caller_basic=client_auth(native,VALIDATOR)
         status,owned,_=p.request('POST',p.ISSUER+'/oauth2/token',
@@ -249,3 +248,4 @@ if __name__=='__main__':
         if isinstance(error,ValueError) and str(error) in codes:
             print('DEV07_PRIVATE_FAILURE_CLASS='+str(error),flush=True)
         raise SystemExit('DEV07_PRIVATE_PROTOCOL_FAILED') from None
+
