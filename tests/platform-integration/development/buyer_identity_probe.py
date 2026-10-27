@@ -81,6 +81,46 @@ def issuer_preflight():
                   actual.get('client_id')==BFF and
                   actual.get('sub')==claims['sub'],
                   'DEV07_BFF_INTROSPECTION_REFUSED')
+        # Independently check the real CP Principal endpoint before starting
+        # the costly Trade build. No Principal or grant is manufactured here.
+        import uuid
+        validator=native['clients'][VALIDATOR]
+        status,owned,_=p.request('POST',p.ISSUER+'/oauth2/token',
+            {'grant_type':'client_credentials','client_id':VALIDATOR,
+             'client_secret':validator['secret'],
+             'scope':'identity:principal:resolve',
+             'audience':'baobab-control-plane'},form=True)
+        p.require(status==200 and isinstance(owned,dict) and
+                  owned.get('access_token'),'DEV07_CP_CALLER_ISSUANCE_REFUSED')
+        bearer=owned['access_token']
+        try:
+            correlation=str(uuid.uuid4())
+            status,result,_=p.request('POST',p.CP+'/internal/identity/v1/principals/resolve',
+                {'subject_token':token,
+                 'subject_token_type':'urn:ietf:params:oauth:token-type:access_token',
+                 'correlation_id':correlation},bearer,
+                 headers={'X-Correlation-ID':correlation})
+            if status!=200:
+                code=result.get('code') if isinstance(result,dict) else None
+                allowed={'CALLER_NOT_PERMITTED','SUBJECT_TOKEN_INVALID',
+                    'SUBJECT_TOKEN_NOT_CURRENT','SUBJECT_TOKEN_NOT_FOR_CALLER',
+                    'IDENTITY_NOT_RESOLVED','PRINCIPAL_NOT_ACTIVE',
+                    'RESOLUTION_UNAVAILABLE'}
+                cause=code if code in allowed else 'OTHER'
+                http=str(status) if status in (400,401,403,404,500,503) else 'OTHER'
+                print('DEV07_CP_PRINCIPAL_REFUSAL=HTTP_'+http+'_CODE_'+cause,flush=True)
+            p.require(status==200 and isinstance(result,dict) and
+                result.get('outcome')=='RESOLVED' and
+                result.get('actor_type')=='human' and
+                result.get('status')=='ACTIVE',
+                'DEV07_CP_PRINCIPAL_PREFLIGHT_REFUSED')
+            print('DEV07_CP_PRINCIPAL_PREFLIGHT_OBSERVED',flush=True)
+        finally:
+            status,_,_=p.request('POST',p.ISSUER+'/oauth2/revoke',
+                {'token':bearer,'token_type_hint':'access_token'},
+                form=True,basic=(VALIDATOR,validator['secret']))
+            p.require(status==200,'DEV07_CP_CALLER_REVOKE_REFUSED')
+
     finally:
         if token is not None:
             status,_,_=p.request('POST',p.ISSUER+'/oauth2/revoke',
