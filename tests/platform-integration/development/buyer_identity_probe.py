@@ -1,5 +1,4 @@
 """Private native code-packet producer. No credential/body leaves this driver."""
-import os
 import sys
 from datetime import datetime, timezone
 import native_probe as p
@@ -14,7 +13,7 @@ def packet():
     # Both codes follow actual Kratos login/WhoAmI + Hydra S256 PKCE/consent.
     # The negative has a separate, already registered CP human client; the
     # Trade-only BFF human profile is never broadened to manufacture a test.
-    buyer=p.native_human('maker',native,client_id=BFF,scope='trade:buy',audience='baobab-trade',callback=CALLBACK,return_code=True)
+    buyer=p.native_human('maker',native,client_id=BFF,scope='openid trade:buy',audience='baobab-trade',callback=CALLBACK,return_code=True)
     wrong=p.native_human('maker',native,return_code=True)
     wrong.update(client_id='baobab-dev-human',client_secret=native['clients']['baobab-dev-human']['secret'])
     value={'schema':'baobab-trade.dev07-code-packet.v1','deadline':datetime.fromtimestamp(state['deadline'],timezone.utc).isoformat(),

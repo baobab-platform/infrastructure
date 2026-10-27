@@ -183,6 +183,30 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                     if line.startswith(prefix) and line[len(prefix):] in fixture_stages:
                         classification='CMS_FIXTURE_'+line[len(prefix):]
                         break
+            # A DEV-07 migration failure must be actionable without leaking
+            # untrusted provider stdout, connection strings or secrets.
+            # The closed vocabulary is emitted only for this exact command.
+            if len(args) >= 4 and args[-4:] == ['trade-buyer-tool','npm','run','migrate']:
+                category = 'UNKNOWN'
+                for marker, reason in (
+                    ('cannot find module', 'DEPENDENCY_MISSING'),
+                    ('cannot find package', 'DEPENDENCY_MISSING'),
+                    ('module not found', 'DEPENDENCY_MISSING'),
+                    ('econnrefused', 'DATABASE_CONNECT'),
+                    ('connection refused', 'DATABASE_CONNECT'),
+                    ('database does not exist', 'DATABASE_CONNECT'),
+                    ('permission denied', 'PERMISSION'),
+                    ('eacces', 'PERMISSION'),
+                    ('invalid configuration', 'CONFIG'),
+                    ('invalid config', 'CONFIG'),
+                    ('error loading config', 'CONFIG'),
+                    ('native binding', 'NATIVE_MODULE'),
+                    ('not a valid elf', 'NATIVE_MODULE'),
+                ):
+                    if marker in raw:
+                        category = reason
+                        break
+                classification = 'DEV07_MIGRATE_' + category
             raise Refused(classification)
         return result.stdout.strip()
     except (subprocess.SubprocessError, OSError) as error:

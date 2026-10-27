@@ -1,6 +1,5 @@
 """DEV-07 source refusal boundaries; never actual issuer/runtime evidence."""
 from copy import deepcopy
-import json
 from pathlib import Path
 import sys
 import tempfile
@@ -17,6 +16,7 @@ class BuyerIdentityTests(unittest.TestCase):
         lock=dev.load_lock('buyer-identity-base-lock.json')
         self.assertFalse(lock['protected_acceptance'])
         self.assertEqual(lock['sources']['shared'],'2fde03e2f5f3a8a6cbc1e2081b4859fdccc1bb53')
+        self.assertEqual(lock['sources']['baobab-iam'],'03d4d7c026d524a265403af9606d0b9e46f71783')
         self.assertEqual(len(lock['sources']),3)
         self.assertTrue(all('@sha256:' in image for image in lock['images'].values()))
     def test_feature_flags_and_owner_module_are_opt_in(self):

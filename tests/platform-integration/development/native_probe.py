@@ -232,7 +232,7 @@ def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=
     if client_id!='baobab-dev-human' or return_code:
         require(read('state.json').get('buyer_identity_profile') is True, 'DEV07_PROFILE_REQUIRED')
         require((client_id=='baobab-dev-human' and scope==ADMIN_SCOPES and audience=='baobab-control-plane' and callback==CALLBACK) or
-                (client_id=='baobab-dev-zuribeans-bff' and scope=='trade:buy' and audience=='baobab-trade' and callback=='https://rp.baobab-dev.test/dev07/callback'), 'DEV07_CODE_PROFILE_REFUSED')
+                (client_id=='baobab-dev-zuribeans-bff' and scope=='openid trade:buy' and audience=='baobab-trade' and callback=='https://rp.baobab-dev.test/dev07/callback'), 'DEV07_CODE_PROFILE_REFUSED')
     human=native['humans'][role]
     code,flow,_=request('GET',KRATOS+'/self-service/login/api');require(code==200)
     code,login,_=request('POST',KRATOS+'/self-service/login?flow='+flow['id'],{'method':'password','identifier':human['email'],'password':human['password']})

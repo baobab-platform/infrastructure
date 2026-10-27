@@ -7,7 +7,6 @@ separate from its production runtime. Original INT-05 acceptance stays open.
 import hashlib
 import importlib.util
 import json
-import os
 from pathlib import Path
 import secrets
 import sys
@@ -65,7 +64,6 @@ def cp_fixture(directory,state,phase):
 
 
 def run_native(run):
-    directory,state=dev.current(run)
     print("DEV07_STAGE=BASE_UP",flush=True)
     dev.up(run)
     print("DEV07_STAGE=BASE_TEST",flush=True)
@@ -172,7 +170,9 @@ def main():
         failed=True
         # Closed orchestration classifications; no provider error text escapes.
         reason=str(error)
-        if reason in {'IAM_CP_HEALTH_FAILED','COMMAND_FAILED','COMMAND_TIMEOUT','BOOTSTRAP_REPLAY_MISMATCH','LEASE_EXPIRED'}:
+        if reason in {'IAM_CP_HEALTH_FAILED','COMMAND_FAILED','COMMAND_TIMEOUT','BOOTSTRAP_REPLAY_MISMATCH','LEASE_EXPIRED',
+                      'DEV07_MIGRATE_DEPENDENCY_MISSING','DEV07_MIGRATE_DATABASE_CONNECT','DEV07_MIGRATE_PERMISSION',
+                      'DEV07_MIGRATE_CONFIG','DEV07_MIGRATE_NATIVE_MODULE','DEV07_MIGRATE_UNKNOWN'}:
             print('DEV07_FAILURE_CLASS='+reason,flush=True)
         print('DEV07_RUNTIME_NOT_QUALIFIED',flush=True)
     finally:
