@@ -25,14 +25,75 @@ def packet():
     print('DEV07_NATIVE_CODE_PACKET_PREPARED')
 
 
+
+def issuer_preflight():
+    """Independently test a fresh real BFF authorization code, never the qualifier's code.
+
+    The single-use code here is exchanged and its bearer revoked before making
+    the later code packet. Failures expose only a closed stage label, not the
+    credential, bearer, issuer body or a private transport exception.
+    """
+    native=p.read('native.json')
+    code=p.native_human('maker',native,client_id=BFF,scope='openid trade:buy',
+                        audience='baobab-trade',callback=CALLBACK,return_code=True)
+    credentials=(BFF,native['clients'][BFF]['secret'])
+    verifier=('baobab-int03c-issuer-verifier',
+              native['clients']['baobab-int03c-issuer-verifier']['secret'])
+    token=None
+    try:
+        status,body,_=p.request('POST',p.ISSUER+'/oauth2/token',
+            {'grant_type':'authorization_code','code':code['code'],
+             'code_verifier':code['verifier'],'redirect_uri':code['redirect_uri']},
+            form=True,basic=credentials)
+        p.require(status==200 and isinstance(body,dict) and
+                  isinstance(body.get('access_token'),str),'DEV07_BFF_CODE_EXCHANGE_REFUSED')
+        token=body['access_token']
+        claims=p.claims(token)
+        audience=claims.get('aud',[])
+        if isinstance(audience,str):audience=[audience]
+        p.require(claims.get('iss')==p.ISSUER and
+                  claims.get('sub')==native['humans']['maker']['id'] and
+                  claims.get('actor_type')=='human' and claims.get('azp')==BFF and
+                  'baobab-trade' in audience and
+                  'trade:buy' in claims.get('scope','').split(),
+                  'DEV07_BFF_SIGNED_CLAIMS_REFUSED')
+        status,actual,_=p.request('POST',p.ISSUER+'/oauth2/introspect',
+            {'token':token},form=True,basic=verifier)
+        p.require(status==200 and isinstance(actual,dict) and
+                  actual.get('active') is True and
+                  actual.get('client_id')==BFF and
+                  actual.get('sub')==claims['sub'],
+                  'DEV07_BFF_INTROSPECTION_REFUSED')
+    finally:
+        if token is not None:
+            status,_,_=p.request('POST',p.ISSUER+'/oauth2/revoke',
+                {'token':token,'token_type_hint':'access_token'},
+                form=True,basic=credentials)
+            p.require(status==200,'DEV07_BFF_PREFLIGHT_REVOKE_REFUSED')
+            status,actual,_=p.request('POST',p.ISSUER+'/oauth2/introspect',
+                {'token':token},form=True,basic=verifier)
+            p.require(status==200 and actual.get('active') is False,
+                      'DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED')
+    print('DEV07_REAL_BFF_ISSUANCE_AND_REVOCATION_PREFLIGHT_OBSERVED')
+
+
+
 def binding_control(revoked=False):
     import time, uuid
     native=p.read('native.json'); fixture=p.read('buyer-fixture.json')
     if not revoked:
         control={}
         for name,scope,audience in ((BFF,'trade:buyer-handoff','baobab-trade'),(VALIDATOR,'estate:client-binding:resolve','baobab-control-plane')):
-            fields={'grant_type':'client_credentials','client_id':name,'client_secret':native['clients'][name]['secret'],'scope':scope,'audience':audience}
-            code,body,_=p.request('POST',p.ISSUER+'/oauth2/token',fields,form=True)
+            fields={'grant_type':'client_credentials','scope':scope,'audience':audience}
+            credential=native['clients'][name]
+            if credential['config']['token_endpoint_auth_method']=='client_secret_post':
+                fields.update(client_id=name,client_secret=credential['secret'])
+                basic=None
+            else:
+                p.require(credential['config']['token_endpoint_auth_method']=='client_secret_basic',
+                          'DEV07_UNSUPPORTED_CLIENT_AUTH')
+                basic=(name,credential['secret'])
+            code,body,_=p.request('POST',p.ISSUER+'/oauth2/token',fields,form=True,basic=basic)
             p.require(code==200 and body.get('access_token'),'DEV07_BINDING_CONTROL_ISSUANCE')
             control[name]=body['access_token']
         p.write('buyer-binding-control.json',control)
@@ -75,9 +136,18 @@ def cleanup():
 
 if __name__=='__main__':
     try:
-        if sys.argv[1]=='packet':packet()
+        if sys.argv[1]=='issuer-preflight':issuer_preflight()
+        elif sys.argv[1]=='packet':packet()
         elif sys.argv[1]=='cleanup':cleanup()
         elif sys.argv[1]=='binding-control':binding_control()
         elif sys.argv[1]=='binding-revoked':binding_control(True)
         else:raise ValueError()
-    except Exception:raise SystemExit('DEV07_PRIVATE_PROTOCOL_FAILED') from None
+    except Exception as error:
+        # A closed, reviewed error vocabulary is the only information exported
+        # from this private probe into Actions logs. No token/provider body.
+        codes={'DEV07_BFF_CODE_EXCHANGE_REFUSED','DEV07_BFF_SIGNED_CLAIMS_REFUSED',
+               'DEV07_BFF_INTROSPECTION_REFUSED','DEV07_BFF_PREFLIGHT_REVOKE_REFUSED',
+               'DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED','DEV07_UNSUPPORTED_CLIENT_AUTH'}
+        if isinstance(error,ValueError) and str(error) in codes:
+            print('DEV07_PRIVATE_FAILURE_CLASS='+str(error),flush=True)
+        raise SystemExit('DEV07_PRIVATE_PROTOCOL_FAILED') from None
