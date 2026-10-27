@@ -90,8 +90,13 @@ def issuer_preflight():
              'client_secret':validator['secret'],
              'scope':'identity:principal:resolve',
              'audience':'baobab-control-plane'},form=True)
-        p.require(status==200 and isinstance(owned,dict) and
-                  owned.get('access_token'),'DEV07_CP_CALLER_ISSUANCE_REFUSED')
+        if status!=200 or not isinstance(owned,dict) or not owned.get('access_token'):
+            category=owned.get('error') if isinstance(owned,dict) else None
+            category=category if category in {'invalid_client','invalid_grant','invalid_request',
+                    'unauthorized_client','invalid_scope','server_error'} else 'OTHER'
+            http=str(status) if status in (400,401,403,429,500,503) else 'OTHER'
+            print('DEV07_CP_CALLER_ISSUANCE=HTTP_'+http+'_CODE_'+category,flush=True)
+            p.require(False,'DEV07_CP_CALLER_ISSUANCE_REFUSED')
         bearer=owned['access_token']
         try:
             correlation=str(uuid.uuid4())
