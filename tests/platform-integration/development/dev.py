@@ -107,6 +107,49 @@ def guarded(run_id, nonblocking=False):
         os.close(handle)
 
 
+def is_dev07_preflight_diagnostic(line):
+    """Only static issuer/CP classifications may leave private probe stdout.
+
+    This function owns the single reviewed whitelist used by the subprocess
+    gateway and by unit tests. Unknown response bodies or appended bearer
+    values cannot be forwarded into GitHub Actions logs.
+    """
+    refusals={
+        'DEV07_BFF_CODE_EXCHANGE_REFUSED','DEV07_BFF_SIGNED_CLAIMS_REFUSED',
+        'DEV07_BFF_INTROSPECTION_REFUSED','DEV07_CP_CALLER_ISSUANCE_REFUSED',
+        'DEV07_CP_PRINCIPAL_PREFLIGHT_REFUSED',
+        'DEV07_CP_CALLER_REVOKE_REFUSED','DEV07_CP_CALLER_REVOKE_READBACK_REFUSED',
+        'DEV07_BFF_PREFLIGHT_REVOKE_REFUSED',
+        'DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED',
+        'DEV07_UNSUPPORTED_CLIENT_AUTH',
+    }
+    if line.startswith('DEV07_PRIVATE_FAILURE_CLASS='):
+        return line.removeprefix('DEV07_PRIVATE_FAILURE_CLASS=') in refusals
+    if line in {'DEV07_CP_PRINCIPAL_STAGE='+name for name in (
+        'CALLER_REQUEST','CALLER_ISSUED','CP_REQUEST','CP_RESPONDED','CALLER_REVOKED'
+    )}:
+        return True
+    if line in {'DEV07_CP_PRINCIPAL_RESULT='+name for name in ('RESOLVED','INVALID_RESPONSE')}:
+        return True
+    if re.fullmatch(
+        r'DEV07_BFF_OAUTH_REFUSAL=HTTP_(400|401|403|429|500|502|503|504|other)_ERROR_(invalid_client|invalid_grant|invalid_request|unauthorized_client|unsupported_grant_type|invalid_scope|server_error|temporarily_unavailable|other)', line
+    ):
+        return True
+    if re.fullmatch(
+        r'DEV07_CP_CALLER_ISSUANCE=HTTP_(400|401|403|429|500|503|OTHER)_CODE_(invalid_client|invalid_grant|invalid_request|unauthorized_client|invalid_scope|server_error|OTHER)', line
+    ):
+        return True
+    if re.fullmatch(
+        r'DEV07_CP_PRINCIPAL_REFUSAL=HTTP_(400|401|403|404|500|503|OTHER)_CODE_(CALLER_NOT_PERMITTED|SUBJECT_TOKEN_INVALID|SUBJECT_TOKEN_NOT_CURRENT|SUBJECT_TOKEN_NOT_FOR_CALLER|IDENTITY_NOT_RESOLVED|PRINCIPAL_NOT_ACTIVE|RESOLUTION_UNAVAILABLE|OTHER)', line
+    ):
+        return True
+    return line in {'DEV07_BFF_HOOK_REFUSAL='+name for name in (
+        'DEV07_GRANT_REFUSED','DEV07_ASSURANCE_ABSENT',
+        'MISSING_SUBJECT','MISSING_ID_TOKEN','MISSING_ACR',
+        'MISSING_GRANT_TYPES','OTHER',
+    )}
+
+
 def call(args, *, timeout=120, stdin=None, state=None, env=None):
     if state is not None:
         timeout = min(timeout, state['deadline'] - time.time())
@@ -157,29 +200,11 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                             print('DEV04_BINDING=' + json.dumps(value, sort_keys=True), flush=True)
                     except (ValueError, TypeError, Refused):
                         pass  # Unknown diagnostics never cross the custody boundary.
-            # Only a reviewed closed issuer-preflight error vocabulary may
-            # cross the private probe boundary; never echo raw provider output.
+            # The single closed, unit-tested vocabulary is the sole DEV-07
+            # escape hatch from private native probe stdout.
             if args[-4:] == ['probe','python','/buyer_identity_probe.py','issuer-preflight']:
-                allowed={'DEV07_BFF_CODE_EXCHANGE_REFUSED','DEV07_BFF_SIGNED_CLAIMS_REFUSED',
-                         'DEV07_BFF_INTROSPECTION_REFUSED','DEV07_BFF_PREFLIGHT_REVOKE_REFUSED',
-                         'DEV07_BFF_PREFLIGHT_REVOKE_READBACK_REFUSED','DEV07_UNSUPPORTED_CLIENT_AUTH'}
                 for line in result.stdout.splitlines():
-                    if line.startswith('DEV07_PRIVATE_FAILURE_CLASS=') and line.split('=',1)[1] in allowed:
-                        print(line,flush=True)
-                    # Only protocol status and an RFC/OAuth code; never any
-                    # raw error description, credential, bearer or response.
-                    if re.fullmatch(r'DEV07_BFF_OAUTH_REFUSAL=HTTP_(400|401|403|429|500|502|503|504|other)_ERROR_(invalid_client|invalid_grant|invalid_request|unauthorized_client|unsupported_grant_type|invalid_scope|server_error|temporarily_unavailable|other)',line):
-                        print(line,flush=True)
-                    if line in {'DEV07_CP_PRINCIPAL_STAGE='+stage for stage in ('CALLER_REQUEST','CALLER_ISSUED','CP_REQUEST','CP_RESPONDED')}:
-                        print(line,flush=True)
-                    if re.fullmatch(r'DEV07_CP_CALLER_ISSUANCE=HTTP_(400|401|403|429|500|503|OTHER)_CODE_(invalid_client|invalid_grant|invalid_request|unauthorized_client|invalid_scope|server_error|OTHER)',line):
-                        print(line,flush=True)
-                    if re.fullmatch(r'DEV07_CP_PRINCIPAL_REFUSAL=HTTP_(400|401|403|404|500|503|OTHER)_CODE_(CALLER_NOT_PERMITTED|SUBJECT_TOKEN_INVALID|SUBJECT_TOKEN_NOT_CURRENT|SUBJECT_TOKEN_NOT_FOR_CALLER|IDENTITY_NOT_RESOLVED|PRINCIPAL_NOT_ACTIVE|RESOLUTION_UNAVAILABLE|OTHER)',line):
-                        print(line,flush=True)
-                    if line in {'DEV07_BFF_HOOK_REFUSAL='+name for name in
-                         ('DEV07_GRANT_REFUSED','DEV07_ASSURANCE_ABSENT',
-                          'MISSING_SUBJECT','MISSING_ID_TOKEN','MISSING_ACR',
-                          'MISSING_GRANT_TYPES','OTHER')}:
+                    if is_dev07_preflight_diagnostic(line):
                         print(line,flush=True)
             raw=(result.stdout+result.stderr).lower()
             classification='COMMAND_FAILED'
