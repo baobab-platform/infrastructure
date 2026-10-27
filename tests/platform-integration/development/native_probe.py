@@ -148,8 +148,18 @@ class Hook(BaseHTTPRequestHandler):
             native=read('native.json');require(client in native['clients'] and session['client_id']==client)
             if read('state.json').get('buyer_identity_profile') and client in ('baobab-dev-zuribeans-bff','baobab-dev-trade-buyer-validator'):
                 from dev07_buyer_fixture import normalised_claims
-                claims=normalised_claims(client,grant,session['id_token']['subject'],
-                    {x['id'] for x in native['humans'].values()},session['id_token'].get('acr'))
+                # The real Kratos assurance was bound at Hydra consent
+                # to this access-token session. Refuse disagreement with a
+                # separately-present ID-token value; never infer an AAL.
+                id_token=session['id_token']
+                access=session.get('access_token',{})
+                assurance=(access.get('acr') if isinstance(access,dict) else None)
+                id_assurance=id_token.get('acr')
+                if id_assurance is not None and assurance is not None:
+                    require(id_assurance==assurance,'DEV07_ASSURANCE_MISMATCH')
+                claims=normalised_claims(client,grant,id_token['subject'],
+                    {x['id'] for x in native['humans'].values()},
+                    assurance if assurance is not None else id_assurance)
                 raw=json.dumps({'session':{'access_token':claims}}).encode()
                 self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(raw)
                 return
@@ -283,7 +293,12 @@ def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=
                 # checked above via WhoAmI, instead of synthesizing an acr.
                 kratos_acr=login['session'].get('authenticator_assurance_level')
                 require(kratos_acr in ('aal1','aal2'),'DEV07_KRATOS_ASSURANCE_ABSENT')
-                consent['session']={'id_token':{'acr':kratos_acr}}
+                # Hydra's token hook observes the OAuth access-token
+                # session; the ID-token session alone need not be projected
+                # into that hook. Carry the same real Kratos AAL in both
+                # channels, never a caller-supplied assurance value.
+                consent['session']={'access_token':{'acr':kratos_acr},
+                                    'id_token':{'acr':kratos_acr}}
             status,accepted=api('PUT','/admin/oauth2/auth/requests/consent/accept?consent_challenge='+nonce,consent)
             require(status==200);location=accepted['redirect_to']
         elif url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path==urllib.parse.urlsplit(callback).path:
