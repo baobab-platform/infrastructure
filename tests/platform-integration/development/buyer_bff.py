@@ -232,7 +232,7 @@ def up(run):
     state['dev07_bff_config_hashes'] = {name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
         for name in ('nginx.conf', 'bff-redis.acl', 'bff-ca/ca.pem')}
     commit_config(directory, state, config)
-    dev.compose(directory, state, 'up', '-d', 'trade-bff-http', 'bff-redis', 'zuribeans-bff', timeout=120)
+    dev.compose(directory, state, 'up', '-d', 'trade-bff-http', 'bff-redis', 'zuribeans-bff', 'edge', timeout=120)
     dev.compose(directory, state, 'exec', '-T', 'edge', 'nginx', '-s', 'reload', timeout=30)
     print('DEV07_BFF_STAGE=HTTP_HEALTH', flush=True)
     for attempt in range(60):
@@ -240,6 +240,8 @@ def up(run):
             if json.loads(probe(directory, state, 'health', timeout=20)) == {'trade': 200, 'bff': 200}:
                 break
         except (dev.Refused, ValueError):
+            # Startup can briefly refuse connections or return a non-JSON response.
+            # Keep the delay below so every failed attempt remains bounded.
             pass
         time.sleep(2)
     else:
