@@ -1,0 +1,8 @@
+{
+  "schema": "infrastructure.dev07-bff-owners.v1",
+  "sources": {
+    "baobab-trade": "6288459b276868fbe70e4c06d15cff1f63631a51",
+    "zuribeans": "9002f1d88699866c78d8167bb0a999b32182939b"
+  },
+  "redis": "redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499"
+}
