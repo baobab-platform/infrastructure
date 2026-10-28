@@ -287,6 +287,12 @@ def validate_callback(location,state,callback=CALLBACK):
             and values.get('state')==[state] and len(values.get('code',[]))==1 and 'error' not in values,'CALLBACK_BINDING_DENIED')
 
 def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=ADMIN_SCOPES,audience='baobab-control-plane',callback=CALLBACK,return_code=False,authorization_url=None):
+    http_profile = authorization_url is not None
+    def http_stage(stage):
+        if http_profile:
+            require(read('state.json').get('buyer_bff_http_profile') is True)
+            print('DEV07_BFF_HTTP_STAGE=NATIVE_' + stage, flush=True)
+    http_stage('IDENTITY')
     if client_id!='baobab-dev-human' or return_code:
         require(read('state.json').get('buyer_identity_profile') is True, 'DEV07_PROFILE_REQUIRED')
         require((client_id=='baobab-dev-human' and scope==ADMIN_SCOPES and audience=='baobab-control-plane' and callback==CALLBACK) or
@@ -325,17 +331,20 @@ def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=
     if authorization_url is None:
         query=urllib.parse.urlencode({'client_id':client_id,'response_type':'code','redirect_uri':callback,'scope':scope,'state':state,'code_challenge':challenge,'code_challenge_method':'S256','audience':audience})
         authorization_url=ISSUER+'/oauth2/auth?'+query
+    http_stage('AUTHORIZATION')
     code,_,location=request('GET',authorization_url,opener=opener)
     for _ in range(8):
         require(code in (302,303) and location,'REAL_AUTHORIZATION_REDIRECT')
         url=urllib.parse.urlsplit(location);params=urllib.parse.parse_qs(url.query)
         if url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path=='/login':
+            http_stage('LOGIN')
             current();nonce=params['login_challenge'][0]
             status,actual=api('GET','/admin/oauth2/auth/requests/login?login_challenge='+nonce)
             require(status==200 and actual['client']['client_id']==client_id,'LOGIN_CHALLENGE_BINDING')
             status,accepted=api('PUT','/admin/oauth2/auth/requests/login/accept?login_challenge='+nonce,{'subject':human['id'],'remember':False,'acr':login['session']['authenticator_assurance_level']})
             require(status==200);location=accepted['redirect_to']
         elif url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path=='/consent':
+            http_stage('CONSENT')
             current();nonce=params['consent_challenge'][0]
             status,actual=api('GET','/admin/oauth2/auth/requests/consent?consent_challenge='+nonce)
             require(status==200 and actual['subject']==human['id'] and actual['client']['client_id']==client_id and set(actual['requested_scope'])<=set(scope.split()),'CONSENT_BINDING')
@@ -360,6 +369,7 @@ def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=
             status,accepted=api('PUT','/admin/oauth2/auth/requests/consent/accept?consent_challenge='+nonce,consent)
             require(status==200);location=accepted['redirect_to']
         elif url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path==urllib.parse.urlsplit(callback).path:
+            http_stage('CALLBACK')
             if negative=='wrong_state':
                 try: validate_callback(location,state+'wrong',callback)
                 except ValueError: return True

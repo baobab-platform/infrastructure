@@ -100,6 +100,7 @@ def login():
     jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(p.NoRedirect(), urllib.request.HTTPSHandler(context=p.TLS), urllib.request.HTTPCookieProcessor(jar))
     code, _, headers = http('POST', '/api/iam/login', {}, opener=opener)
+    print('DEV07_BFF_HTTP_REPLY=LOGIN:' + str(code), flush=True)
     p.require(code == 303, 'DEV07_BFF_LOGIN_DENIED')
     url = headers.get('Location'); c.authorization(url)
     native = p.read('native.json')
