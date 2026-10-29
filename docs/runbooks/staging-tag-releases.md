@@ -110,3 +110,16 @@ The first complete selection and audit evidence are described in
 Use `release_cut.py --coordination` or the read-only **Verify Coordinated Staging
 Selection** workflow to verify publishers before a real account manifest exists.
 This does not waive deployment-time manifest binding or any protected gate.
+
+### DEV-13 preparation: reviewed-main recovery verification
+
+A manual recovery from reviewed `main` must select an existing immutable
+coordination cut and verify every selected publisher receipt and promoted runtime
+binding. `release_cut.py --release` no longer returns success merely because the
+source ref is `main`. Missing publishers, moved tags, mismatched runtime digests
+and unbound manifests fail before a verification receipt can be created.
+
+This is read-only evidence verification. It neither provisions protected
+resources nor grants approval; account, operator, legal/provider, migration and
+protected deployment controls remain separately required. Development unit tests
+exercise the refusal boundary without AWS credentials or an actual deployment.
