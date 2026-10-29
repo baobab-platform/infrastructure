@@ -21,6 +21,13 @@ import dev
 
 
 class BuyerBffTests(unittest.TestCase):
+    def test_private_http_diagnostics_never_release_provider_content(self):
+        self.assertEqual(c.http_status_diagnostics('IAM_TOKEN 200 200\nTRADE_CONTEXT 401 -'),
+            ['DEV07_BFF_HTTP_HOP=IAM_TOKEN:200:UPSTREAM_200', 'DEV07_BFF_HTTP_HOP=TRADE_CONTEXT:401:UPSTREAM_NONE'])
+        for raw in ('TOKEN_PRIVATE 200 200', 'IAM_TOKEN 200 secret', 'IAM_TOKEN 200 200 token=private',
+                    'IAM_TOKEN 999 999', '/callback?code=private 200 200'):
+            self.assertEqual(c.http_status_diagnostics(raw), [])
+
     def test_login_driver_reaches_http_with_a_real_cookie_jar(self):
         spec = importlib.util.spec_from_file_location('_buyer_bff_driver_test', Path(__file__).with_name('buyer_bff_probe.py'))
         module = importlib.util.module_from_spec(spec)

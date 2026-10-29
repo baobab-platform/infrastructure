@@ -9,6 +9,19 @@ CHECKS = {'native-next-iam-session', 'current-cp-trade-http-context', 'csrf-deni
           'wrong-organisation-denial', 'membership-suspension-denial',
           'custody-outage-and-recovery', 'issuer-consent-revocation', 'native-fixture-cleanup'}
 SOURCES = {'shared', 'baobab-cp', 'baobab-iam', 'baobab-trade', 'zuribeans'}
+HTTP_HOPS = {'IAM_DISCOVERY', 'IAM_TOKEN', 'IAM_INTROSPECTION', 'IAM_JWKS',
+             'CP_PRINCIPAL', 'CP_ESTATE', 'CP_CONTEXT', 'TRADE_CONTEXT'}
+
+
+def http_status_diagnostics(raw):
+    """Release only finite hop labels/statuses, never paths, queries or bodies."""
+    result = []
+    for line in raw.splitlines()[-64:]:
+        match = re.fullmatch(r'([A-Z_]+) ([1-5][0-9]{2}) ([1-5][0-9]{2}|-)', line)
+        if match and match[1] in HTTP_HOPS:
+            result.append('DEV07_BFF_HTTP_HOP=' + match[1] + ':' + match[2] + ':UPSTREAM_' +
+                          ('NONE' if match[3] == '-' else match[3]))
+    return result
 
 
 def authorization(url):

@@ -19,6 +19,16 @@ import cms_vertical
 import dev
 
 BASE = Path(__file__).resolve().parent
+HTTP_HOPS = {
+    'hydra.int03.test:/.well-known/openid-configuration': 'IAM_DISCOVERY',
+    'hydra.int03.test:/oauth2/token': 'IAM_TOKEN',
+    'hydra.int03.test:/oauth2/introspect/dev07': 'IAM_INTROSPECTION',
+    'hydra.int03.test:/.well-known/jwks.json': 'IAM_JWKS',
+    'cp.baobab-dev.test:/internal/identity/v1/principals/resolve': 'CP_PRINCIPAL',
+    'cp.baobab-dev.test:/internal/estate/v1/client-bindings/resolve': 'CP_ESTATE',
+    'cp.baobab-dev.test:/v1/platform-context/resolve': 'CP_CONTEXT',
+    'engine.baobab-dev.test:/store/b2b/buyer-context': 'TRADE_CONTEXT',
+}
 
 
 def lock():
@@ -225,6 +235,14 @@ def up(run):
     services['edge']['networks']['lab']['aliases'].append('engine.baobab-dev.test')
     edge = adapter.EDGE.replace(' location = /oauth2/introspect {',
         ' location = /oauth2/introspect/dev07 {\n limit_except POST { deny all; }\n set $reader http://probe:8090; proxy_pass $reader/introspect;\n }\n location = /oauth2/introspect {', 1)
+    # The private file contains only source-owned endpoint labels and numeric
+    # statuses, never request paths, query parameters, headers or token bodies.
+    status_log = 'map "$server_name:$uri" $dev07_hop { default "";\n' + ''.join(
+        '"' + endpoint + '" ' + name + ';\n' for endpoint, name in HTTP_HOPS.items()) + '}\n'
+    status_log += 'map $dev07_hop $dev07_log { "" 0; default 1; }\n'
+    status_log += "log_format dev07_status '$dev07_hop $status $upstream_status';\n"
+    status_log += 'access_log /tmp/dev07-http.status dev07_status if=$dev07_log;'
+    edge = edge.replace('access_log off;', status_log, 1)
     extra = ''
     for host, upstream in (('rp.baobab-dev.test', 'zuribeans-bff:3000'), ('engine.baobab-dev.test', 'trade-bff-http:9000')):
         extra += ' server { listen 443 ssl; server_name ' + host + '; ssl_certificate /tls/edge.pem; ssl_certificate_key /tls/edge.key; location / { set $target http://' + upstream + '; proxy_pass $target; proxy_set_header Host ' + host + '; proxy_set_header X-Forwarded-Host ' + host + '; proxy_set_header X-Forwarded-Proto https; } }\n'
@@ -288,6 +306,17 @@ def cleanup(run):
     return failed
 
 
+def private_http_diagnostics(run):
+    try:
+        directory, state = dev.current(run)
+        verify_profile(directory, state)
+        raw = dev.compose(directory, state, 'exec', '-T', 'edge', 'tail', '-n', '64', '/tmp/dev07-http.status', timeout=10)
+        for line in contract.http_status_diagnostics(raw): print(line, flush=True)
+    except Exception:
+        # Diagnostic availability is never qualification or a cleanup condition.
+        return
+
+
 def main():
     run = None; failed = False
     for name in ('dev07-bff-http-suite.json', 'dev07-bff-http-suite.sha256.json'):
@@ -297,6 +326,7 @@ def main():
         with dev.guarded(run):
             up(run); qualify(run)
     except Exception:
+        if run: private_http_diagnostics(run)
         failed = True; print('DEV07_BFF_HTTP_NOT_QUALIFIED', flush=True)
     finally:
         if run:
