@@ -171,6 +171,8 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
             # Only the native qualifier's closed binding diagnostics may leave
             # captured subprocess output. Provider bodies/commands remain private.
             for line in result.stdout.splitlines():
+                if line in {'DEV07_BFF_HTTP_STAGE='+x for x in ('HEALTH','LOGIN','CALLBACK','SESSION','CONTEXT','CSRF','FOREIGN','SUSPENDED','CUSTODY','RECOVERY','REVOCATION','NATIVE_IDENTITY','NATIVE_AUTHORIZATION','NATIVE_LOGIN','NATIVE_CONSENT','NATIVE_CALLBACK')}:print(line,flush=True)
+                if re.fullmatch(r'DEV07_BFF_HTTP_REPLY=(LOGIN|CONTEXT|CALLBACK):[1-5][0-9]{2}',line):print(line,flush=True)
                 if re.fullmatch(r'ENGINE_NATIVE_HTTP=[1-5][0-9]{2}_CODE_(NONE|OTHER|IDEMPOTENCY_KEY_REUSED|SANDBOX_CAPABILITY_DENIED|SANDBOX_CAPABILITY_EXPIRED|SANDBOX_AUTHORITY_UNAVAILABLE|AUTH_TOKEN_INVALID|VALIDATION_FAILED)_REPLAY_(true|false|absent|other)',line):print(line,flush=True)
                 # Closed DEV-06 diagnostics never expose arbitrary issuer or
                 # engine bodies, token material, context IDs or credentials.
@@ -291,7 +293,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
 
 
 def load_lock(lock_name='lock.json'):
-    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json', 'buyer-identity-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
+    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json', 'buyer-identity-base-lock.json', 'buyer-bff-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
     data = json.loads((BASE / lock_name).read_text(), object_pairs_hook=unique)
     require(set(data) == {'schema', 'profile', 'authority', 'infrastructure_baseline', 'sources',
                          'images', 'max_lease_seconds', 'synthetic_only', 'protected_acceptance'}, 'LOCK_SHAPE')
@@ -308,9 +310,17 @@ def load_lock(lock_name='lock.json'):
 
 
 def check_dockerfile(path):
+    stages = set()
     for line in path.read_text().splitlines():
         if line.startswith('FROM '):
-            require('@sha256:' in line and DIGEST.fullmatch(line.split()[1]), 'BUILDER_DIGEST_REQUIRED')
+            parts = line.split()
+            image = parts[1]
+            # An earlier named stage is already derived from a checked base.
+            # Unknown/forward aliases remain external images and need a digest.
+            require(image.lower() in stages or ('@sha256:' in image and DIGEST.fullmatch(image)), 'BUILDER_DIGEST_REQUIRED')
+            if len(parts) == 4 and parts[2].upper() == 'AS':
+                require(re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]*', parts[3]), 'BUILDER_STAGE_INVALID')
+                stages.add(parts[3].lower())
 
 
 def source_identity():
@@ -741,6 +751,13 @@ def down(run_id):
             report['dev15_iam_issued'] = False
             report['dev15_eng_onb_qualified'] = False
             report['dev15_native_component'] = state.get('dev15_native_component', 'NOT_STARTED')
+        if state.get('buyer_bff_http_profile'):
+            import buyer_bff_contract
+            component = state.get('dev07_bff_http')
+            if component: buyer_bff_contract.validate(component, run_id, state['sources'])
+            report.update(dev07_bff_http=component,
+                dev07_bff_runtime_identity_verified=state.get('dev07_bff_runtime_identity_verified', False),
+                dev07_bff_config_hashes=state.get('dev07_bff_config_hashes', {}))
         folder = EVIDENCE / ('dev01-' + run_id)
         private_directory(folder)
         pending = folder / '.pending'
@@ -771,6 +788,9 @@ def publish_receipt(folder, run_id):
     require(report.get('run_id') == run_id and report.get('schema') ==
             'infrastructure.dev01.lifecycle.observed.v1', 'PENDING_RECEIPT_IDENTITY_INVALID')
     require(not run_dir(run_id).exists() and not resources(run_id), 'TEARDOWN_SURVIVORS')
+    if report.get('dev07_bff_http'):
+        import buyer_bff_contract
+        buyer_bff_contract.validate(report['dev07_bff_http'], run_id, report['source_pins'])
     qualification = report.get('int03c')
     if qualification:
         int03c_contract.validate(qualification, run_id)

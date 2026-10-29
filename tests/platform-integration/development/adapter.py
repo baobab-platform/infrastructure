@@ -98,6 +98,12 @@ def composition(state,directory,images,namespace):
     if state.get('buyer_identity_profile'):
         services['probe']['volumes'] += [host(Path(__file__).parent/'buyer_identity_probe.py')+':/buyer_identity_probe.py:ro',
             host(directory/'sources/baobab-iam/scripts/dev07_buyer_fixture.py')+':/dev07_buyer_fixture.py:ro']
+    if state.get('buyer_bff_http_profile'):
+        if state.get('buyer_identity_profile') is not True:
+            raise ValueError('DEV07_BFF_IDENTITY_PROFILE_REQUIRED')
+        services['probe']['environment']['DEV07_BFF_HTTP_PROFILE']='true'
+        services['probe']['volumes'] += [host(Path(__file__).parent/name)+':/'+name+':ro'
+            for name in ('buyer_bff_probe.py','buyer_bff_contract.py')]
     if state.get('engine_profile'):
         services['probe']['volumes'] += [host(Path(__file__).parent/name)+':/'+name+':ro' for name in ('engine_probe.py','engine_contract.py')]
     for service in services.values(): service.update(labels=labels,restart='no');service.setdefault('networks',['lab'])

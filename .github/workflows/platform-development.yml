@@ -1,4 +1,4 @@
-name: DEV-01 to DEV-06 development qualification
+name: DEV-01 to DEV-07 development qualification
 on:
   pull_request:
     paths:
@@ -196,6 +196,48 @@ jobs:
           name: dev07-buyer-identity-evidence
           path: |
             tests/platform-integration/evidence/dev07-buyer-suite*.json
+            tests/platform-integration/evidence/dev01-*/completed/*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  buyer-bff-http:
+    name: DEV-07 actual estate BFF IAM Redis CP and native Trade HTTP
+    needs: source
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned integration CLI
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Start the common isolated integration laboratory
+        run: tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up --frozen-lockfile --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: Qualify the actual estate and Trade HTTP paths with native authority
+        env:
+          DEV05_NPM_TOKEN: ${{ github.token }}
+          DEV05_REGISTRY_USERNAME: ${{ github.actor }}
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env BAOBAB_ENVIRONMENT=development \
+            --remote-env "DEV05_NPM_TOKEN=$DEV05_NPM_TOKEN" \
+            --remote-env "DEV05_REGISTRY_USERNAME=$DEV05_REGISTRY_USERNAME" \
+            python3 -B tests/platform-integration/development/buyer_bff.py
+      - name: Recover owned resources through the development container
+        if: always()
+        run: tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Independent host recovery
+        if: always()
+        run: python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Preserve only sanitized completed HTTP receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev07-bff-http-evidence
+          path: |
+            tests/platform-integration/evidence/dev07-bff-http-suite*.json
             tests/platform-integration/evidence/dev01-*/completed/*.json
           if-no-files-found: warn
           retention-days: 14

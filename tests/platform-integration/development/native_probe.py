@@ -218,7 +218,10 @@ class Hook(BaseHTTPRequestHandler):
 
     def introspect(self):
         try:
-            require(os.environ.get('DEV05_PROFILE')=='native-cms')
+            bff_http = os.environ.get('DEV07_BFF_HTTP_PROFILE') == 'true'
+            require(bff_http or os.environ.get('DEV05_PROFILE') == 'native-cms')
+            if bff_http:
+                require(read('state.json').get('buyer_bff_http_profile') is True, 'DEV07_BFF_PROFILE_REQUIRED')
             size=int(self.headers.get('Content-Length','0'));require(0<size<16384)
             fields=urllib.parse.parse_qs(self.rfile.read(size).decode(),strict_parsing=True)
             require(all(len(v)==1 for v in fields.values()) and 'token' in fields)
@@ -228,12 +231,12 @@ class Hook(BaseHTTPRequestHandler):
             else:
                 name=fields['client_id'][0];secret=fields['client_secret'][0]
             native=read('native.json')
-            require(name in ('baobab-int03-cms-consumer','baobab-int03-cms-validator','nabhold-dev-bff') and
-                    hmac.compare_digest(secret,native['clients'][name]['secret']))
+            allowed = ('baobab-dev-zuribeans-bff',) if bff_http else ('baobab-int03-cms-consumer','baobab-int03-cms-validator','nabhold-dev-bff')
+            require(name in allowed and hmac.compare_digest(secret,native['clients'][name]['secret']))
             code,body,_=request('POST','http://hydra:4445/admin/oauth2/introspect',{'token':fields['token'][0]},form=True)
             require(code==200)
             if body.get('active') is True:
-                require((name=='baobab-int03-cms-validator' and body.get('client_id') in ('baobab-int03-cms-validator','baobab-int03-cms-consumer')) or body.get('client_id')==name)
+                require((not bff_http and name=='baobab-int03-cms-validator' and body.get('client_id') in ('baobab-int03-cms-validator','baobab-int03-cms-consumer')) or body.get('client_id')==name)
                 # Hydra's native extension container holds issuer-produced
                 # custom claims. Promote only actor_type, rejecting conflicts.
                 extra=body.get('ext',{})
@@ -279,14 +282,21 @@ def claims(token):
 
 def validate_callback(location,state,callback=CALLBACK):
     url=urllib.parse.urlsplit(location);values=urllib.parse.parse_qs(url.query)
-    require(url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path==urllib.parse.urlsplit(callback).path and callback in (CALLBACK,'https://rp.baobab-dev.test/dev07/callback') and not url.fragment
+    require(url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path==urllib.parse.urlsplit(callback).path and (callback in (CALLBACK,'https://rp.baobab-dev.test/dev07/callback') or
+                (callback=='https://rp.baobab-dev.test/api/iam/callback' and read('state.json').get('buyer_bff_http_profile') is True)) and not url.fragment
             and values.get('state')==[state] and len(values.get('code',[]))==1 and 'error' not in values,'CALLBACK_BINDING_DENIED')
 
-def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=ADMIN_SCOPES,audience='baobab-control-plane',callback=CALLBACK,return_code=False):
+def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=ADMIN_SCOPES,audience='baobab-control-plane',callback=CALLBACK,return_code=False,authorization_url=None):
+    http_profile = authorization_url is not None
+    def http_stage(stage):
+        if http_profile:
+            require(read('state.json').get('buyer_bff_http_profile') is True)
+            print('DEV07_BFF_HTTP_STAGE=NATIVE_' + stage, flush=True)
+    http_stage('IDENTITY')
     if client_id!='baobab-dev-human' or return_code:
         require(read('state.json').get('buyer_identity_profile') is True, 'DEV07_PROFILE_REQUIRED')
         require((client_id=='baobab-dev-human' and scope==ADMIN_SCOPES and audience=='baobab-control-plane' and callback==CALLBACK) or
-                (client_id=='baobab-dev-zuribeans-bff' and scope=='openid trade:buy' and audience=='baobab-trade' and callback=='https://rp.baobab-dev.test/dev07/callback'), 'DEV07_CODE_PROFILE_REFUSED')
+                (client_id=='baobab-dev-zuribeans-bff' and scope=='openid trade:buy' and audience=='baobab-trade' and callback==('https://rp.baobab-dev.test/api/iam/callback' if read('state.json').get('buyer_bff_http_profile') else 'https://rp.baobab-dev.test/dev07/callback')), 'DEV07_CODE_PROFILE_REFUSED')
     human=native['humans'][role]
     code,flow,_=request('GET',KRATOS+'/self-service/login/api');require(code==200)
     code,login,_=request('POST',KRATOS+'/self-service/login?flow='+flow['id'],{'method':'password','identifier':human['email'],'password':human['password']})
@@ -307,26 +317,43 @@ def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=
             'run_id':owner['run_id'],'client_id':client_id,
             'subject':human['id'],'session_token':session_token,
             'expires_at':min(owner['deadline'],time.time()+120)})
-    state=secrets.token_urlsafe(32);verifier=secrets.token_urlsafe(32)
-    challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
+    if authorization_url is not None:
+        from buyer_bff_contract import authorization
+        require(read('state.json').get('buyer_bff_http_profile') is True and
+                client_id=='baobab-dev-zuribeans-bff' and callback=='https://rp.baobab-dev.test/api/iam/callback'
+                and return_code is False and negative is None, 'DEV07_BFF_PROFILE_REQUIRED')
+        state=authorization(authorization_url)
+        verifier=None
+    else:
+        state=secrets.token_urlsafe(32);verifier=secrets.token_urlsafe(32)
+        challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
     opener=urllib.request.build_opener(NoRedirect(),urllib.request.HTTPSHandler(context=TLS),urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
-    query=urllib.parse.urlencode({'client_id':client_id,'response_type':'code','redirect_uri':callback,'scope':scope,'state':state,'code_challenge':challenge,'code_challenge_method':'S256','audience':audience})
-    code,_,location=request('GET',ISSUER+'/oauth2/auth?'+query,opener=opener)
+    if authorization_url is None:
+        query=urllib.parse.urlencode({'client_id':client_id,'response_type':'code','redirect_uri':callback,'scope':scope,'state':state,'code_challenge':challenge,'code_challenge_method':'S256','audience':audience})
+        authorization_url=ISSUER+'/oauth2/auth?'+query
+    http_stage('AUTHORIZATION')
+    code,_,location=request('GET',authorization_url,opener=opener)
     for _ in range(8):
         require(code in (302,303) and location,'REAL_AUTHORIZATION_REDIRECT')
         url=urllib.parse.urlsplit(location);params=urllib.parse.parse_qs(url.query)
         if url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path=='/login':
+            http_stage('LOGIN')
             current();nonce=params['login_challenge'][0]
             status,actual=api('GET','/admin/oauth2/auth/requests/login?login_challenge='+nonce)
             require(status==200 and actual['client']['client_id']==client_id,'LOGIN_CHALLENGE_BINDING')
             status,accepted=api('PUT','/admin/oauth2/auth/requests/login/accept?login_challenge='+nonce,{'subject':human['id'],'remember':False,'acr':login['session']['authenticator_assurance_level']})
             require(status==200);location=accepted['redirect_to']
         elif url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path=='/consent':
+            http_stage('CONSENT')
             current();nonce=params['consent_challenge'][0]
             status,actual=api('GET','/admin/oauth2/auth/requests/consent?consent_challenge='+nonce)
             require(status==200 and actual['subject']==human['id'] and actual['client']['client_id']==client_id and set(actual['requested_scope'])<=set(scope.split()),'CONSENT_BINDING')
             consent={'grant_scope':actual['requested_scope'],
                      'grant_access_token_audience':[audience],'remember':False}
+            if verifier is None:
+                # Leased synthetic HTTP profile only: retain native consent
+                # so the issuer owner can independently read/revoke this grant.
+                consent['remember']=True
             if client_id=='baobab-dev-zuribeans-bff':
                 # Hydra's token hook reads assurance from the consent session.
                 # Bind it to this real Kratos login, which was independently
@@ -342,11 +369,15 @@ def native_human(role,native,negative=None,*,client_id='baobab-dev-human',scope=
             status,accepted=api('PUT','/admin/oauth2/auth/requests/consent/accept?consent_challenge='+nonce,consent)
             require(status==200);location=accepted['redirect_to']
         elif url.scheme=='https' and url.netloc=='rp.baobab-dev.test' and url.path==urllib.parse.urlsplit(callback).path:
+            http_stage('CALLBACK')
             if negative=='wrong_state':
                 try: validate_callback(location,state+'wrong',callback)
                 except ValueError: return True
                 raise ValueError('WRONG_STATE_ACCEPTED')
             validate_callback(location,state,callback)
+            if verifier is None:
+                # The real BFF alone retains and uses its PKCE verifier.
+                return location
             if return_code:
                 require(negative is None, 'CODE_PACKET_NEGATIVE_REFUSED')
                 return {'code':params['code'][0],'verifier':verifier,'redirect_uri':callback}
