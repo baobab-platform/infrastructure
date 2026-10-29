@@ -105,11 +105,15 @@ def main():
             stream.write('\n')
         return
     ref = os.environ['GITHUB_REF']
-    if ref == 'refs/heads/main': return  # Existing reviewed manual recovery path.
-    if not ref.startswith('refs/tags/'): raise ValueError('unreviewed deployment ref')
+    if ref != 'refs/heads/main' and not ref.startswith('refs/tags/'):
+        raise ValueError('unreviewed deployment ref')
     release = load(args.release)
     coordination = load(args.release.removesuffix('.tfvars.json') + '.coordination.json')
-    evidence = verify(ref.removeprefix('refs/tags/'), args.release, release, coordination)
+    # A reviewed main recovery may select an existing immutable cut, but it
+    # still needs exact publisher receipts and runtime bindings. Returning
+    # early here used to report success without verifying any release input.
+    tag = coordination['release_tag'] if ref == 'refs/heads/main' else ref.removeprefix('refs/tags/')
+    evidence = verify(tag, args.release, release, coordination)
     with open(args.output, 'x', encoding='utf-8') as stream:
         json.dump(evidence, stream, indent=2)
 

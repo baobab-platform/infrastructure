@@ -1,7 +1,10 @@
 import copy
 import importlib.util
 import pathlib
+import os
+import tempfile
 import unittest
+from unittest.mock import patch
 
 spec=importlib.util.spec_from_file_location('release_cut',pathlib.Path(__file__).parents[2]/'deploy/verification/release_cut.py')
 cut=importlib.util.module_from_spec(spec); spec.loader.exec_module(cut)
@@ -62,3 +65,25 @@ class CutTests(unittest.TestCase):
             self.acceptance=value
             with self.subTest(value=value), self.assertRaises(ValueError):
                 cut.verify_selection(self.tag,self.coordination,self.fetch,self.receipt)
+
+    def test_reviewed_main_recovery_still_verifies_exact_cut_before_writing_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=pathlib.Path(directory)/'verified.json'
+            with patch.dict(os.environ, {'GITHUB_REF':'refs/heads/main'}), \
+                 patch('sys.argv',['release_cut','--release',self.path,'--output',str(output)]), \
+                 patch.object(cut,'load',side_effect=[self.release,self.coordination]), \
+                 patch.object(cut,'verify',return_value={'operational_acceptance':False}) as verify:
+                cut.main()
+            verify.assert_called_once_with(self.tag,self.path,self.release,self.coordination)
+            self.assertTrue(output.is_file())
+
+    def test_failed_main_recovery_cannot_succeed_or_emit_new_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=pathlib.Path(directory)/'verified.json'
+            with patch.dict(os.environ, {'GITHUB_REF':'refs/heads/main'}), \
+                 patch('sys.argv',['release_cut','--release',self.path,'--output',str(output)]), \
+                 patch.object(cut,'load',side_effect=[self.release,self.coordination]), \
+                 patch.object(cut,'verify',side_effect=ValueError('missing publisher')), \
+                 self.assertRaises(ValueError):
+                cut.main()
+            self.assertFalse(output.exists())
