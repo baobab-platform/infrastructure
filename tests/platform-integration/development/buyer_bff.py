@@ -290,14 +290,21 @@ def cleanup(run):
     try:
         with dev.guarded(run):
             directory, state = dev.current(run)
+            cleanup_stage = 'NATIVE_FIXTURES'
             try:
                 native(directory, state, 'cleanup')
+                cleanup_stage = 'COMPONENT_RECEIPT_READ'
                 value = dev.read(directory / 'bff-report.json')
                 value['checks']['native-fixture-cleanup'] = True
+                cleanup_stage = 'COMPONENT_RECEIPT_VALIDATE'
                 contract.validate(value, run, state['sources'])
                 state['dev07_bff_http'] = value
+                cleanup_stage = 'COMPONENT_RECEIPT_PERSIST'
                 dev.persist(directory, state, 'RUNNING')
             except Exception:
+                # Finite source-owned labels only; exception text can contain
+                # private native output, credentials or paths and stays private.
+                print('DEV07_BFF_CLEANUP_FAILED=' + cleanup_stage, flush=True)
                 failed = True
             try:
                 dev.compose(directory, state, 'exec', '-T', 'probe', 'python', '/buyer_identity_probe.py', 'binding-control', timeout=30)
