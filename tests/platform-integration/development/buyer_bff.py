@@ -144,8 +144,11 @@ def runtime_identity(directory, state):
             image = lock()['redis'] if service == 'bff-redis' else dev.load_lock('buyer-bff-base-lock.json')['images']['postgres']
             expected = dev.call(['docker', 'image', 'inspect', image, '--format', '{{.Id}}'])
         dev.require(actual['Image'] == expected, 'DEV07_BFF_RUNTIME_IMAGE_MISMATCH')
-        if service == 'zuribeans-bff':
+        if service in ('zuribeans-bff', 'trade-bff-http'):
             dev.require(actual['Config']['User'] not in ('', '0', 'root', '0:0'), 'DEV07_BFF_ROOT_FORBIDDEN')
+            mounts = [m for m in actual['Mounts'] if m['Destination'] == '/tls']
+            dev.require(len(mounts) == 1 and mounts[0]['Source'] == adapter.host(directory / 'bff-ca')
+                and mounts[0]['RW'] is False, 'DEV07_BFF_PRIVATE_TLS_KEY_EXPOSURE')
     state['dev07_bff_runtime_identity_verified'] = True
     dev.persist(directory, state, 'RUNNING')
 
@@ -156,6 +159,11 @@ def up(run):
     fixture = buyer_identity.cp_fixture(directory, state, 'prepare')
     dev.require(buyer_identity.cp_fixture(directory, state, 'read') == fixture, 'DEV07_BFF_CP_READBACK_CHANGED')
     build(directory, state)
+    # Consumer engines receive the public CA, never the issuer/edge private
+    # keys. The private owner/probe retains native issuer administration.
+    ca = directory / 'bff-ca'; ca.mkdir(mode=0o755)
+    (ca / 'ca.pem').write_bytes((directory / 'tls/ca.pem').read_bytes()); (ca / 'ca.pem').chmod(0o644)
+    state['dev07_bff_config_hashes'] = {'bff-ca/ca.pem': hashlib.sha256((ca / 'ca.pem').read_bytes()).hexdigest()}
     bootstrap = dev.read(directory / 'bootstrap.json')
     owner = {key: fixture[key] for key in ('run_id', 'tenant_id', 'organisation_id', 'engine_instance_id',
                                           'expires_at', 'synthetic_only', 'protected_acceptance')}
@@ -185,7 +193,7 @@ def up(run):
         'healthcheck': {'test': ['CMD-SHELL', 'pg_isready -U dev07_bff -d ' + db], 'interval': '3s', 'timeout': '3s', 'retries': 40}}
     services['trade-bff-http'] = {'image': state['image_ids']['trade-bff-http'], 'environment': env,
         'user': str(state['uid']) + ':' + str(state['gid']),
-        'volumes': [tls + ':/tls:ro', adapter.host(directory / 'dev07-bff-owner.json') + ':/run/dev07-bff-owner.json:ro',
+        'volumes': [adapter.host(ca) + ':/tls:ro', adapter.host(directory / 'dev07-bff-owner.json') + ':/run/dev07-bff-owner.json:ro',
                     adapter.host(output) + ':/run/dev07-bff-native']}
     config['volumes']['trade-bff-data'] = {'labels': labels}
     for name in ('trade-bff-db', 'trade-bff-http'):
@@ -206,9 +214,6 @@ def up(run):
         '--tls-key-file', '/tls/edge.key', '--tls-ca-cert-file', '/tls/ca.pem', '--tls-auth-clients', 'no'],
         'volumes': [adapter.host(acl) + ':/redis.acl:ro', tls + ':/tls:ro'],
         'networks': {'lab': {'aliases': ['redis.baobab-dev.test']}}}
-    # The estate gets the public CA only, never the edge TLS private key.
-    ca = directory / 'bff-ca'; ca.mkdir(mode=0o755)
-    (ca / 'ca.pem').write_bytes((directory / 'tls/ca.pem').read_bytes()); (ca / 'ca.pem').chmod(0o644)
     services['zuribeans-bff'] = {'image': state['image_ids']['zuribeans-bff'],
         'volumes': [adapter.host(ca) + ':/tls:ro'], 'environment': {
             'NODE_EXTRA_CA_CERTS': '/tls/ca.pem', 'HOSTNAME': '0.0.0.0',
@@ -237,7 +242,7 @@ def up(run):
         ' location = /oauth2/introspect/dev07 {\n limit_except POST { deny all; }\n set $reader http://probe:8090; proxy_pass $reader/introspect;\n }\n location = /oauth2/introspect {', 1)
     # The private file contains only source-owned endpoint labels and numeric
     # statuses, never request paths, query parameters, headers or token bodies.
-    status_log = 'map "$server_name:$uri" $dev07_hop { default "";\n' + ''.join(
+    status_log = 'map_hash_bucket_size 128;\nmap "$server_name:$uri" $dev07_hop { default "";\n' + ''.join(
         '"' + endpoint + '" ' + name + ';\n' for endpoint, name in HTTP_HOPS.items()) + '}\n'
     status_log += 'map $dev07_hop $dev07_log { "" 0; default 1; }\n'
     status_log += "log_format dev07_status '$dev07_hop $status $upstream_status';\n"
@@ -251,7 +256,8 @@ def up(run):
         for name in ('nginx.conf', 'bff-redis.acl', 'bff-ca/ca.pem')}
     commit_config(directory, state, config)
     dev.compose(directory, state, 'up', '-d', 'trade-bff-http', 'bff-redis', 'zuribeans-bff', 'edge', timeout=120)
-    dev.compose(directory, state, 'exec', '-T', 'edge', 'nginx', '-s', 'reload', timeout=30)
+    # The changed network aliases recreate edge with the new configuration.
+    # Wait for HTTP readiness below instead of racing its initial PID with reload.
     print('DEV07_BFF_STAGE=HTTP_HEALTH', flush=True)
     for attempt in range(60):
         try:
