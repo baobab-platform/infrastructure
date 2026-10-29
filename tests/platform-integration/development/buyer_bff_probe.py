@@ -3,7 +3,7 @@
 No token is extracted from BFF custody, constructed, signed or exported.
 The owner completes actual native Kratos/Hydra challenges for synthetic people.
 """
-import http.cookiejar
+from http.cookiejar import CookieJar
 import json
 import os
 import re
@@ -97,7 +97,7 @@ def positive():
 
 def login():
     stage('LOGIN')
-    jar = http.cookiejar.CookieJar()
+    jar = CookieJar()
     opener = urllib.request.build_opener(p.NoRedirect(), urllib.request.HTTPSHandler(context=p.TLS), urllib.request.HTTPCookieProcessor(jar))
     code, _, headers = http('POST', '/api/iam/login', {}, opener=opener)
     print('DEV07_BFF_HTTP_REPLY=LOGIN:' + str(code), flush=True)

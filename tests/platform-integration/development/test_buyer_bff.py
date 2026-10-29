@@ -6,6 +6,7 @@ import io
 import base64
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +21,21 @@ import dev
 
 
 class BuyerBffTests(unittest.TestCase):
+    def test_login_driver_reaches_http_with_a_real_cookie_jar(self):
+        spec = importlib.util.spec_from_file_location('_buyer_bff_driver_test', Path(__file__).with_name('buyer_bff_probe.py'))
+        module = importlib.util.module_from_spec(spec)
+        with patch('ssl.create_default_context', return_value=SimpleNamespace()), \
+             patch.dict(sys.modules, {'buyer_identity_probe': SimpleNamespace(client_auth=Mock())}):
+            spec.loader.exec_module(module)
+        # Stop at the transport boundary: this is a source regression, not
+        # fabricated native login or qualification evidence.
+        with patch.object(module, 'stage'), patch.object(module, 'http', side_effect=RuntimeError('transport boundary')) as request:
+            with self.assertRaisesRegex(RuntimeError, 'transport boundary'):
+                module.login()
+        request.assert_called_once()
+        self.assertEqual(request.call_args.args[:2], ('POST', '/api/iam/login'))
+        self.assertIsNotNone(request.call_args.kwargs['opener'])
+
     def test_internal_build_stages_keep_external_base_digest_enforcement(self):
         base = 'node@sha256:' + 'a'*64
         with tempfile.TemporaryDirectory() as folder:
