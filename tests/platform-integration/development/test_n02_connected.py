@@ -196,7 +196,7 @@ class N02CheckpointTests(unittest.TestCase):
         file = self.root / "n02-clients-register.json"
         dev.write(file, payload)
         digest = self.root / "n02-clients-register.sha256"
-        digest.write_text(hashlib.sha256(file.read_bytes()).hexdigest() + "\\n")
+        digest.write_text(hashlib.sha256(file.read_bytes()).hexdigest() + "\n")
         digest.chmod(0o600)
         with self.assertRaises(FileNotFoundError):
             join.client_original(self.root, self.state, self.root, "VERIFY")
@@ -212,7 +212,7 @@ class N02CheckpointTests(unittest.TestCase):
             payload[changed[0]] = changed[1]
             try:
                 dev.write(file, payload)
-                digest.write_text(hashlib.sha256(file.read_bytes()).hexdigest() + "\\n")
+                digest.write_text(hashlib.sha256(file.read_bytes()).hexdigest() + "\n")
                 digest.chmod(0o600)
                 with self.assertRaises(dev.Refused):
                     join.client_original(self.root, self.state, self.root, "REGISTER")
