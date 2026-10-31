@@ -40,12 +40,13 @@ def main():
             n02_mode = os.environ.get('BAOBAB_N02_JOIN')
             evidence = os.environ.get('BAOBAB_N02_ORIGINAL_DIR')
             profile = os.environ.get('BAOBAB_N02_PRIVATE_PROFILE')
+            client_profile = os.environ.get('BAOBAB_N02_CLIENT_REGISTRATION_PROFILE')
             dev.require(n02_mode in (None, 'development'), 'N02_JOIN_MODE_INVALID')
             dev.require(n02_mode is not None or
                         (evidence is None and profile is None), 'N02_JOIN_OPT_IN_REQUIRED')
             if n02_mode == 'development':
-                dev.require(bool(evidence) and bool(profile),
-                            'N02_ORIGINAL_AND_PROFILE_REQUIRED')
+                dev.require(bool(evidence) and bool(profile) and bool(client_profile),
+                            'N02_ORIGINAL_BROWSER_AND_CLIENT_PROFILES_REQUIRED')
                 print('DEV04_STAGE=N02_REAL_BROWSER_PRE_DEACTIVATION', flush=True)
                 n02_connected.execute_pinned_browser(run_id, Path(profile), Path(evidence))
             print('DEV04_STAGE=SEVEN_ORIGINAL_CASES', flush=True)
@@ -54,8 +55,24 @@ def main():
             # Docker inventory independently of the in-container protocol driver.
             (directory / 'compose.json').unlink()
     finally:
-        with dev.guarded(run_id):
-            dev.down(run_id)
+        try:
+            # The real IAM owner-only client controller independently
+            # re-reads run metadata and deletes ONLY this lease's Hydra
+            # registrations. Unknown/foreign clients block N02; cleanup
+            # still proceeds and the original DEV-04 result cannot pass.
+            if (mode == 'development'
+                    and os.environ.get('BAOBAB_N02_CLIENT_REGISTRATION_PROFILE')
+                    and os.environ.get('BAOBAB_N02_ORIGINAL_DIR')):
+                with dev.guarded(run_id):
+                    n02_connected.run_client_controller(
+                        run_id,
+                        Path(os.environ['BAOBAB_N02_CLIENT_REGISTRATION_PROFILE']),
+                        Path(os.environ['BAOBAB_N02_ORIGINAL_DIR']),
+                        'recover',
+                    )
+        finally:
+            with dev.guarded(run_id):
+                dev.down(run_id)
     dev.require(not dev.run_dir(run_id).exists() and not dev.resources(run_id), 'DEV04_CLEANUP_INCOMPLETE')
     path = dev.EVIDENCE / ('dev01-' + run_id) / 'completed/receipt.json'
     receipt = dev.read(path)
