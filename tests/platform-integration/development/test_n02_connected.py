@@ -91,6 +91,60 @@ class N02CheckpointTests(unittest.TestCase):
         with self.assertRaises(dev.Refused):
             join.inspect_original(self.root, self.state, self.root)
 
+    def test_runner_uses_pinned_checkout_and_does_not_trust_exit_alone(self):
+        source = self.root / "sources" / "baobab-iam"
+        actual = source / "tests" / "browser" / "n02_live.py"
+        actual.parent.mkdir(parents=True)
+        actual.write_text("raise SystemExit(1)\\n")
+        profile_path = self.root / "profile.json"
+        profile = {
+            "schema": "baobab.iam.n02.browser-qualification.v1",
+            "environment": "development", "run_id": RUN,
+            "iam_source_sha": IAM, "shared_source_sha": SHARED,
+            "cp_source_sha": CP, "infrastructure_harness_sha": INFRA,
+        }
+        dev.write(profile_path, profile)
+        import types
+        with (patch.object(dev, "current", return_value=(self.root, self.state)),
+              patch.object(dev, "verify_sources"),
+              patch.object(join.subprocess, "run",
+                           return_value=types.SimpleNamespace(returncode=0)) as launched,
+              patch.object(join, "checkpoint", return_value={"phase": "BEFORE_INT03C_DEACTIVATION"}) as checked):
+            got = join.execute_pinned_browser(RUN, profile_path, self.root)
+            self.assertEqual(got["phase"], "BEFORE_INT03C_DEACTIVATION")
+            launched.assert_called_once()
+            self.assertEqual(launched.call_args.args[0][-1], str(actual))
+            self.assertEqual(launched.call_args.kwargs["stdout"], join.subprocess.DEVNULL)
+            self.assertEqual(launched.call_args.kwargs["stderr"], join.subprocess.DEVNULL)
+            checked.assert_called_once()
+        with (patch.object(dev, "current", return_value=(self.root, self.state)),
+              patch.object(dev, "verify_sources"),
+              patch.object(join.subprocess, "run",
+                           return_value=types.SimpleNamespace(returncode=1)),
+              patch.object(join, "checkpoint") as never_credit):
+            with self.assertRaises(dev.Refused):
+                join.execute_pinned_browser(RUN, profile_path, self.root)
+            never_credit.assert_not_called()
+
+    def test_runner_refuses_wrong_pins_without_running_browser(self):
+        source = self.root / "sources" / "baobab-iam"
+        actual = source / "tests" / "browser" / "n02_live.py"
+        actual.parent.mkdir(parents=True)
+        actual.write_text("raise SystemExit(0)\\n")
+        profile_path = self.root / "profile.json"
+        dev.write(profile_path, {
+            "schema": "baobab.iam.n02.browser-qualification.v1",
+            "environment": "development", "run_id": "f" * 32,
+            "iam_source_sha": IAM, "shared_source_sha": SHARED,
+            "cp_source_sha": CP, "infrastructure_harness_sha": INFRA,
+        })
+        with (patch.object(dev, "current", return_value=(self.root, self.state)),
+              patch.object(dev, "verify_sources"),
+              patch.object(join.subprocess, "run") as launched):
+            with self.assertRaises(dev.Refused):
+                join.execute_pinned_browser(RUN, profile_path, self.root)
+            launched.assert_not_called()
+
     def test_absent_real_browser_fails_without_false_positive(self):
         with (patch.object(dev, "current", return_value=(self.root, self.state)),
               patch.object(dev, "verify_sources"),
