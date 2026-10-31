@@ -29,6 +29,25 @@ SHA = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
 
+def read_original(path):
+    """Read one original inode exactly once; hash the same verified bytes."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        dev.require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+                    and info.st_nlink == 1 and not info.st_mode & 0o077
+                    and 1 <= info.st_size <= 1_048_576,
+                    "N02_PRIVATE_ORIGINAL_REQUIRED")
+        raw = stream.read(1_048_577)
+    dev.require(len(raw) <= 1_048_576, "N02_ORIGINAL_TOO_LARGE")
+    try:
+        data = json.loads(raw, object_pairs_hook=dev.unique)
+    except (ValueError, TypeError, UnicodeDecodeError):
+        raise dev.Refused("N02_ORIGINAL_MALFORMED") from None
+    dev.require(isinstance(data, dict), "N02_ORIGINAL_NOT_OBJECT")
+    return data, raw
+
+
 def read_digest(path):
     """Read owner-private SHA sidecar without symlinks or debug leakage."""
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -51,8 +70,8 @@ def inspect_original(directory, state, root):
                 and not info.st_mode & 0o077, "N02_PRIVATE_ORIGINAL_DIRECTORY_REQUIRED")
     path = root / "browser-observation.json"
     sidecar = root / "browser-observation.sha256"
-    observed = dev.read(path)
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    observed, raw = read_original(path)
+    digest = hashlib.sha256(raw).hexdigest()
     dev.require(read_digest(sidecar) == digest, "N02_ORIGINAL_DIGEST_MISMATCH")
     dev.require(set(observed) == {
         "schema", "classification", "source_sha", "shared_source_sha",
