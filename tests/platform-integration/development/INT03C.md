@@ -182,6 +182,15 @@ export BAOBAB_N02_PRIVATE_PROFILE=/absolute/owner-private/n02-browser-profile.js
 python3 -B tests/platform-integration/development/ci_int03c.py
 ```
 
+The opt-in runner selects `development/n02-base-lock.json`, a separate
+**candidate** immutable source tuple: Shared draft #421, reviewed CP main,
+and IAM draft #147. The accepted `development/lock.json` remains unchanged
+for ordinary DEV-04 runs. The candidate lock is not approval or evidence;
+before any qualification, reconcile every immutable head, its matching
+consumer contracts, and the final Infrastructure executable SHA. Re-pin
+via a reviewed PR if IAM/Shared/CP heads change. The candidate still cannot
+provision the estate UX, CP ACTIVE caller or genuine recovery courier.
+
 The original browser producer must independently attach to the **same**
 private, no-public-port development topology, with real Kratos/Hydra, current
 CP, an approved development BFF caller, and the actual first-party estate
