@@ -6,7 +6,7 @@
   "sources": {
     "shared": "d23c4815f3b743aafeaeed6e2fd6408aaa5f94b4",
     "baobab-cp": "03e53eae95b6a277bd866a617653afb6634262bb",
-    "baobab-iam": "84592f4cac83bba9a571c28620cc5aa1cc4e5d3c"
+    "baobab-iam": "23f12d09cb000b337c06c1ec9744d1840fe80c68"
   },
   "images": {
     "postgres": "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
