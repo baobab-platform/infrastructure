@@ -39,6 +39,9 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 -sha256 \
   -out "$tmp/private/edge/fullchain.pem" >/dev/null 2>&1
 cp "$tmp/private/edge/fullchain.pem" "$tmp/private/upstream-roots.pem"
 
+# The pinned image runs nonroot by default but the synthetic private fixture
+# is 0600. Run the *syntax-only*, no-network, read-only test as container
+# root (with ALL Linux capabilities dropped), never in a live ingress.
 # N02's exact reviewed edge-image digest, never floating nginx:latest.
 image="$(python3 - <<'PY'
 import json
@@ -53,6 +56,7 @@ print(image)
 PY
 )"
 timeout 120 docker run --rm \
+  --user 0:0 \
   --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges \
   --entrypoint /usr/sbin/nginx \
