@@ -164,3 +164,52 @@ tests do not substitute for a repeat real-issued-token readback.
 
 Diagnostics expose only fixed binding booleans and a bounded relative lifetime,
 never tokens, absolute timestamps, subjects, provider bodies or credentials.
+
+## IAM-N02 opt-in connected-browser pre-deactivation checkpoint (development only)
+
+A new **opt-in** join in `ci_int03c.py` checks an **original real Chromium
+browser observation** while the disposable CP/IAM run is still alive and
+before the original INT-03C issuer/Principal deactivation and final teardown.
+The standard seven-case DEV-04 runner is unchanged without this opt-in.
+
+Set the following only on the explicitly supervised synthetic development host:
+
+```sh
+export BAOBAB_ENVIRONMENT=development
+export BAOBAB_N02_JOIN=development
+export BAOBAB_N02_ORIGINAL_DIR=/absolute/owner-private/n02-current-run
+python3 -B tests/platform-integration/development/ci_int03c.py
+```
+
+The original browser producer must independently attach to the **same**
+private, no-public-port development topology, with real Kratos/Hydra, current
+CP, an approved development BFF caller, and the actual first-party estate
+UI/ingress. Its checked-out IAM source must be the exact code in the current
+`development/lock.json`, not a mutable tag. Browser profile inputs are
+source-pinned to IAM, Shared, CP **and** the executable Infrastructure
+harness; the disposable run nonce must equal the current owner's actual
+`run_id`. The approved owner controls the private profile, enrolled
+synthetic AAL2 factor, real recovery courier and two separate credentials.
+Do not expose private credentials or browser URLs through Actions logs.
+
+During `DEV04_STAGE=N02_BROWSER_PRE_DEACTIVATION`, the host waits a bounded
+period for the owner-private original `browser-observation.json` and matching
+`browser-observation.sha256` (both 0600 in a 0700 directory). Missing or
+malformed evidence, any skipped browser case, wrong source, bogus protected
+claim, or stale/wrong run is a fatal refusal. After matching the original,
+the host independently rechecks live CP/IAM health and records a closed,
+unattested `n02_browser_checkpoint` in its own state. The later unchanged
+DEV-04 destructive tests and actual teardown embed this checkpoint in the
+original completed receipt. IAM's `n02_evidence_gate.py` must compare its
+hash, source and pre-deactivation phase to the original browser receipt before
+reporting even an **unattested** candidate.
+
+This is an execution and custody **bridge**, not a fabricated N02 pass, BFF
+provisioner, approved browser estate, independent provider attestation or
+staging authority. The current Infrastructure fixture by itself does **not**
+provision the necessary estate UI, CP-approved BFF workload, confidential
+Hydra human client or actual recovery courier. Until those owner integrations
+are installed and real browser/source-pinned DEV-04 receipts are observed,
+N02 connected development acceptance remains **BLOCKED**. If the new join
+fails, the host's `finally` cleanup still applies, and no browser or
+provider support is promoted. Protected environments remain separate.
