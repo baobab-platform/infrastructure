@@ -195,7 +195,7 @@ class N02CheckpointTests(unittest.TestCase):
         digest = self.root / "n02-clients-register.sha256"
         digest.write_text(hashlib.sha256(file.read_bytes()).hexdigest() + "\\n")
         digest.chmod(0o600)
-        with self.assertRaises(dev.Refused):
+        with self.assertRaises(FileNotFoundError):
             join.client_original(self.root, self.state, self.root, "VERIFY")
         expected = hashlib.sha256(file.read_bytes()).hexdigest()
         self.assertEqual(join.client_original(self.root, self.state, self.root, "REGISTER"), expected)
