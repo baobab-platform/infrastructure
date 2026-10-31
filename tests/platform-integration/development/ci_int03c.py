@@ -18,7 +18,31 @@ import n02_connected
 def main():
     mode = os.environ.get('BAOBAB_N02_JOIN')
     dev.require(mode in (None, 'development'), 'N02_JOIN_MODE_INVALID')
-    run_id = dev.prepare(lock_name='n02-base-lock.json' if mode == 'development' else 'lock.json')
+    # N02 requires a genuinely fresh, private run nonce before the owner
+    # can prepare run-bound Kratos recovery credentials and source-pinned
+    # Playwright/issuer profiles. Never guess the nonce or reuse DEV-04 data.
+    if mode == 'development' and os.environ.get('BAOBAB_N02_RESERVE_ONLY') == 'true':
+        dev.require(not os.environ.get('BAOBAB_N02_PREPARED_RUN_ID'),
+                    'N02_RESERVATION_MUST_BE_NEW')
+        run_id = dev.prepare(lock_name='n02-base-lock.json')
+        print('N02_PRIVATE_DEVELOPMENT_RUN_RESERVED=' + run_id, flush=True)
+        print('N02_BROWSER_AND_CLIENT_PROFILES_NOT_EXECUTED', flush=True)
+        return 0
+    if mode == 'development':
+        reserved = os.environ.get('BAOBAB_N02_PREPARED_RUN_ID')
+        dev.require(isinstance(reserved, str) and dev.NONCE.fullmatch(reserved),
+                    'N02_PREPARED_RUN_NONCE_REQUIRED')
+        run_id = reserved
+        directory, state = dev.current(run_id)
+        dev.require(state['phase'] == 'PREPARED'
+                    and state.get('lock_file') == 'n02-base-lock.json',
+                    'N02_EXACT_CANDIDATE_RUN_REQUIRED')
+        dev.verify_sources(directory, state)
+    else:
+        dev.require(not os.environ.get('BAOBAB_N02_RESERVE_ONLY')
+                    and not os.environ.get('BAOBAB_N02_PREPARED_RUN_ID'),
+                    'N02_RESERVED_RUN_IS_OPT_IN')
+        run_id = dev.prepare(lock_name='lock.json')
     try:
         with dev.guarded(run_id):
             print('DEV04_STAGE=UP', flush=True)
