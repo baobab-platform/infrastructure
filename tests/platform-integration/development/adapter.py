@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 
 ISSUER = 'https://hydra.int03.test'
-SERVICES = {'hydra-db','kratos-db','cp-db','hydra-migrate','kratos-migrate','hydra','kratos','cp','edge','probe','redis'}
+SERVICES = {'hydra-db','kratos-db','cp-db','hydra-migrate','kratos-migrate','hydra','kratos','cp','edge','probe'}
 MIGRATIONS = {'hydra-migrate','kratos-migrate'}
 
 def host(path):
