@@ -222,6 +222,13 @@ def execute_pinned_browser(run_id, profile_path, original_dir):
                                      ".browser-observation.tmp",
                                      ".browser-observation.sha256.tmp")),
                 "N02_ORIGINAL_ALREADY_PUBLISHED")
+    # Registration is actually performed by the *pinned IAM owner source*
+    # against the runtime's private Hydra Admin API before Chromium starts.
+    # An issued OAuth client ID alone never grants a CP Principal.
+    client_profile = os.environ.get("BAOBAB_N02_CLIENT_REGISTRATION_PROFILE")
+    dev.require(bool(client_profile), "N02_OWNER_CLIENT_REGISTRATION_PROFILE_REQUIRED")
+    run_client_controller(run_id, Path(client_profile), original_dir, "register")
+    run_client_controller(run_id, Path(client_profile), original_dir, "verify")
     budget = min(300, int(state["deadline"] - time.time()) - 15)
     dev.require(budget >= 30, "N02_BROWSER_LEASE_TOO_SHORT")
     env = dict(os.environ)
