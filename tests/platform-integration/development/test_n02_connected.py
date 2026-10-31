@@ -175,6 +175,47 @@ class N02CheckpointTests(unittest.TestCase):
                 join.execute_pinned_browser(RUN, profile_path, self.root)
             launched.assert_not_called()
 
+    def test_original_client_registry_is_real_run_source_bound(self):
+        payload = {
+            "schema": "baobab.iam.n02.disposable-client-observation.v1",
+            "classification": "REAL_HYDRA_ADMIN_CLIENTS_ONLY_UNATTESTED",
+            "run_id": RUN, "phase": "REGISTER",
+            "source": {
+                "iam_source_sha": IAM, "cp_source_sha": CP,
+                "shared_source_sha": SHARED, "zuribeans_source_sha": ESTATE,
+                "infrastructure_harness_sha": INFRA,
+            },
+            "client_ids": list(join.REGISTRATION),
+            "cp_principal_resolved": False,
+            "browser_cases_observed": False,
+            "protected_acceptance": False,
+        }
+        file = self.root / "n02-clients-register.json"
+        dev.write(file, payload)
+        digest = self.root / "n02-clients-register.sha256"
+        digest.write_text(hashlib.sha256(file.read_bytes()).hexdigest() + "\\n")
+        digest.chmod(0o600)
+        with self.assertRaises(dev.Refused):
+            join.client_original(self.root, self.state, self.root, "VERIFY")
+        expected = hashlib.sha256(file.read_bytes()).hexdigest()
+        self.assertEqual(join.client_original(self.root, self.state, self.root, "REGISTER"), expected)
+        for changed in (
+            ("source", {**payload["source"], "zuribeans_source_sha": "0" * 40}),
+            ("run_id", "0" * 32),
+            ("client_ids", [join.REGISTRATION[0]]),
+            ("cp_principal_resolved", True),
+        ):
+            original = payload[changed[0]]
+            payload[changed[0]] = changed[1]
+            try:
+                dev.write(file, payload)
+                digest.write_text(hashlib.sha256(file.read_bytes()).hexdigest() + "\\n")
+                digest.chmod(0o600)
+                with self.assertRaises(dev.Refused):
+                    join.client_original(self.root, self.state, self.root, "REGISTER")
+            finally:
+                payload[changed[0]] = original
+
     def test_absent_real_browser_fails_without_false_positive(self):
         with (patch.object(dev, "current", return_value=(self.root, self.state)),
               patch.object(dev, "verify_sources"),
