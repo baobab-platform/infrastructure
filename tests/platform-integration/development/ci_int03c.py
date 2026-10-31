@@ -37,12 +37,15 @@ def main():
             # Principal/issuer cases. The default DEV-04 suite remains unchanged.
             n02_mode = os.environ.get('BAOBAB_N02_JOIN')
             evidence = os.environ.get('BAOBAB_N02_ORIGINAL_DIR')
+            profile = os.environ.get('BAOBAB_N02_PRIVATE_PROFILE')
             dev.require(n02_mode in (None, 'development'), 'N02_JOIN_MODE_INVALID')
-            dev.require(n02_mode is not None or evidence is None, 'N02_JOIN_OPT_IN_REQUIRED')
+            dev.require(n02_mode is not None or
+                        (evidence is None and profile is None), 'N02_JOIN_OPT_IN_REQUIRED')
             if n02_mode == 'development':
-                dev.require(bool(evidence), 'N02_ORIGINAL_DIRECTORY_REQUIRED')
-                print('DEV04_STAGE=N02_BROWSER_PRE_DEACTIVATION', flush=True)
-                n02_connected.checkpoint(run_id, Path(evidence))
+                dev.require(bool(evidence) and bool(profile),
+                            'N02_ORIGINAL_AND_PROFILE_REQUIRED')
+                print('DEV04_STAGE=N02_REAL_BROWSER_PRE_DEACTIVATION', flush=True)
+                n02_connected.execute_pinned_browser(run_id, Path(profile), Path(evidence))
             print('DEV04_STAGE=SEVEN_ORIGINAL_CASES', flush=True)
             dev.qualify_int03c(run_id)
             # Full cleanup must work without Compose. The host performs its own
