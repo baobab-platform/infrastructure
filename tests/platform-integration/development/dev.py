@@ -738,6 +738,8 @@ def down(run_id):
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
                   'engine_integration':state.get('engine_integration'), 'engine_runtime_identity_verified':state.get('engine_runtime_identity_verified',False), 'engine_oci_manifest_digest':state.get('engine_oci_manifest_digest'), 'engine_lock_sha256':state.get('engine_lock_sha256'),
                   'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_oci_manifest_digest':state.get('cms_oci_manifest_digest'), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'dev07_buyer':state.get('dev07_buyer'), 'dev07_issuer_cleanup':state.get('dev07_issuer_cleanup',False), 'dev07_binding_revocation_verified':state.get('dev07_binding_revocation_verified',False), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
+                  **({'n02_browser_checkpoint': state['n02_browser_checkpoint']}
+                     if state.get('n02_browser_checkpoint') else {}),
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         if state.get('dev15_registry_sha256'):
