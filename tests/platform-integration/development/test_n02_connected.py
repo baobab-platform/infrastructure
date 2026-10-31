@@ -103,7 +103,7 @@ class N02CheckpointTests(unittest.TestCase):
                     join.inspect_original(self.root, self.state, self.root)
                 self.browser = {**self.browser, "run_id": RUN, "source_sha": IAM,
                                 "shared_source_sha": SHARED, "cp_source_sha": CP,
-            "zuribeans_source_sha": ESTATE,
+                                "zuribeans_source_sha": ESTATE,
                                 "infrastructure_harness_sha": INFRA,
                                 "protected_accepted": False,
                                 "cases": {name: "OBSERVED" for name in join.EXPECTED}}
@@ -123,7 +123,8 @@ class N02CheckpointTests(unittest.TestCase):
             "schema": "baobab.iam.n02.browser-qualification.v1",
             "environment": "development", "run_id": RUN,
             "iam_source_sha": IAM, "shared_source_sha": SHARED,
-            "cp_source_sha": CP, "infrastructure_harness_sha": INFRA,
+            "cp_source_sha": CP, "zuribeans_source_sha": ESTATE,
+            "infrastructure_harness_sha": INFRA,
         }
         dev.write(profile_path, profile)
         import types
@@ -158,7 +159,8 @@ class N02CheckpointTests(unittest.TestCase):
             "schema": "baobab.iam.n02.browser-qualification.v1",
             "environment": "development", "run_id": "f" * 32,
             "iam_source_sha": IAM, "shared_source_sha": SHARED,
-            "cp_source_sha": CP, "infrastructure_harness_sha": INFRA,
+            "cp_source_sha": CP, "zuribeans_source_sha": ESTATE,
+            "infrastructure_harness_sha": INFRA,
         })
         with (patch.object(dev, "current", return_value=(self.root, self.state)),
               patch.object(dev, "verify_sources"),
