@@ -111,6 +111,37 @@ def inspect_original(directory, state, root):
     }
 
 
+def seal_first_party_origin(run_id, profile_path):
+    """Bind Kratos's public base/browser UI to reviewed estate origin BEFORE up.
+
+    Never let runtime deploy a Kratos cookie for an unrelated host or use
+    old DEV-04 RP UI routes as a misleading N02 interactive success.
+    """
+    import n02_ingress
+    directory, state = dev.current(run_id)
+    dev.verify_sources(directory, state)
+    dev.require(state["phase"] == "PREPARED"
+                and state.get("lock_file") == "n02-base-lock.json"
+                and not state.get("n02_estate_origin"),
+                "N02_EXACT_PREPARED_FIRST_PARTY_REQUIRED")
+    dev.require(isinstance(profile_path, Path)
+                and profile_path.is_absolute() and not profile_path.is_symlink()
+                and profile_path.is_relative_to(directory),
+                "N02_PRIVATE_FIRST_PARTY_PROFILE_REQUIRED")
+    data = dev.read(profile_path)
+    fqdn = n02_ingress.reviewed_name(data)
+    dev.require(data.get("run_id") == run_id
+                and data.get("iam_source_sha") == state["sources"]["baobab-iam"]
+                and data.get("cp_source_sha") == state["sources"]["baobab-cp"]
+                and data.get("shared_source_sha") == state["sources"]["shared"]
+                and data.get("zuribeans_source_sha") == state["sources"]["zuribeans"]
+                and data.get("infrastructure_harness_sha") == state["harness_sha"],
+                "N02_FIRST_PARTY_ALL_SOURCE_PINS_REQUIRED")
+    state["n02_estate_origin"] = "https://" + fqdn
+    state["n02_private_profile_sha256"] = hashlib.sha256(profile_path.read_bytes()).hexdigest()
+    dev.persist(directory, state, "PREPARED")
+
+
 REGISTRATION = (
     "baobab-dev-zuribeans-native-browser-bff",
     "baobab-dev-zuribeans-cp-principal-validator",
