@@ -127,6 +127,51 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  n07-disposable:
+    name: IAM-N07 real pinned Ory CP and TLS Redis components (booking HELD)
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout exact Infrastructure candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned devcontainer CLI
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Start disposable private development container
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up --frozen-lockfile \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: Execute real Hydra Kratos CP PostgreSQL17 and TLS Redis with source pins
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env BAOBAB_ENVIRONMENT=development \
+            python3 -B tests/platform-integration/development/n07_disposable.py
+      - name: Independently recover private development resources in container
+        if: always()
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Independently recover run resources on host if container was lost
+        if: always()
+        run: python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Retain original source-pinned sanitized, non-authorizing receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: n07-real-provider-cp-redis-components
+          path: |
+            tests/platform-integration/evidence/dev01-*/completed/receipt.json
+            tests/platform-integration/evidence/dev01-*/completed/receipt.sha256.json
+          if-no-files-found: warn
+          retention-days: 14
+
   external-api:
     name: DEV-06 external API-only IAM CP Pulse and zero estates
     needs: source
