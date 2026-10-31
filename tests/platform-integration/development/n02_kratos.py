@@ -7,6 +7,7 @@ unreviewed return URL, mock login, or default RP UI is never permitted.
 """
 from __future__ import annotations
 
+import ipaddress
 import re
 import urllib.parse
 
@@ -23,6 +24,15 @@ def overlay(source: str, first_party: str) -> str:
     if (not isinstance(source, str) or not isinstance(first_party, str)
             or FIRST_PARTY.fullmatch(first_party) is None):
         raise Refused("N02_KRATOS_REVIEWED_HTTPS_ORIGIN_REQUIRED")
+    # DNS-only reviewed first-party ingress. Dotted IPv4 strings also match
+    # the hostname grammar but do not provide a trusted estate identity.
+    hostname = urllib.parse.urlsplit(first_party).hostname
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        raise Refused("N02_KRATOS_DNS_ESTATES_ONLY")
     base = "https://rp.baobab-dev.test"
     public = "https://kratos.baobab-dev.test/"
     required = {
