@@ -16,6 +16,7 @@ IAM = "b" * 40
 SHARED = "c" * 40
 CP = "d" * 40
 INFRA = "e" * 40
+ESTATE = "f" * 40
 
 
 class N02CheckpointTests(unittest.TestCase):
@@ -26,7 +27,7 @@ class N02CheckpointTests(unittest.TestCase):
         self.root.chmod(0o700)
         self.state = {
             "run_id": RUN, "phase": "TESTED", "tests": True,
-            "sources": {"baobab-iam": IAM, "shared": SHARED, "baobab-cp": CP},
+            "sources": {"baobab-iam": IAM, "shared": SHARED, "baobab-cp": CP, "zuribeans": ESTATE},
             "harness_sha": INFRA, "deadline": time.time() + 300,
         }
         self.browser = {
@@ -34,6 +35,7 @@ class N02CheckpointTests(unittest.TestCase):
             "classification": "REAL_BROWSER_SYNTHETIC_DATA",
             "run_id": RUN, "source_sha": IAM,
             "shared_source_sha": SHARED, "cp_source_sha": CP,
+            "zuribeans_source_sha": ESTATE,
             "infrastructure_harness_sha": INFRA,
             "cases": {name: "OBSERVED" for name in join.EXPECTED},
             "provider_and_cp_independently_attested": False,
@@ -59,6 +61,7 @@ class N02CheckpointTests(unittest.TestCase):
                             accepted["sources"]["baobab-iam"])
         self.assertNotEqual(candidate["sources"]["shared"],
                             accepted["sources"]["shared"])
+        self.assertRegex(candidate["sources"]["zuribeans"], r"^[a-f0-9]{40}$")
         self.assertEqual(candidate["sources"]["baobab-cp"],
                          "03e53eae95b6a277bd866a617653afb6634262bb")
         with self.assertRaises(dev.Refused):
@@ -86,6 +89,7 @@ class N02CheckpointTests(unittest.TestCase):
             ("run", lambda b: b.update(run_id="f" * 32)),
             ("cp", lambda b: b.update(cp_source_sha="f" * 40)),
             ("shared", lambda b: b.update(shared_source_sha="f" * 40)),
+            ("estate", lambda b: b.update(zuribeans_source_sha="0" * 40)),
             ("iam", lambda b: b.update(source_sha="f" * 40)),
             ("harness", lambda b: b.update(infrastructure_harness_sha="f" * 40)),
             ("skip", lambda b: b["cases"].update({next(iter(join.EXPECTED)): "BLOCKED"})),
@@ -99,6 +103,7 @@ class N02CheckpointTests(unittest.TestCase):
                     join.inspect_original(self.root, self.state, self.root)
                 self.browser = {**self.browser, "run_id": RUN, "source_sha": IAM,
                                 "shared_source_sha": SHARED, "cp_source_sha": CP,
+            "zuribeans_source_sha": ESTATE,
                                 "infrastructure_harness_sha": INFRA,
                                 "protected_accepted": False,
                                 "cases": {name: "OBSERVED" for name in join.EXPECTED}}
