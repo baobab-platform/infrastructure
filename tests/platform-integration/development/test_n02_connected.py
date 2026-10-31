@@ -63,7 +63,7 @@ class N02CheckpointTests(unittest.TestCase):
                             accepted["sources"]["shared"])
         self.assertRegex(candidate["sources"]["zuribeans"], r"^[a-f0-9]{40}$")
         self.assertEqual(candidate["sources"]["baobab-cp"],
-                         "ba713b2fc0ee4f0130c29116859081a9040131c9")
+                         "56d5167d03c06d4a0485dae4af16079ccf02579a")
         with self.assertRaises(dev.Refused):
             dev.load_lock("../../other-unsafe-lock.json")
 
