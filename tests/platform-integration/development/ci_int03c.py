@@ -43,6 +43,10 @@ def main():
                     and not os.environ.get('BAOBAB_N02_PREPARED_RUN_ID'),
                     'N02_RESERVED_RUN_IS_OPT_IN')
         run_id = dev.prepare(lock_name='lock.json')
+    # The original DEV-04 deletion of compose.json MUST remain after
+    # native N02 Hydra client readback/deletion. Removing Compose first
+    # prevents private issuer cleanup and leaves a false-positive teardown.
+    lose_compose_after_native_cleanup = False
     try:
         with dev.guarded(run_id):
             if mode == 'development':
@@ -81,7 +85,7 @@ def main():
             dev.qualify_int03c(run_id)
             # Full cleanup must work without Compose. The host performs its own
             # Docker inventory independently of the in-container protocol driver.
-            (directory / 'compose.json').unlink()
+            lose_compose_after_native_cleanup = True
     finally:
         try:
             # The real IAM owner-only client controller independently
@@ -100,6 +104,11 @@ def main():
                     )
         finally:
             with dev.guarded(run_id):
+                if lose_compose_after_native_cleanup:
+                    # Preserve DEV-04's deliberately lost-Compose teardown
+                    # demonstration, but only AFTER run-owned Hydra client
+                    # revocation and issuer GET404 readback have completed.
+                    (dev.run_dir(run_id) / 'compose.json').unlink(missing_ok=True)
                 dev.down(run_id)
     dev.require(not dev.run_dir(run_id).exists() and not dev.resources(run_id), 'DEV04_CLEANUP_INCOMPLETE')
     path = dev.EVIDENCE / ('dev01-' + run_id) / 'completed/receipt.json'
