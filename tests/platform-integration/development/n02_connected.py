@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
+import sys
 import time
 
 import dev
@@ -105,6 +107,64 @@ def inspect_original(directory, state, root):
         "provider_independently_attested": False,
         "protected_accepted": False,
     }
+
+
+def execute_pinned_browser(run_id, profile_path, original_dir):
+    """Run the *actual* pinned IAM Playwright producer in a supervised host.
+
+    The operator owns the private estate ingress, Kratos recovery courier and
+    synthetic credentials. No unreviewed script/command and no browser logs
+    are accepted. A browser exit code is not evidence: checkpoint() reads
+    the original bytes and re-observes current native CP health separately.
+    """
+    directory, state = dev.current(run_id)
+    dev.verify_sources(directory, state)
+    dev.require(state["phase"] == "TESTED" and state["tests"] is True,
+                "N02_TESTED_RUNTIME_REQUIRED")
+    source = directory / "sources" / "baobab-iam"
+    executable = source / "tests" / "browser" / "n02_live.py"
+    dev.require(executable.is_file() and not executable.is_symlink(),
+                "N02_PINNED_BROWSER_PRODUCER_MISSING")
+    dev.require(isinstance(profile_path, Path) and profile_path.is_absolute(),
+                "N02_PRIVATE_PROFILE_REQUIRED")
+    profile = dev.read(profile_path)
+    dev.require(profile.get("environment") == "development"
+                and profile.get("schema") == "baobab.iam.n02.browser-qualification.v1"
+                and profile.get("run_id") == run_id
+                and profile.get("iam_source_sha") == state["sources"]["baobab-iam"]
+                and profile.get("shared_source_sha") == state["sources"]["shared"]
+                and profile.get("cp_source_sha") == state["sources"]["baobab-cp"]
+                and profile.get("infrastructure_harness_sha") == state["harness_sha"],
+                "N02_PRIVATE_PROFILE_SOURCE_DRIFT")
+    dev.require(isinstance(original_dir, Path) and original_dir.is_absolute()
+                and original_dir.exists() and original_dir.is_dir()
+                and not original_dir.is_symlink(), "N02_PRIVATE_OUTPUT_DIRECTORY_REQUIRED")
+    info = original_dir.lstat()
+    dev.require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+                and not info.st_mode & 0o077,
+                "N02_PRIVATE_OUTPUT_DIRECTORY_REQUIRED")
+    dev.require(not any((original_dir / name).exists()
+                        or (original_dir / name).is_symlink()
+                        for name in ("browser-observation.json", "browser-observation.sha256",
+                                     ".browser-observation.tmp",
+                                     ".browser-observation.sha256.tmp")),
+                "N02_ORIGINAL_ALREADY_PUBLISHED")
+    budget = min(300, int(state["deadline"] - time.time()) - 15)
+    dev.require(budget >= 30, "N02_BROWSER_LEASE_TOO_SHORT")
+    env = dict(os.environ)
+    env.update({"BAOBAB_ENVIRONMENT": "development",
+                "BAOBAB_N02_PRIVATE_PROFILE": str(profile_path),
+                "BAOBAB_N02_EVIDENCE_DIR": str(original_dir)})
+    try:
+        observed = subprocess.run(
+            [sys.executable, "-B", str(executable)], cwd=source,
+            env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, check=False, timeout=budget,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise dev.Refused("N02_PINNED_BROWSER_EXECUTION_UNAVAILABLE") from None
+    dev.require(observed.returncode == 0, "N02_REAL_BROWSER_CASES_NOT_OBSERVED")
+    return checkpoint(run_id, original_dir, max_wait_seconds=0)
 
 
 def checkpoint(run_id, root, max_wait_seconds=300):
