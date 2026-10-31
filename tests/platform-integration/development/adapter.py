@@ -39,6 +39,16 @@ def configure(directory, state):
     (directory/'hydra.yml').write_text(hydra)
     kratos=(source/'kratos/kratos.yml').read_text().replace('http://127.0.0.1:4433/','https://kratos.baobab-dev.test/').replace('http://127.0.0.1:4434/','http://kratos:4434/').replace('http://127.0.0.1:4455','https://rp.baobab-dev.test').replace('http://127.0.0.1:3000','https://rp.baobab-dev.test')
     kratos=unique_transport_lists(kratos)
+    if state.get('lock_file') == 'n02-base-lock.json':
+        # The origin is sealed from an owner-private, source-pinned browser
+        # profile BEFORE up. Kratos host-only cookies and native Go BFF now
+        # use exactly one first-party HTTPS host. The accepted DEV-04 fixture
+        # keeps its original RP and Kratos origins.
+        import n02_kratos
+        origin = state.get('n02_estate_origin')
+        if not isinstance(origin,str):
+            raise ValueError('N02_FIRST_PARTY_ORIGIN_NOT_SEALED')
+        kratos=n02_kratos.overlay(kratos,origin)
     for value in ('local_dev_only_cookie_secret_32b','local_dev_only_cipher_secret_32b'): kratos=kratos.replace(value,state['secrets']['hook'][:32])
     config=directory/'kratos';config.mkdir(mode=0o755)
     (config/'kratos.yml').write_text(kratos)
