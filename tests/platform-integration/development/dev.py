@@ -301,7 +301,13 @@ def load_lock(lock_name='lock.json'):
             and data['profile'] == 'iam-cp-development' and data['authority'] == 'ADR-SHARED-043'
             and data['synthetic_only'] is True and data['protected_acceptance'] is False
             and data['max_lease_seconds'] == 3600 and SHA.fullmatch(data['infrastructure_baseline']), 'LOCK_POLICY')
-    require(set(data['sources']) == {'shared', 'baobab-cp', 'baobab-iam'}
+    # Native N02 has a real first-party ZuriBeans browser consumer. Pin its
+    # immutable checkout and include it in the same run's verified source
+    # roster. Every accepted DEV-01/04 lock still has exactly three sources.
+    expected_sources = {'shared', 'baobab-cp', 'baobab-iam'}
+    if lock_name == 'n02-base-lock.json':
+        expected_sources.add('zuribeans')
+    require(set(data['sources']) == expected_sources
             and all(isinstance(v, str) and SHA.fullmatch(v) for v in data['sources'].values()), 'SOURCE_PIN_REQUIRED')
     require(set(data['images']) == {'postgres', 'probe', 'edge', 'hydra', 'kratos'} and all(
         isinstance(v, str) and '@sha256:' in v and DIGEST.fullmatch(v) for v in data['images'].values()), 'IMAGE_DIGEST_REQUIRED')
