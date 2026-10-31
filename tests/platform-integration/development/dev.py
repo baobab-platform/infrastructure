@@ -654,8 +654,8 @@ def test(run_id, health_attempts=45):
         raise Refused('IAM_CP_HEALTH_FAILED')
     require(bootstrap(directory, state) == read(directory / 'bootstrap.json'), 'BOOTSTRAP_REPLAY_MISMATCH')
     service_roster = adapter.SERVICES - adapter.MIGRATIONS
-    if not state.get('n07_profile'):
-        service_roster = service_roster - {'redis'}
+    if state.get('n07_profile'):
+        service_roster = service_roster | {'redis'}
     for name in service_roster:
         container = compose(directory, state, 'ps', '-q', name)
         require(re.fullmatch(r'[0-9a-f]{12,64}', container), 'CONTAINER_NOT_RUNNING')
