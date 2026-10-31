@@ -47,6 +47,23 @@ class N02CheckpointTests(unittest.TestCase):
         digest.write_text(hashlib.sha256(payload.read_bytes()).hexdigest() + "\n")
         digest.chmod(0o600)
 
+    def test_reviewed_candidate_lock_is_opt_in_and_preserves_default(self):
+        accepted = dev.load_lock("lock.json")
+        candidate = dev.load_lock("n02-base-lock.json")
+        self.assertEqual(candidate["profile"], accepted["profile"])
+        self.assertEqual(candidate["images"], accepted["images"])
+        self.assertEqual(candidate["authority"], "ADR-SHARED-043")
+        self.assertIs(candidate["protected_acceptance"], False)
+        self.assertTrue(candidate["synthetic_only"])
+        self.assertNotEqual(candidate["sources"]["baobab-iam"],
+                            accepted["sources"]["baobab-iam"])
+        self.assertNotEqual(candidate["sources"]["shared"],
+                            accepted["sources"]["shared"])
+        self.assertEqual(candidate["sources"]["baobab-cp"],
+                         "03e53eae95b6a277bd866a617653afb6634262bb")
+        with self.assertRaises(dev.Refused):
+            dev.load_lock("../../other-unsafe-lock.json")
+
     def test_private_original_current_run_binding_and_pre_deactivation(self):
         self.original()
         checkpoint = join.inspect_original(self.root, self.state, self.root)
