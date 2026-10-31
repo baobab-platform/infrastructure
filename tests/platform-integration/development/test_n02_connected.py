@@ -294,6 +294,47 @@ class N02CheckpointTests(unittest.TestCase):
                 join.run_client_controller(RUN, doc, private, "register")
             launch.assert_not_called()
 
+    def test_nonce_reservation_precedes_private_client_and_browser_profiles(self):
+        import ci_int03c as runner
+        with (patch.dict(os.environ, {
+                "BAOBAB_ENVIRONMENT": "development",
+                "BAOBAB_N02_JOIN": "development",
+                "BAOBAB_N02_RESERVE_ONLY": "true",
+            }, clear=True),
+              patch.object(dev, "prepare", return_value=RUN) as prepared,
+              patch.object(dev, "up") as up,
+              patch.object(dev, "qualify_int03c") as qualify):
+            self.assertEqual(runner.main(), 0)
+            prepared.assert_called_once_with(lock_name="n02-base-lock.json")
+            up.assert_not_called()
+            qualify.assert_not_called()
+        # The resume command must never silently prepare a DIFFERENT run
+        # after the owner has sealed credentials to a reserved nonce.
+        with (patch.dict(os.environ, {
+                "BAOBAB_ENVIRONMENT": "development",
+                "BAOBAB_N02_JOIN": "development",
+            }, clear=True),
+              patch.object(dev, "prepare") as prepared):
+            with self.assertRaises(dev.Refused):
+                runner.main()
+            prepared.assert_not_called()
+
+    def test_resume_refuses_wrong_disposable_source_without_mutation(self):
+        import ci_int03c as runner
+        state = dict(self.state, phase="PREPARED", lock_file="lock.json")
+        with (patch.dict(os.environ, {
+                "BAOBAB_ENVIRONMENT": "development",
+                "BAOBAB_N02_JOIN": "development",
+                "BAOBAB_N02_PREPARED_RUN_ID": RUN,
+            }, clear=True),
+              patch.object(dev, "current", return_value=(self.root, state)),
+              patch.object(dev, "up") as up,
+              patch.object(dev, "qualify_int03c") as qualify):
+            with self.assertRaises(dev.Refused):
+                runner.main()
+            up.assert_not_called()
+            qualify.assert_not_called()
+
     def test_absent_real_browser_fails_without_false_positive(self):
         with (patch.object(dev, "current", return_value=(self.root, self.state)),
               patch.object(dev, "verify_sources"),
