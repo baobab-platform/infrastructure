@@ -234,3 +234,65 @@ are installed and real browser/source-pinned DEV-04 receipts are observed,
 N02 connected development acceptance remains **BLOCKED**. If the new join
 fails, the host's `finally` cleanup still applies, and no browser or
 provider support is promoted. Protected environments remain separate.
+
+
+### N02 first-party TLS/host-only Kratos ingress — source candidate
+
+The source-only, owner-reviewed NGINX route template under
+`n02-ingress/nginx.conf.template` and its fail-closed renderer
+`n02_ingress.py` are **not running services**. They separate three
+endpoint owners at a single reviewed first-party HTTPS origin:
+
+- `/auth/*` — real IAM #147 Go native browser BFF on **verified TLS**
+  upstream `127.0.0.1:9443`, with original path and exact Host preserved.
+- `/self-service/*` and `/sessions/whoami` — Kratos public service
+  on **verified TLS** upstream `127.0.0.1:9444`. Kratos Admin never
+  passes this ingress.
+- All remaining estate paths including
+  `/identity/native-qualification` and the independent existing
+  `/api/iam/*` BFF — current ZuriBeans Next.js on private loopback
+  `127.0.0.1:3000`. This is **not** a proxy of the Next buyer session.
+
+This placement is necessary for Kratos's **host-only Secure session cookie**
+to reach the native BFF's `/auth/login` and consent endpoints. The old
+different-Kratos-origin browser profile could not guarantee this. The
+Hydra issuer must remain a **distinct** HTTPS origin. The operator must
+configure Kratos `serve.public.base_url`, login/recovery UI URLs,
+session cookie attributes and allowlisted return URLs for this exact
+first-party host. The Go BFF must have `PublicOrigin` set identically;
+both TLS upstream certificates must authenticate that hostname against
+the separately mounted private `upstream-roots.pem`. No untrusted
+`X-Forwarded-Proto`, wildcard shared-domain cookie, plaintext Go BFF
+upstream, public admin, or protected deployment is accepted.
+
+The template is rendered only for development with the same current,
+owner-private `BAOBAB_N02_PRIVATE_PROFILE` as IAM's Playwright script.
+This source process does **not** install NGINX, generate trust anchors,
+provision a domain/certificate, load a native database, create CP authority
+or produce live evidence.
+
+```sh
+export BAOBAB_ENVIRONMENT=development
+python3 -B tests/platform-integration/development/n02_ingress.py \
+  --profile /absolute/private/n02-browser-profile.json \
+  --output-dir /absolute/private/0700-existing-render-dir
+# Owner inspects the original private nginx.conf and its digest.
+# Mount reviewed certificates, CA roots and an isolated ingress host.
+# Validate the actual selected pinned NGINX image with nginx -t.
+```
+
+**Source alignment hold:** The separate candidate `n02-base-lock.json`
+pins draft Shared #421's changed `identity/v1/workload-registry.yaml`,
+but CP's accepted `contracts.lock.yaml` pins an older Shared commit.
+Development `prepare` must continue rejecting their byte mismatch.
+Draft [CP #455](https://github.com/baobab-platform/baobab-cp/pull/455)
+carries the exact candidate CP projection and a denial test without
+silently changing the globally accepted CP Shared pin. Final review must
+reconcile **all CP consumers**, then pin the reviewed CP/Shared pair and
+re-run the immutable browser+INT03C evidence. In addition, the actual
+ZuriBeans estate SHA, ingress configuration digest and running service
+images/identity must be captured by the original source/evidence chain;
+a browser source claim alone is insufficient.
+
+This is development source readiness only; do not record N02 PASS,
+N04 provider certification or protected deployment.
