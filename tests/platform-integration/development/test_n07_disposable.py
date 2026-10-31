@@ -73,10 +73,12 @@ class N07SourceTests(unittest.TestCase):
         self.assertFalse(candidate["protected_acceptance"])
 
     def test_native_redis_uses_pinned_image_and_private_network(self):
-        self.assertIn("redis", adapter.SERVICES)
+        # Optional N07 Redis must not mutate the existing DEV-04 service inventory.
+        self.assertNotIn("redis", adapter.SERVICES)
         state = {
             **self.state, "uid":1000,"gid":1000,"deadline":2000000000,
             "run_id":"a"*32,
+            "project":"dev01-"+"a"*32,
             "n07_profile":True,
             "images":{"cp":"reviewed-project-cp"},
             "secrets":{"cp_db":"a", "iam_db":"b", "introspection":"c","verifier":"d",
