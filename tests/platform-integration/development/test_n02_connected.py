@@ -128,20 +128,26 @@ class N02CheckpointTests(unittest.TestCase):
         }
         dev.write(profile_path, profile)
         import types
-        with (patch.object(dev, "current", return_value=(self.root, self.state)),
+        with (patch.dict(os.environ, {"BAOBAB_N02_CLIENT_REGISTRATION_PROFILE": "/private/n02-register.json"}),
+              patch.object(dev, "current", return_value=(self.root, self.state)),
               patch.object(dev, "verify_sources"),
+              patch.object(join, "run_client_controller") as clients,
               patch.object(join.subprocess, "run",
                            return_value=types.SimpleNamespace(returncode=0)) as launched,
               patch.object(join, "checkpoint", return_value={"phase": "BEFORE_INT03C_DEACTIVATION"}) as checked):
             got = join.execute_pinned_browser(RUN, profile_path, self.root)
             self.assertEqual(got["phase"], "BEFORE_INT03C_DEACTIVATION")
             launched.assert_called_once()
+            self.assertEqual(clients.call_count, 2)
+            self.assertEqual([call.args[-1] for call in clients.call_args_list], ["register", "verify"])
             self.assertEqual(launched.call_args.args[0][-1], str(actual))
             self.assertEqual(launched.call_args.kwargs["stdout"], join.subprocess.DEVNULL)
             self.assertEqual(launched.call_args.kwargs["stderr"], join.subprocess.DEVNULL)
             checked.assert_called_once()
-        with (patch.object(dev, "current", return_value=(self.root, self.state)),
+        with (patch.dict(os.environ, {"BAOBAB_N02_CLIENT_REGISTRATION_PROFILE": "/private/n02-register.json"}),
+              patch.object(dev, "current", return_value=(self.root, self.state)),
               patch.object(dev, "verify_sources"),
+              patch.object(join, "run_client_controller"),
               patch.object(join.subprocess, "run",
                            return_value=types.SimpleNamespace(returncode=1)),
               patch.object(join, "checkpoint") as never_credit):
