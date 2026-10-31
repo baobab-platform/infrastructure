@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 
 ISSUER = 'https://hydra.int03.test'
-SERVICES = {'hydra-db','kratos-db','cp-db','hydra-migrate','kratos-migrate','hydra','kratos','cp','edge','probe'}
+SERVICES = {'hydra-db','kratos-db','cp-db','hydra-migrate','kratos-migrate','hydra','kratos','cp','edge','probe','redis'}
 MIGRATIONS = {'hydra-migrate','kratos-migrate'}
 
 def host(path):
@@ -54,6 +54,29 @@ def configure(directory, state):
     (config/'kratos.yml').write_text(kratos)
     (config/'identity.schema.json').write_bytes((source/'kratos/identity.schema.json').read_bytes())
     for path in (directory/'introspection.htpasswd', directory/'hydra.yml', config/'kratos.yml', config/'identity.schema.json'): path.chmod(0o644)  # enclosing run root stays 0700
+    if state.get('n07_profile'):
+        # A true disposable TLS Redis ACL, independently checked by the probe.
+        # Only Thamani's run-owned namespace is available, and passwords are
+        # hashed in the image-mounted ACL file rather than exposed in Compose.
+        import hashlib
+        run = state['run_id']
+        password = state['secrets']['redis']
+        acl = ('user default off\\n'
+               + 'user n07 on #' + hashlib.sha256(password.encode()).hexdigest()
+               + ' ~thamani:bff:v1:' + run
+               + ':* +ping +get +set +getdel +del +hello +client|setinfo +client|setname\\n')
+        (directory/'n07-redis.acl').write_text(acl)
+        redis_conf = '\\n'.join((
+            'port 0','tls-port 6380','bind 0.0.0.0','protected-mode yes',
+            'tls-cert-file /tls/edge.pem','tls-key-file /tls/edge.key',
+            'tls-ca-cert-file /tls/ca.pem','tls-auth-clients no',
+            'aclfile /etc/redis/users.acl','save ""','appendonly no',
+            'maxmemory 32mb','maxmemory-policy noeviction','dir /data',''))
+        (directory/'n07-redis.conf').write_text(redis_conf)
+        # Read-only bind sources; enclosing run path always has 0700 mode.
+        (directory/'n07-redis.acl').chmod(0o644)
+        (directory/'n07-redis.conf').chmod(0o644)
+
 
 def composition(state,directory,images,namespace):
     run=state['run_id']; secret=state['secrets']; tls=host(directory/'tls')
@@ -97,6 +120,20 @@ def composition(state,directory,images,namespace):
     services['cp']={'image':state['images']['cp'],'pull_policy':'never','environment':cp_env,'volumes':[tls+':/tls:ro',host(registry)+':/registry.yaml:ro']}
     services['edge']={'image':images['edge'],'read_only':True,'tmpfs':['/tmp'],'volumes':[host(directory/'nginx.conf')+':/etc/nginx/nginx.conf:ro',host(directory/'introspection.htpasswd')+':/etc/nginx/introspection.htpasswd:ro',tls+':/tls:ro'],'networks':{'lab':{'aliases':['hydra.int03.test','cp.baobab-dev.test','kratos.baobab-dev.test','rp.baobab-dev.test']}}}
     services['probe']={'image':images['probe'],'user':f'{state["uid"]}:{state["gid"]}','command':['python','/native_probe.py','serve'],'environment':{'DEV01_RUN_ID':run,'DEV03_HOOK_KEY':secret['hook'],'DEV03_INTROSPECTION_SECRET':secret['introspection'],'DEV04_VERIFIER_SECRET':secret['verifier']},'volumes':[host(directory)+':/run/dev01',tls+':/tls:ro',*[host(Path(__file__).parent/name)+':/'+name+':ro' for name in ('native_probe.py','int03c_probe.py','int03c_contract.py')]]}
+    if state.get('n07_profile'):
+        services['redis']={
+            'image':images['redis'], 'user':'999:999','read_only':True,
+            'tmpfs':['/tmp','/data'],
+            'command':['redis-server','/etc/redis/redis.conf'],
+            'volumes':[
+                tls+':/tls:ro',
+                host(directory/'n07-redis.conf')+':/etc/redis/redis.conf:ro',
+                host(directory/'n07-redis.acl')+':/etc/redis/users.acl:ro',
+            ],
+            'networks':{'lab':{'aliases':['redis.baobab-dev.test']}},
+            'security_opt':['no-new-privileges:true'],
+            'cap_drop':['ALL'],
+        }
     if state.get('dev15_profile'):
         # DEV-15's private HTTP observer must be present at probe startup.
         # Adding a bind after the container has started cannot make its
