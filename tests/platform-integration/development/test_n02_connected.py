@@ -216,6 +216,84 @@ class N02CheckpointTests(unittest.TestCase):
             finally:
                 payload[changed[0]] = original
 
+    def test_native_hydra_controller_never_opens_admin_host_port(self):
+        private = self.root / "owner"
+        private.mkdir(mode=0o700)
+        evidence = private / "originals"
+        evidence.mkdir(mode=0o700)
+        client = private / "n02-clients.json"
+        dev.write(client, {
+            "schema": "baobab.iam.n02.disposable-clients.v1",
+            "environment": "development", "protected_acceptance": False,
+            "run_id": RUN, "iam_source_sha": IAM, "cp_source_sha": CP,
+            "shared_source_sha": SHARED, "zuribeans_source_sha": ESTATE,
+            "infrastructure_harness_sha": INFRA,
+            "browser_secret_file": str(private / "browser.secret"),
+            "cp_reader_secret_file": str(private / "reader.secret"),
+        })
+        script = self.root / "sources/baobab-iam/scripts/n02_development_clients.py"
+        script.parent.mkdir(parents=True)
+        script.write_text("print('never fixture success')\n")
+        for name in ("browser.secret", "reader.secret"):
+            (private / name).write_text("x" * 48)
+            (private / name).chmod(0o600)
+        state = dict(self.state,
+            environment="development", uid=os.getuid(), gid=os.getgid(),
+            lock_file="n02-base-lock.json")
+        hydra = "a" * 64
+        import types
+        expected_container = [{
+            "Config": {"Labels": {"io.baobab.dev.run": RUN}},
+            "NetworkSettings": {"Networks": {"dev01_private": {}}},
+            "HostConfig": {"PortBindings": None, "Privileged": False},
+        }]
+        def inspector(args, **kwargs):
+            if args[:2] == ["docker", "inspect"]:
+                return json.dumps(expected_container)
+            if args[:3] == ["docker", "network", "inspect"]:
+                return json.dumps([{"Internal": True}])
+            self.fail("unexpected Docker source call")
+        with (patch.object(dev, "current", return_value=(self.root, state)),
+              patch.object(dev, "verify_sources"),
+              patch.object(dev, "compose", return_value=hydra),
+              patch.object(dev, "call", side_effect=inspector),
+              patch.object(dev, "load_lock", return_value={
+                  "images": {"probe": "python@sha256:" + "f" * 64}
+              }),
+              patch.object(join, "client_original", return_value="3" * 64),
+              patch.object(join.subprocess, "run",
+                           return_value=types.SimpleNamespace(returncode=0)) as launched):
+            self.assertEqual(join.run_client_controller(
+                RUN, client, evidence, "register"), "3" * 64)
+            cmd = launched.call_args.args[0]
+            self.assertEqual(cmd[:3], ["docker", "run", "--rm"])
+            self.assertIn("container:" + hydra, cmd)
+            self.assertIn("BAOBAB_ENVIRONMENT=development", cmd)
+            self.assertIn("--cap-drop", cmd)
+            self.assertIn("--read-only", cmd)
+            self.assertNotIn("-p", cmd)
+            self.assertNotIn("--publish", cmd)
+            self.assertIn("n02_development_clients.py", " ".join(cmd))
+
+    def test_native_hydra_controller_refuses_foreign_source_before_docker(self):
+        private = self.root / "owner"
+        private.mkdir(mode=0o700)
+        doc = private / "n02-clients.json"
+        dev.write(doc, {
+            "schema": "baobab.iam.n02.disposable-clients.v1",
+            "environment": "development", "protected_acceptance": False,
+            "run_id": RUN, "iam_source_sha": "0" * 40,
+        })
+        script = self.root / "sources/baobab-iam/scripts/n02_development_clients.py"
+        script.parent.mkdir(parents=True)
+        script.write_text("print('never')\n")
+        with (patch.object(dev, "current", return_value=(self.root, self.state)),
+              patch.object(dev, "verify_sources"),
+              patch.object(join.subprocess, "run") as launch):
+            with self.assertRaises(dev.Refused):
+                join.run_client_controller(RUN, doc, private, "register")
+            launch.assert_not_called()
+
     def test_absent_real_browser_fails_without_false_positive(self):
         with (patch.object(dev, "current", return_value=(self.root, self.state)),
               patch.object(dev, "verify_sources"),
