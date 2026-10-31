@@ -74,10 +74,18 @@ def reviewed_name(doc: dict) -> str:
     hydra = doc.get("hydra_origin")
     require(isinstance(estate, str) and isinstance(kratos, str)
             and isinstance(hydra, str), "N02_ORIGIN_REQUIRED")
-    parsed = urllib.parse.urlsplit(estate)
-    h = urllib.parse.urlsplit(hydra)
+    # urlsplit can remove embedded CR/LF/TAB before validating an origin;
+    # reject their *original* bytes to prevent host-header or route confusion.
+    require(all(31 < ord(char) < 127 for value in (estate, kratos, hydra)
+                for char in value), "N02_CONTROL_CHARACTERS_REFUSED")
+    try:
+        parsed = urllib.parse.urlsplit(estate)
+        h = urllib.parse.urlsplit(hydra)
+        no_nonstandard_port = parsed.port is None
+    except ValueError:
+        raise Refused("N02_ORIGIN_PARSING_REFUSED") from None
     require(parsed.scheme == "https" and parsed.hostname is not None
-            and parsed.port is None and not parsed.username and not parsed.password
+            and no_nonstandard_port and not parsed.username and not parsed.password
             and parsed.path in ("", "/") and not parsed.query and not parsed.fragment
             and estate.rstrip("/") == kratos.rstrip("/")
             and h.scheme == "https" and h.hostname is not None
