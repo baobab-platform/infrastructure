@@ -87,6 +87,9 @@ def main():
             # Docker inventory independently of the in-container protocol driver.
             lose_compose_after_native_cleanup = True
     finally:
+        # The accepted DEV-04 lost-Compose test remains available. N02 must
+        # first complete its independently observed run-owned Hydra cleanup.
+        native_cleanup_completed = mode != 'development'
         try:
             # The real IAM owner-only client controller independently
             # re-reads run metadata and deletes ONLY this lease's Hydra
@@ -102,9 +105,10 @@ def main():
                         Path(os.environ['BAOBAB_N02_ORIGINAL_DIR']),
                         'recover',
                     )
+                native_cleanup_completed = True
         finally:
             with dev.guarded(run_id):
-                if lose_compose_after_native_cleanup:
+                if lose_compose_after_native_cleanup and native_cleanup_completed:
                     # Preserve DEV-04's deliberately lost-Compose teardown
                     # demonstration, but only AFTER run-owned Hydra client
                     # revocation and issuer GET404 readback have completed.
