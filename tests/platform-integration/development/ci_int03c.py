@@ -16,7 +16,9 @@ import n02_connected
 
 
 def main():
-    run_id = dev.prepare()
+    mode = os.environ.get('BAOBAB_N02_JOIN')
+    dev.require(mode in (None, 'development'), 'N02_JOIN_MODE_INVALID')
+    run_id = dev.prepare(lock_name='n02-base-lock.json' if mode == 'development' else 'lock.json')
     try:
         with dev.guarded(run_id):
             print('DEV04_STAGE=UP', flush=True)
