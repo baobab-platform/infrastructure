@@ -131,6 +131,7 @@ class N02CheckpointTests(unittest.TestCase):
         with (patch.dict(os.environ, {"BAOBAB_N02_CLIENT_REGISTRATION_PROFILE": "/private/n02-register.json"}),
               patch.object(dev, "current", return_value=(self.root, self.state)),
               patch.object(dev, "verify_sources"),
+              patch.object(join, "actual_first_party_preflight") as tls_precheck,
               patch.object(join, "run_client_controller") as clients,
               patch.object(join.subprocess, "run",
                            return_value=types.SimpleNamespace(returncode=0)) as launched,
@@ -138,6 +139,7 @@ class N02CheckpointTests(unittest.TestCase):
             got = join.execute_pinned_browser(RUN, profile_path, self.root)
             self.assertEqual(got["phase"], "BEFORE_INT03C_DEACTIVATION")
             launched.assert_called_once()
+            tls_precheck.assert_called_once_with(profile)
             self.assertEqual(clients.call_count, 2)
             self.assertEqual([call.args[-1] for call in clients.call_args_list], ["register", "verify"])
             self.assertEqual(launched.call_args.args[0][-1], str(actual))
@@ -147,6 +149,7 @@ class N02CheckpointTests(unittest.TestCase):
         with (patch.dict(os.environ, {"BAOBAB_N02_CLIENT_REGISTRATION_PROFILE": "/private/n02-register.json"}),
               patch.object(dev, "current", return_value=(self.root, self.state)),
               patch.object(dev, "verify_sources"),
+              patch.object(join, "actual_first_party_preflight"),
               patch.object(join, "run_client_controller"),
               patch.object(join.subprocess, "run",
                            return_value=types.SimpleNamespace(returncode=1)),
@@ -334,6 +337,53 @@ class N02CheckpointTests(unittest.TestCase):
                 runner.main()
             up.assert_not_called()
             qualify.assert_not_called()
+
+    def test_first_party_kratos_redirect_requires_current_same_origin_flow(self):
+        origin = "https://n02.zuribeans.example.test"
+        flow = "11111111-1111-4111-8111-111111111111"
+        for kind in ("login", "recovery"):
+            join.require_kratos_browser_redirect(
+                303, f"/identity/kratos/{kind}?flow={flow}",
+                origin, kind)
+        for status, location in (
+            (200, "/identity/kratos/login?flow=" + flow),
+            (303, "https://evil.example.test/identity/kratos/login?flow=" + flow),
+            (303, "/identity/kratos/recovery?flow=" + flow),
+            (303, "/identity/kratos/login?flow=not-a-uuid"),
+            (303, "/identity/kratos/login?flow=" + flow + "&return_to=/admin"),
+            (303, "/identity/kratos/login?flow=" + flow + "#fragment"),
+            (303, None),
+        ):
+            with self.subTest(status=status, location=location):
+                with self.assertRaises(dev.Refused):
+                    join.require_kratos_browser_redirect(
+                        status, location, origin, "login")
+
+    def test_unavailable_real_first_party_denies_before_clients_start(self):
+        source = self.root / "sources/baobab-iam/tests/browser/n02_live.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("raise SystemExit(0)\\n")
+        profile_path = self.root / "profile.json"
+        dev.write(profile_path, {
+            "schema": "baobab.iam.n02.browser-qualification.v1",
+            "environment": "development", "run_id": RUN,
+            "iam_source_sha": IAM, "shared_source_sha": SHARED,
+            "cp_source_sha": CP, "zuribeans_source_sha": ESTATE,
+            "infrastructure_harness_sha": INFRA,
+        })
+        with (patch.dict(os.environ, {
+                "BAOBAB_N02_CLIENT_REGISTRATION_PROFILE": "/private/never.json",
+              }),
+              patch.object(dev, "current", return_value=(self.root, self.state)),
+              patch.object(dev, "verify_sources"),
+              patch.object(join, "actual_first_party_preflight",
+                           side_effect=dev.Refused("N02_FIRST_PARTY_TLS_RUNTIME_UNAVAILABLE")),
+              patch.object(join, "run_client_controller") as clients,
+              patch.object(join.subprocess, "run") as launch):
+            with self.assertRaises(dev.Refused):
+                join.execute_pinned_browser(RUN, profile_path, self.root)
+            clients.assert_not_called()
+            launch.assert_not_called()
 
     def test_absent_real_browser_fails_without_false_positive(self):
         with (patch.object(dev, "current", return_value=(self.root, self.state)),
