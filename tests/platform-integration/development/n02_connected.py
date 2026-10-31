@@ -111,6 +111,76 @@ def inspect_original(directory, state, root):
     }
 
 
+REGISTRATION = (
+    "baobab-dev-zuribeans-native-browser-bff",
+    "baobab-dev-zuribeans-cp-principal-validator",
+)
+
+
+def client_original(directory, state, root, phase):
+    """Verify actual Hydra client registration/teardown original, not a fixture."""
+    observed, raw = read_original(root / ("n02-clients-" + phase.lower() + ".json"))
+    dev.require(read_digest(root / ("n02-clients-" + phase.lower() + ".sha256")) ==
+                hashlib.sha256(raw).hexdigest(), "N02_CLIENT_ORIGINAL_DIGEST_MISMATCH")
+    dev.require(set(observed) == {
+        "schema", "classification", "run_id", "phase", "source", "client_ids",
+        "cp_principal_resolved", "browser_cases_observed", "protected_acceptance"
+    } and observed["schema"] == "baobab.iam.n02.disposable-client-observation.v1"
+        and observed["classification"] == "REAL_HYDRA_ADMIN_CLIENTS_ONLY_UNATTESTED"
+        and observed["run_id"] == state["run_id"]
+        and observed["phase"] == phase.upper()
+        and observed["client_ids"] == list(REGISTRATION)
+        and observed["cp_principal_resolved"] is False
+        and observed["browser_cases_observed"] is False
+        and observed["protected_acceptance"] is False,
+        "N02_REAL_HYDRA_CLIENT_REGISTRATION_NOT_OBSERVED")
+    keys = {
+        "iam_source_sha": "baobab-iam", "cp_source_sha": "baobab-cp",
+        "shared_source_sha": "shared", "zuribeans_source_sha": "zuribeans",
+    }
+    s = observed["source"]
+    dev.require(isinstance(s, dict) and set(s) == set(keys) | {
+        "infrastructure_harness_sha"
+    } and all(s[proof] == state["sources"][repo] for proof, repo in keys.items())
+        and s["infrastructure_harness_sha"] == state["harness_sha"],
+        "N02_HYDRA_REGISTRATION_SOURCE_DRIFT")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def run_client_controller(run_id, profile_path, original_dir, operation):
+    """Invoke ONLY immutable pinned IAM owner client controller, never a shell."""
+    dev.require(operation in {"register", "verify", "recover"}, "N02_CLIENT_OPERATION_REFUSED")
+    directory, state = dev.current(run_id)
+    dev.verify_sources(directory, state)
+    script = directory / "sources/baobab-iam/scripts/n02_development_clients.py"
+    dev.require(script.is_file() and not script.is_symlink(),
+                "N02_IMMUTABLE_CLIENT_CONTROLLER_REQUIRED")
+    dev.require(isinstance(profile_path, Path) and profile_path.is_absolute()
+                and not profile_path.is_symlink(),
+                "N02_PRIVATE_CLIENT_PROFILE_REQUIRED")
+    data = dev.read(profile_path)
+    dev.require(data.get("schema") == "baobab.iam.n02.disposable-clients.v1"
+                and data.get("environment") == "development"
+                and data.get("protected_acceptance") is False
+                and data.get("run_id") == run_id
+                and data.get("iam_source_sha") == state["sources"]["baobab-iam"]
+                and data.get("cp_source_sha") == state["sources"]["baobab-cp"]
+                and data.get("shared_source_sha") == state["sources"]["shared"]
+                and data.get("zuribeans_source_sha") == state["sources"]["zuribeans"]
+                and data.get("infrastructure_harness_sha") == state["harness_sha"],
+                "N02_REGISTRATION_PROFILE_SOURCE_DRIFT")
+    env = dict(os.environ, BAOBAB_ENVIRONMENT="development")
+    require_no_stdout = subprocess.run(
+        [sys.executable, "-B", str(script), operation, "--profile",
+         str(profile_path), "--evidence-dir", str(original_dir)],
+        cwd=script.parents[1], env=env, stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        check=False, timeout=min(40, max(1, int(state["deadline"] - time.time() - 10))),
+    )
+    dev.require(require_no_stdout.returncode == 0, "N02_REAL_HYDRA_CLIENT_LIFECYCLE_HELD")
+    return client_original(directory, state, original_dir, operation)
+
+
 def execute_pinned_browser(run_id, profile_path, original_dir):
     """Run the *actual* pinned IAM Playwright producer in a supervised host.
 
