@@ -61,12 +61,12 @@ def configure(directory, state):
         import hashlib
         run = state['run_id']
         password = state['secrets']['redis']
-        acl = ('user default off\\n'
+        acl = ('user default off\n'
                + 'user n07 on #' + hashlib.sha256(password.encode()).hexdigest()
                + ' ~thamani:bff:v1:' + run
-               + ':* +ping +get +set +getdel +del +hello +client|setinfo +client|setname\\n')
+               + ':* +ping +get +set +getdel +del +hello +client|setinfo +client|setname\n')
         (directory/'n07-redis.acl').write_text(acl)
-        redis_conf = '\\n'.join((
+        redis_conf = '\n'.join((
             'port 0','tls-port 6380','bind 0.0.0.0','protected-mode yes',
             'tls-cert-file /tls/edge.pem','tls-key-file /tls/edge.key',
             'tls-ca-cert-file /tls/ca.pem','tls-auth-clients no',
