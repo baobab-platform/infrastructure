@@ -160,3 +160,42 @@ architecture/security reviews required. Do not merge until those
 checks and the original connected N02 run/teardown meet their
 specified development acceptance class. Production/staging and N04
 provider support remain separately unapproved.
+
+
+## Current runnable source guard versus original runtime acceptance
+
+Before any native Hydra client is registered, the runner now performs a
+**certificate-verified, proxy-disabled, redirect-disabled HTTPS preflight**
+against the current first-party origin. It requires:
+`GET /identity/native-qualification` = actual HTML 200;
+`GET /auth/session` = real 401 + no-store;
+`GET /sessions/whoami` = real Kratos 401;
+and Kratos public `/self-service/login/browser` and
+`/self-service/recovery/browser` returning real same-origin
+`/identity/kratos/{login,recovery}?flow=<uuid>` redirects.
+No fake self-reported readiness, untrusted CA, HTTP success, alternative
+login RP or unregistered redirect counts as a pass.
+Missing services block **before** client creation and before Playwright.
+
+The run-owned Hydra client controller executes on the disposable Hydra
+container's private network namespace using the locked Python probe
+image, a read-only immutable IAM checkout and a mounted `0700`
+owner-private run directory. It performs actual GET/POST/readback and
+a separate GET404 verified recovery. Public host Admin ports are
+forbidden. A missing Python/git dependency, incorrect runtime label,
+unexpected Docker network, or foreign-run registration is a **HELD**
+outcome. Source tests only test those denials.
+
+The original DEV-04 **lost-Compose teardown** remains mandatory but
+must occur **after** actual IAM client cleanup and original readback.
+If a client outcome is unknown, the Compose descriptor remains
+available for recovery and host cleanup; no client recovery result may
+be relabelled as real prior registration. The watchdog/host inventory
+must still verify complete teardown.
+
+This implementation does **not** create the missing full N02 browser
+topology: no deployed Go BFF/Next.js/TLS Kratos bridge, no enrolled real
+TOTP synthetic user, no functioning real recovery courier or governed
+ACTIVE CP caller is evidenced. Until those exact pieces run in an
+approved disposable development host with original custody, this
+milestone's **connected browser-plus-CP acceptance remains BLOCKED**.
