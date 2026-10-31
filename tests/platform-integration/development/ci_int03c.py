@@ -45,6 +45,10 @@ def main():
         run_id = dev.prepare(lock_name='lock.json')
     try:
         with dev.guarded(run_id):
+            if mode == 'development':
+                profile = os.environ.get('BAOBAB_N02_PRIVATE_PROFILE')
+                dev.require(bool(profile), 'N02_REAL_BROWSER_PROFILE_REQUIRED_BEFORE_UP')
+                n02_connected.seal_first_party_origin(run_id, Path(profile))
             print('DEV04_STAGE=UP', flush=True)
             dev.up(run_id)
             dev.test(run_id)
