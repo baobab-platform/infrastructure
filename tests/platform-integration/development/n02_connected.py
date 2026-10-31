@@ -77,7 +77,7 @@ def inspect_original(directory, state, root):
     dev.require(read_digest(sidecar) == digest, "N02_ORIGINAL_DIGEST_MISMATCH")
     dev.require(set(observed) == {
         "schema", "classification", "source_sha", "shared_source_sha",
-        "cp_source_sha", "infrastructure_harness_sha", "run_id",
+        "cp_source_sha", "zuribeans_source_sha", "infrastructure_harness_sha", "run_id",
         "cases", "provider_and_cp_independently_attested",
         "protected_accepted"}, "N02_ORIGINAL_SCHEMA_INVALID")
     dev.require(observed["schema"] == "baobab.iam.n02.browser-observation.v1"
@@ -86,6 +86,7 @@ def inspect_original(directory, state, root):
                 and observed["source_sha"] == state["sources"]["baobab-iam"]
                 and observed["shared_source_sha"] == state["sources"]["shared"]
                 and observed["cp_source_sha"] == state["sources"]["baobab-cp"]
+                and observed["zuribeans_source_sha"] == state["sources"]["zuribeans"]
                 and observed["infrastructure_harness_sha"] == state["harness_sha"]
                 and observed["provider_and_cp_independently_attested"] is False
                 and observed["protected_accepted"] is False,
@@ -101,6 +102,7 @@ def inspect_original(directory, state, root):
         "source_sha": state["sources"]["baobab-iam"],
         "shared_source_sha": state["sources"]["shared"],
         "cp_source_sha": state["sources"]["baobab-cp"],
+        "zuribeans_source_sha": state["sources"]["zuribeans"],
         "harness_sha": state["harness_sha"],
         "phase": "BEFORE_INT03C_DEACTIVATION",
         "classification": "ORIGINAL_BROWSER_RECONCILED_UNATTESTED",
@@ -134,6 +136,7 @@ def execute_pinned_browser(run_id, profile_path, original_dir):
                 and profile.get("iam_source_sha") == state["sources"]["baobab-iam"]
                 and profile.get("shared_source_sha") == state["sources"]["shared"]
                 and profile.get("cp_source_sha") == state["sources"]["baobab-cp"]
+                and profile.get("zuribeans_source_sha") == state["sources"]["zuribeans"]
                 and profile.get("infrastructure_harness_sha") == state["harness_sha"],
                 "N02_PRIVATE_PROFILE_SOURCE_DRIFT")
     dev.require(isinstance(original_dir, Path) and original_dir.is_absolute()
