@@ -169,13 +169,69 @@ def run_client_controller(run_id, profile_path, original_dir, operation):
                 and data.get("zuribeans_source_sha") == state["sources"]["zuribeans"]
                 and data.get("infrastructure_harness_sha") == state["harness_sha"],
                 "N02_REGISTRATION_PROFILE_SOURCE_DRIFT")
+    # The Hydra Admin API remains private in its run-owned network
+    # namespace. No host publish/SSH tunnel or issuer Admin ingress is needed.
+    # All owner-only profiles, certs and originals must reside beneath
+    # the already-guarded run directory, and the immutable IAM source is
+    # mounted separately read-only. Docker container:hydra shares *only*
+    # that run's loopback, never another tenant or external network.
+    import adapter
+    private_root = profile_path.parent.resolve(strict=True)
+    dev.require(private_root == profile_path.parent
+                and private_root.is_relative_to(directory)
+                and original_dir.is_relative_to(private_root)
+                and not original_dir.is_symlink()
+                and state["environment"] == "development",
+                "N02_RUN_OWNED_PRIVATE_CUSTODY_REQUIRED")
+    for key in ("browser_secret_file", "cp_reader_secret_file", "admin_ca_file"):
+        raw = data.get(key)
+        if raw is None and key == "admin_ca_file":
+            continue
+        dev.require(isinstance(raw, str) and Path(raw).is_absolute()
+                    and Path(raw).is_relative_to(private_root)
+                    and not Path(raw).is_symlink(),
+                    "N02_CLIENT_SECRETS_MUST_STAY_IN_RUN")
+    private_mode = private_root.lstat()
+    dev.require(stat.S_ISDIR(private_mode.st_mode)
+                and private_mode.st_uid == os.getuid()
+                and not private_mode.st_mode & 0o077,
+                "N02_PRIVATE_ROOT_REQUIRED")
+    hydra_id = dev.compose(directory, state, "ps", "-q", "hydra")
+    dev.require(bool(re.fullmatch(r"[a-f0-9]{12,64}", hydra_id)),
+                "N02_OWNED_HYDRA_CONTAINER_REQUIRED")
+    container = json.loads(dev.call(["docker", "inspect", hydra_id], state=state))[0]
+    networks = container["NetworkSettings"]["Networks"]
+    dev.require(container["Config"]["Labels"].get("io.baobab.dev.run") == run_id
+                and not container["HostConfig"]["PortBindings"]
+                and not container["HostConfig"]["Privileged"]
+                and len(networks) == 1,
+                "N02_HYDRA_NETWORK_NAMESPACE_UNTRUSTED")
+    network = json.loads(dev.call(
+        ["docker", "network", "inspect", next(iter(networks))], state=state))[0]
+    dev.require(network["Internal"] is True,
+                "N02_HYDRA_PROVIDER_NETWORK_NOT_PRIVATE")
+    image = dev.load_lock(state["lock_file"])["images"]["probe"]
+    # Official immutable Python probe image: script verifies the actual IAM
+    # clean detached checkout itself. Absent git/runtime dependencies => HELD.
+    argv = [
+        "docker", "run", "--rm", "--read-only", "--network",
+        "container:" + hydra_id, "--user", f"{state['uid']}:{state['gid']}",
+        "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+        "--pids-limit", "64", "--memory", "256m",
+        "--label", "io.baobab.dev.run=" + run_id,
+        "--label", "io.baobab.dev.namespace=" + dev.NAMESPACE,
+        "--mount", "type=bind,src=" + adapter.host(script.parents[1]) +
+                   ",dst=" + str(script.parents[1]) + ",readonly",
+        "--mount", "type=bind,src=" + adapter.host(private_root) +
+                   ",dst=" + str(private_root),
+        "--entrypoint", "python", image, "-B", str(script), operation,
+        "--profile", str(profile_path), "--evidence-dir", str(original_dir),
+    ]
     env = dict(os.environ, BAOBAB_ENVIRONMENT="development")
     require_no_stdout = subprocess.run(
-        [sys.executable, "-B", str(script), operation, "--profile",
-         str(profile_path), "--evidence-dir", str(original_dir)],
-        cwd=script.parents[1], env=env, stdin=subprocess.DEVNULL,
+        argv, cwd=directory, env=env, stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        check=False, timeout=min(40, max(1, int(state["deadline"] - time.time() - 10))),
+        check=False, timeout=min(60, max(1, int(state["deadline"] - time.time() - 10))),
     )
     dev.require(require_no_stdout.returncode == 0, "N02_REAL_HYDRA_CLIENT_LIFECYCLE_HELD")
     return client_original(directory, state, original_dir, operation)
