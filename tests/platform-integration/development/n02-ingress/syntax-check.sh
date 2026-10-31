@@ -55,10 +55,11 @@ PY
 timeout 120 docker run --rm \
   --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges \
+  --entrypoint /usr/sbin/nginx \
   --tmpfs /var/cache/nginx:rw,noexec,nosuid,size=16m \
   --tmpfs /var/run:rw,noexec,nosuid,size=1m \
   --mount "type=bind,src=$tmp/render/nginx.conf,dst=/etc/nginx/nginx.conf,readonly" \
   --mount "type=bind,src=$tmp/private,dst=/run/n02-private,readonly" \
-  "$image" nginx -t -c /etc/nginx/nginx.conf
+  "$image" -t -c /etc/nginx/nginx.conf
 
 printf '%s\n' "N02_INGRESS_SYNTAX_CHECKED_WITH_PINNED_IMAGE_SOURCE_ONLY"
