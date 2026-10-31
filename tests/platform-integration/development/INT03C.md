@@ -178,6 +178,7 @@ Set the following only on the explicitly supervised synthetic development host:
 export BAOBAB_ENVIRONMENT=development
 export BAOBAB_N02_JOIN=development
 export BAOBAB_N02_ORIGINAL_DIR=/absolute/owner-private/n02-current-run
+export BAOBAB_N02_PRIVATE_PROFILE=/absolute/owner-private/n02-browser-profile.json
 python3 -B tests/platform-integration/development/ci_int03c.py
 ```
 
@@ -192,8 +193,19 @@ harness; the disposable run nonce must equal the current owner's actual
 synthetic AAL2 factor, real recovery courier and two separate credentials.
 Do not expose private credentials or browser URLs through Actions logs.
 
-During `DEV04_STAGE=N02_BROWSER_PRE_DEACTIVATION`, the host waits a bounded
-period for the owner-private original `browser-observation.json` and matching
+During `DEV04_STAGE=N02_REAL_BROWSER_PRE_DEACTIVATION`, the host
+executes exactly the reviewed `tests/browser/n02_live.py` from the IAM source
+checkout pinned by the current disposable run, using the private profile
+(0600), a bounded 300-second maximum and suppressed stdout/stderr so browser
+credentials/URLs cannot appear in Actions logs. No caller-provided command,
+fixture substitution or process exit code alone advances acceptance. This
+requires a pre-provisioned Chromium/Playwright environment and real
+network-accessible **private** estate BFF, Kratos, Hydra and CP; the existing
+DEV-04 topology alone does not supply that estate experience, and a blocked
+browser run causes genuine failure and finally-teardown.
+
+After actual Chromium execution, the host requires the original
+`browser-observation.json` and matching
 `browser-observation.sha256` (both 0600 in a 0700 directory). Missing or
 malformed evidence, any skipped browser case, wrong source, bogus protected
 claim, or stale/wrong run is a fatal refusal. After matching the original,
