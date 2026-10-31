@@ -134,6 +134,11 @@ def composition(state,directory,images,namespace):
             'security_opt':['no-new-privileges:true'],
             'cap_drop':['ALL'],
         }
+    if state.get('n07_profile'):
+        # The probe shares ONLY the actual internal development run network.
+        # No provider secrets are passed to logs or exported as evidence.
+        services['probe']['volumes'].append(
+            host(Path(__file__).parent/'n07_redis_probe.py')+':/n07_redis_probe.py:ro')
     if state.get('dev15_profile'):
         # DEV-15's private HTTP observer must be present at probe startup.
         # Adding a bind after the container has started cannot make its
