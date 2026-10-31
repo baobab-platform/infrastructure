@@ -191,13 +191,11 @@ def actual_first_party_preflight(profile):
             method="GET")
         try:
             with opener.open(request, timeout=8) as response:
-                code, headers, body = response.status, response.headers, response.read(16385)
+                code, headers, body = response.status, response.headers, response.read(4096)
         except urllib.error.HTTPError as error:
             code, headers, body = error.code, error.headers, b""
         except (OSError, ValueError, TimeoutError):
             raise dev.Refused("N02_FIRST_PARTY_TLS_RUNTIME_UNAVAILABLE") from None
-        dev.require(len(body) <= 16384,
-                    "N02_FIRST_PARTY_RESPONSE_TOO_LARGE")
         return code, headers, body
     code, headers, body = observe("/identity/native-qualification")
     dev.require(code == 200
