@@ -157,7 +157,11 @@ def client_original(directory, state, root, phase):
         "schema", "classification", "run_id", "phase", "source", "client_ids",
         "cp_principal_resolved", "browser_cases_observed", "protected_acceptance"
     } and observed["schema"] == "baobab.iam.n02.disposable-client-observation.v1"
-        and observed["classification"] == "REAL_HYDRA_ADMIN_CLIENTS_ONLY_UNATTESTED"
+        and observed["classification"] == (
+            "REAL_HYDRA_ADMIN_CLIENTS_ONLY_UNATTESTED"
+            if phase.lower() in {"register", "verify"}
+            else "HYDRA_CLIENT_CUSTODY_RECONCILED_UNATTESTED"
+        )
         and observed["run_id"] == state["run_id"]
         and observed["phase"] == phase.upper()
         and observed["client_ids"] == list(REGISTRATION)
