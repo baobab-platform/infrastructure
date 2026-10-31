@@ -216,6 +216,7 @@ def run_client_controller(run_id, profile_path, original_dir, operation):
     argv = [
         "docker", "run", "--rm", "--read-only", "--network",
         "container:" + hydra_id, "--user", f"{state['uid']}:{state['gid']}",
+        "--env", "BAOBAB_ENVIRONMENT=development",
         "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         "--pids-limit", "64", "--memory", "256m",
         "--label", "io.baobab.dev.run=" + run_id,
