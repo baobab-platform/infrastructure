@@ -142,6 +142,80 @@ def seal_first_party_origin(run_id, profile_path):
     dev.persist(directory, state, "PREPARED")
 
 
+def require_kratos_browser_redirect(status, location, expected_origin, flow):
+    """A source-only assertion about a *received* real Kratos redirect."""
+    import urllib.parse
+    dev.require(status in (302, 303) and isinstance(location, str)
+                and 0 < len(location) <= 4096
+                and not any(ord(ch) < 32 for ch in location),
+                "N02_REAL_KRATOS_BROWSER_REDIRECT_REQUIRED")
+    parsed = urllib.parse.urlsplit(urllib.parse.urljoin(expected_origin, location))
+    dev.require(parsed.scheme + "://" + parsed.netloc == expected_origin
+                and parsed.path == "/identity/kratos/" + flow
+                and parsed.username is None and parsed.password is None
+                and not parsed.fragment
+                and set(urllib.parse.parse_qs(parsed.query)) == {"flow"}
+                and len(urllib.parse.parse_qs(parsed.query)["flow"]) == 1
+                and re.fullmatch(
+                    r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}",
+                    urllib.parse.parse_qs(parsed.query)["flow"][0],
+                    re.IGNORECASE
+                ) is not None,
+                "N02_KRATOS_FIRST_PARTY_FLOW_REDIRECT_REFUSED")
+
+
+def actual_first_party_preflight(profile):
+    """Real HTTPS client; MUST observe a live Next+Go+Kratos split.
+
+    TLS roots are resolved from the operator's reviewed host trust store.
+    Never accept bypass flags, request-controlled upstreams, off-origin
+    redirects, Kratos Admin, a mocked HTTP server or plain HTTP success.
+    """
+    import ssl
+    import urllib.error
+    import urllib.request
+    import n02_ingress
+    fqdn = n02_ingress.reviewed_name(profile)
+    origin = "https://" + fqdn
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, request, fp, code, msg, headers, newurl):
+            return None
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        urllib.request.HTTPSHandler(context=ssl.create_default_context()),
+        NoRedirect()
+    )
+    def observe(path):
+        request = urllib.request.Request(
+            origin + path, headers={"Cache-Control": "no-store"},
+            method="GET")
+        try:
+            with opener.open(request, timeout=8) as response:
+                code, headers, body = response.status, response.headers, response.read(16385)
+        except urllib.error.HTTPError as error:
+            code, headers, body = error.code, error.headers, b""
+        except (OSError, ValueError, TimeoutError):
+            raise dev.Refused("N02_FIRST_PARTY_TLS_RUNTIME_UNAVAILABLE") from None
+        dev.require(len(body) <= 16384,
+                    "N02_FIRST_PARTY_RESPONSE_TOO_LARGE")
+        return code, headers, body
+    code, headers, body = observe("/identity/native-qualification")
+    dev.require(code == 200
+                and headers.get("Content-Type", "").lower().startswith("text/html")
+                and b"<html" in body.lower(),
+                "N02_FIRST_PARTY_NEXT_SITE_NOT_RUNNING")
+    code, headers, _ = observe("/auth/session")
+    dev.require(code == 401 and "no-store" in headers.get("Cache-Control", "").lower(),
+                "N02_NATIVE_GO_BFF_NOT_RUNNING")
+    code, _, _ = observe("/sessions/whoami")
+    dev.require(code == 401, "N02_KRATOS_UNAUTHENTICATED_SESSION_NOT_REFUSED")
+    for flow in ("login", "recovery"):
+        code, headers, _ = observe("/self-service/" + flow + "/browser")
+        require_kratos_browser_redirect(
+            code, headers.get("Location"), origin, flow)
+    return "REAL_FIRST_PARTY_NEXT_GO_KRATOS_PRECHECK_UNATTESTED"
+
+
 REGISTRATION = (
     "baobab-dev-zuribeans-native-browser-bff",
     "baobab-dev-zuribeans-cp-principal-validator",
@@ -314,6 +388,11 @@ def execute_pinned_browser(run_id, profile_path, original_dir):
                                      ".browser-observation.tmp",
                                      ".browser-observation.sha256.tmp")),
                 "N02_ORIGINAL_ALREADY_PUBLISHED")
+    # Before provisioning any client, independently observe the actual
+    # first-party TLS ingress, active Next route, unauthenticated Go BFF,
+    # Kratos current session and real login/recovery browser redirects.
+    # Unreachable/incorrect services mean NO registration and NO N02 proof.
+    actual_first_party_preflight(profile)
     # Registration is actually performed by the *pinned IAM owner source*
     # against the runtime's private Hydra Admin API before Chromium starts.
     # An issued OAuth client ID alone never grants a CP Principal.
