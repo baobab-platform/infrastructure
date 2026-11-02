@@ -758,6 +758,26 @@ def down(run_id):
             report.update(dev07_bff_http=component,
                 dev07_bff_runtime_identity_verified=state.get('dev07_bff_runtime_identity_verified', False),
                 dev07_bff_config_hashes=state.get('dev07_bff_config_hashes', {}))
+        if state.get('dev11_bff_connected'):
+            candidate = state['dev11_bff_connected']
+            require(set(candidate) == {'scope', 'source_pins', 'checks',
+                       'outbox_consumer_qualified', 'runtime_qualified',
+                       'production_authorized'}
+                    and candidate['scope'] == 'LIVE_NEXT_IAM_CP_MEDUSA_HTTP_ONLY'
+                    and candidate['source_pins'] == {repo: state['sources'][repo]
+                        for repo in ('baobab-cp', 'baobab-trade', 'zuribeans')}
+                    and isinstance(candidate['checks'], dict)
+                    and set(candidate['checks']) == {
+                       'dev11_bff_authorised_route_w3c', 'dev11_bff_csrf_denied_w3c',
+                       'dev11_bff_missing_session_denied_w3c',
+                       'dev11_native_bff_log_joined', 'dev11_native_trade_log_joined',
+                       'dev11_native_cp_log_joined'}
+                    and all(type(value) is bool for value in candidate['checks'].values())
+                    and candidate['outbox_consumer_qualified'] is False
+                    and candidate['runtime_qualified'] is False
+                    and candidate['production_authorized'] is False,
+                    'DEV11_PRIVATE_CONNECTED_RECEIPT_INVALID')
+            report['dev11_bff_connected'] = candidate
         folder = EVIDENCE / ('dev01-' + run_id)
         private_directory(folder)
         pending = folder / '.pending'
