@@ -167,12 +167,6 @@ services:
     restart: "no"
     networks:
       - observability
-    healthcheck:
-      test: [CMD, /jaeger, --version]
-      interval: 20s
-      timeout: 5s
-      retries: 3
-
   smoke:
     image: curlimages/curl:8.16.0
     profiles: [verify]
