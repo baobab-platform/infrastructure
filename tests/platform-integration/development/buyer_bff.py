@@ -294,12 +294,69 @@ def qualify(run):
     directory, state = dev.current(run)
     for action in ('login', 'positive', 'csrf', 'foreign'):
         probe(directory, state, action)
+    if os.environ.get('DEV11_CONNECTED_BFF_REQUIRED') == 'true':
+        dev11_connected_http_observation(directory, state)
     native(directory, state, 'suspend'); probe(directory, state, 'suspended')
     native(directory, state, 'resume'); probe(directory, state, 'positive')
     dev.compose(directory, state, 'pause', 'bff-redis', timeout=30)
     try: probe(directory, state, 'custody')
     finally: dev.compose(directory, state, 'unpause', 'bff-redis', timeout=30)
     probe(directory, state, 'recovery'); probe(directory, state, 'revoke')
+
+
+def dev11_connected_http_observation(directory, state):
+    """Observe the *actual* private BFF -> Trade -> CP process logs.
+
+    Raw logs and technical trace IDs remain in the owned disposable runtime.
+    Only bounded status booleans and exact immutable source pins are released.
+    """
+    report = json.loads(probe(directory, state, 'dev11-trace'))
+    expected = {'dev11_bff_authorised_route_w3c', 'dev11_bff_csrf_denied_w3c',
+                'dev11_bff_missing_session_denied_w3c'}
+    dev.require(report.get('scope') == 'NATIVE_NEXT_TRADE_HTTP_WITH_CURRENT_IAM_CP'
+                and report.get('outbox_consumer_qualified') is False
+                and report.get('production_authorized') is False
+                and isinstance(report.get('checks'), dict)
+                and set(report['checks']) == expected
+                and all(type(x) is bool for x in report['checks'].values()),
+                'DEV11_BFF_TRACE_REPORT_REFUSED')
+    marker = dev.read(directory / 'dev11-trace-marker.json')
+    trace = marker.get('trace')
+    dev.require(type(trace) is str and len(trace) == 32
+                and all(x in '0123456789abcdef' for x in trace),
+                'DEV11_PRIVATE_TRACE_ID_INVALID')
+    checks = report['checks']
+    for service, name, log_marker in (
+        ('zuribeans-bff', 'dev11_native_bff_log_joined', 'bff request completed'),
+        ('trade-bff-http', 'dev11_native_trade_log_joined', 'trade HTTP completed'),
+        ('cp', 'dev11_native_cp_log_joined', 'request completed'),
+    ):
+        # Never output, upload or persist the raw docker logs. The corresponding
+        # status/trace observations are produced by actual running services.
+        log = dev.compose(directory, state, 'logs', '--no-color', '--tail', '1800',
+                          service, timeout=30)
+        index = 0
+        joined = False
+        while True:
+            index = log.find(log_marker, index)
+            if index < 0:
+                break
+            end = log.find(log_marker, index + len(log_marker))
+            snippet = log[index:end if end > index else index + 1200]
+            if trace in snippet:
+                joined = True
+                break
+            index += len(log_marker)
+        checks[name] = joined
+    state['dev11_bff_connected'] = {
+        'scope': 'LIVE_NEXT_IAM_CP_MEDUSA_HTTP_ONLY',
+        'source_pins': {name: state['sources'][name] for name
+                        in ('baobab-cp', 'baobab-trade', 'zuribeans')},
+        'checks': checks, 'outbox_consumer_qualified': False,
+        'runtime_qualified': False, 'production_authorized': False,
+    }
+    dev.persist(directory, state, 'RUNNING')
+    dev.require(all(checks.values()), 'DEV11_REAL_BFF_TRADE_CP_CAUSAL_PATH_FAILED')
 
 
 def cleanup(run):
