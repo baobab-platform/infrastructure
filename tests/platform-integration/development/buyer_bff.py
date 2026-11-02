@@ -10,6 +10,7 @@ import importlib.util
 import json
 from pathlib import Path
 import secrets
+import os
 import time
 
 import adapter
@@ -38,6 +39,20 @@ def lock():
         and set(value['sources']) == {'baobab-trade', 'zuribeans'}
         and all(dev.SHA.fullmatch(x) for x in value['sources'].values())
         and '@sha256:' in value['redis'] and dev.DIGEST.fullmatch(value['redis']), 'DEV07_BFF_LOCK_REFUSED')
+    # Candidate mode is explicit, development-only, and requires immutable
+    # SHA pins for BOTH native owners. It is not a new authority path or a
+    # replacement for the accepted locked DEV-07 baseline.
+    if os.environ.get('DEV11_CONNECTED_BFF_REQUIRED') == 'true':
+        dev.require(os.environ.get('BAOBAB_ENVIRONMENT') == 'development'
+                    and os.environ.get('GITHUB_ACTIONS') == 'true',
+                    'DEV11_CANDIDATE_TRUST_BOUNDARY')
+        candidate = {
+            'baobab-trade': os.environ.get('DEV11_TRADE_SHA', ''),
+            'zuribeans': os.environ.get('DEV11_ZURIBEANS_SHA', ''),
+        }
+        dev.require(all(dev.SHA.fullmatch(v) for v in candidate.values()),
+                    'DEV11_IMMUTABLE_CANDIDATE_PINS_REQUIRED')
+        value['sources'] = candidate
     return value
 
 
