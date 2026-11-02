@@ -1,0 +1,26 @@
+name: DEV-11 connected Keycloak / CP W3C candidate qualification
+
+# Real disposable IAM issuer, CP process, PostgreSQL and Pulse containers.
+# Pin the unmerged CP candidate explicitly and refuse to infer production proof.
+# The outbox/consumer path is NOT part of this profile.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/dev11-connected-int02.yml
+      - .github/workflows/platform-int02.yml
+      - tests/platform-integration/int02/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dev11-native-iam-cp:
+    name: Real issuer -> CP W3C and denied-authority observations
+    uses: ./.github/workflows/platform-int02.yml
+    with:
+      harness_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      candidate_repository: baobab-cp
+      # Reviewed CP #458 candidate only; update to final head after correction.
+      candidate_sha: ab61e35c35028bad1090232bcf2d7c67a84ef959
+      dev11_connected_required: true
