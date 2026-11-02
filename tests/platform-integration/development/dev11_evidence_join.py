@@ -326,7 +326,9 @@ def native_receipt(category, value, pins):
         sources = value.get("source_pins")
         required = {
             "native_medusa_outbox_persisted", "real_rabbitmq_publisher_confirmed",
-            "erp_postgres_canonical_admission", "unchanged_event_redelivery_deduplicated",
+            "erp_postgres_canonical_admission",
+            "real_crash_after_inbox_commit_before_ack_recovered",
+            "unchanged_event_redelivery_deduplicated",
             "changed_business_replay_rejected", "bad_signature_rejected_to_dlx",
             "mandatory_unroutable_rejected",
         }
