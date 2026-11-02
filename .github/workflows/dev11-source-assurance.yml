@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Reject unsafe trace and diagnostic evidence
-        run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev11_assurance.py' -v
+        run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev11*.py' -v
       - name: Compute affected-profile plan without asserting execution
         env:
           DEV11_BASE_SHA: ${{ github.event.pull_request.base.sha }}
