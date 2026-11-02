@@ -32,6 +32,15 @@ def require(ok):
     if not ok:
         raise Refused('DEV11_INPUT_REFUSED')
 
+def unique_pairs(pairs):
+    """Reject duplicate JSON keys before any schema/authority decision."""
+    result = {}
+    for key, value in pairs:
+        require(key not in result)
+        result[key] = value
+    return result
+
+
 def closed(obj, keys):
     require(isinstance(obj, dict) and set(obj) == keys)
     return obj
@@ -166,7 +175,7 @@ def main():
             require(args.input is not None and not args.full and args.base is None and args.head is None)
             require(args.input.is_file() and not args.input.is_symlink()
                     and args.input.stat().st_size <= 32768)
-            data = verify_chain(json.loads(args.input.read_text(encoding='utf-8')))
+            data = verify_chain(json.loads(args.input.read_text(encoding='utf-8'), object_pairs_hook=unique_pairs))
         value = json.dumps(data, sort_keys=True, separators=(',', ':')) + '\n'
         if args.output:
             require(not args.output.is_symlink() and args.output.parent.is_dir())
