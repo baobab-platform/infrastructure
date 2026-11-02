@@ -8,7 +8,26 @@
 
 An estate Playwright screenshot ZIP, its own summary, or a green *image build* is not an independent confirmation of functional browser execution, accessibility, visual regression or performance. Infrastructure `tests/platform-integration/development/dev11_evidence_join.py` is a separate, read-only GitHub Actions observer. It checks the **actual** Actions run ID, exact immutable SHA, current PR/branch head, workflow filename, successful *named* job and all required successful *named* steps before it downloads the estate-owned artifact.
 
-There are **seven** required independently pinned runs: Infrastructure native issuer→CP, Infrastructure native BFF→IAM/CP→Trade, Infrastructure real SDK→Collector→Jaeger exporter, Trade-native Medusa→RabbitMQ→independent ERP inbox + exported component lineage, Nabhold quality, ZuriBeans quality and Thamani quality. The last three estates retain their own approved test suites, branding, browser matrices, screenshot baselines and budgets. The central verifier does not re-run or forge these suites.
+There are **eight** required independently pinned runs: Infrastructure native issuer→CP, Infrastructure native BFF→IAM/CP→Trade, Infrastructure real SDK→Collector→Jaeger exporter, Trade-native Medusa→RabbitMQ→independent ERP inbox + exported component lineage, Nabhold quality, ZuriBeans quality and Thamani quality. The last three estates retain their own approved test suites, branding, browser matrices, screenshot baselines and budgets. The central verifier does not re-run or forge these suites.
+
+The eighth owner is **ERP #125**: real Ory Hydra client credentials,
+current CP RUNTIME context and a separately approved sales mandate,
+quorum RabbitMQ delivery into ERP's durable inbox, protected iDempiere 13
+JVM C_Order/C_OrderLine execution, two read-only PostgreSQL verifiers
+(CP immutable decision + JVM native attribution, and ERP source/inbox/native
+business consequence), live CP revocation and run-owned teardown.
+The owner artifact is
+`dev11-real-hydra-cp-native-jvm-engine-local` from workflow
+`.github/workflows/dev11-real-native-engine.yml`. The reviewer verifies
+the exact ERP PR head, successful named workflow/job/steps, ZIP SHA-256,
+native effects, RUNTIME provenance and absence of false L4 certification.
+
+**Engine-local remains synthetic-source evidence.** It proves real
+IAM/CP-to-iDempiere runtime mechanics only when a real GitHub Actions
+execution passes. It does not prove that Medusa accepted an authorised
+buyer/seller commitment under a shared transaction, or that the same
+Trade event ID has end-to-end independently exported OpenTelemetry
+lineage. Both are required before `l4_ops_01` can become PASS.
 
 For each estate the verified mandatory step outcomes are:
 
@@ -26,7 +45,7 @@ The verifier downloads each owner artifact using a **read-only GitHub Actions AP
 
 The Infrastructure IAM/CP artifact must include the actual seven W3C/current-authority observations and independently verified teardown. The Infrastructure BFF/Trade artifact must include current CP/Trade/ZuriBeans source pins, the six real native HTTP allow/deny/log-correlation checks, run-owned resources and issuance/revocation cleanup. Both owning workflows must pass. An *all-success source graph* without verified native evidence cannot pass.
 
-**Not yet complete:** Infrastructure #72 now proposes real SDK→Collector→Jaeger export; Trade #188 and ERP #125 now propose a connected native Medusa PostgreSQL outbox→RabbitMQ quorum queue→independent ERP PostgreSQL inbox execution **with a real post-commit/pre-ACK process crash and recovery**, separate signed-payload denial/DLQ, and an independent backend query of the three native component span services. **These are unqualified current-head candidate workflows until their actual CI results pass**. A full authenticated BFF/IAM/CP→Trade→ERP trace plus actual current-authority iDempiere business-effect/replay/uncertain-outcome evidence is still missing. Consequently, `l4_ops_01` remains **BLOCKED** even when all seven component/estate runs eventually join. Never mistake a synthetic outbox event or a durable ERP inbox receipt for a native financial consequence.
+**Not yet complete:** Infrastructure #72 now proposes real SDK→Collector→Jaeger export; Trade #188 and ERP #125 now propose a connected native Medusa PostgreSQL outbox→RabbitMQ quorum queue→independent ERP PostgreSQL inbox execution **with a real post-commit/pre-ACK process crash and recovery**, separate signed-payload denial/DLQ, and an independent backend query of the three native component span services. **These are unqualified current-head candidate workflows until their actual CI results pass**. A full authenticated BFF/IAM/CP→Trade→ERP trace plus actual current-authority iDempiere business-effect/replay/uncertain-outcome evidence is still missing. Consequently, `l4_ops_01` remains **BLOCKED** even when all eight component/estate runs eventually join. Never mistake a synthetic outbox event or a durable ERP inbox receipt for a native financial consequence.
 
 ## Execute independent verification
 
