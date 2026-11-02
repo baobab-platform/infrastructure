@@ -149,13 +149,20 @@ class DEV11IndependentJoinTests(unittest.TestCase):
     def test_missing_runtime_teardown_blocks_l4_http(self):
         base = "/repos/baobab-platform/infrastructure/actions/runs/1005/artifacts?per_page=100"
         entry = self.gh.urls[base]["artifacts"][0]
-        invalid = artifact_data("l4_bff_trade")
-        invalid = invalid.replace(b'"teardown_verified": true', b'"teardown_verified": null')
-        # A malformed modified ZIP cannot pass the independently pinned digest.
+        original = self.gh.blobs[("baobab-platform/infrastructure", 5)]
+        with zipfile.ZipFile(io.BytesIO(original)) as archive:
+            doc = json.loads(archive.read("dev01-run/completed/receipt.json"))
+        doc["teardown_verified"] = False
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("dev01-run/completed/receipt.json", json.dumps(doc))
+        invalid = out.getvalue()
         self.gh.blobs[("baobab-platform/infrastructure", 5)] = invalid
         entry["digest"] = "sha256:" + hashlib.sha256(invalid).hexdigest()
-        with self.assertRaises(Blocked):
+        entry["size_in_bytes"] = len(invalid)
+        with self.assertRaises(Blocked) as error:
             self.check("l4_bff_trade")
+        self.assertEqual(error.exception.code, "BFF_NATIVE_RECEIPT_INVALID")
 
     def test_full_http_and_estate_join_does_not_fake_l4_ops_completion(self):
         result = join(self.gh.bindings, PINS, self.gh.api, self.gh.download)
