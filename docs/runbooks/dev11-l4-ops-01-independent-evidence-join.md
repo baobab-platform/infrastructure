@@ -67,3 +67,16 @@ python3 -B -m unittest discover -s tests/platform-integration/development -p 'te
 **Observed blocker on 2026-11-02:** Nabhold #99 workflow 41390782054 failed the Playwright quality journey; Lighthouse/accessibility/visual steps were skipped, despite the browser artifact being uploaded. This is explicit `RUN_FAILED` (and missing required step success), not an accepted estate qualification. Infrastructure #72 newly connected jobs did not yet have completed passing executions at the last read.
 
 The DEV-10 `baobab-dev:v1.5.0` toolchain image decision remains a separate workstream; this gate never raises performance budgets to manufacture a PASS.
+
+
+## Machine-readable owner result custody
+
+The owner CI branches now deliberately **retain different output directories for each real suite** so later runs cannot overwrite earlier results. Nabhold [#99](https://github.com/baobab-platform/nabhold/pull/99), ZuriBeans [#156](https://github.com/baobab-platform/zuribeans/pull/156) and Thamani [#50](https://github.com/baobab-platform/thamani/pull/50) own those changes. Their downloadable artifact ZIPs must contain:
+
+- `reports/dev11-functional-playwright.json`, `reports/dev11-accessibility-playwright.json`, `reports/dev11-visual-playwright.json`, `reports/dev11-lighthouse-playwright.json` (and `dev11-logistics-playwright.json` for Thamani), with matching per-gate HTML reports and actual non-empty Playwright cases;
+- `test-results/dev11-lighthouse/**/lighthouse-home.json` and owner-specific `lighthouse-markets.json` or `lighthouse-quotes.json` created by the real Lighthouse binary;
+- `reports/static-budget.json` containing actual emitted-asset byte measurements and approved limits.
+
+The independent verifier checks actual `stats.expected > 0`, `stats.unexpected == 0`, `stats.flaky == 0`, and an empty Playwright top-level error list. It parses the native Lighthouse reports to enforce each owner's approved minimum performance (90) and accessibility/best-practices (95) scores, public-page SEO (95), CLS no more than 0.1 and transferred JavaScript no more than 250 KiB. Thamani's intentionally `noindex` quote workspace is **not required to meet a public SEO indexability target**; it retains the original owner test's security policy. Single-run Lighthouse LCP is recorded as a **lab diagnostic**, never a fabricated field P75 LCP or INP result.
+
+The original four static limits remain exact: total JavaScript 800 KiB, largest chunk 250 KiB, total CSS 64 KiB and largest raster image 250 KiB. The verifier compares the source-owned report's limits to those independently hardcoded values, then compares actual measured byte counts to them. A report that raises its own limits or has an empty/incorrect sample **cannot pass**, even after a successful GitHub step. Only bounded numbers and fixed category labels leave the private join, never raw reports or screenshot data.
