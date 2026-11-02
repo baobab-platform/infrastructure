@@ -426,6 +426,14 @@ def main():
     qualified = (not failed and component and all(component['checks'].values())
         and receipt.get('dev07_bff_runtime_identity_verified') is True
         and receipt.get('dev07_binding_revocation_verified') is True and receipt.get('dev07_issuer_cleanup') is True)
+    if os.environ.get('DEV11_CONNECTED_BFF_REQUIRED') == 'true':
+        observed = receipt.get('dev11_bff_connected')
+        dev.require(isinstance(observed, dict) and observed.get('runtime_qualified') is False
+                    and observed.get('outbox_consumer_qualified') is False
+                    and isinstance(observed.get('checks'), dict)
+                    and all(observed['checks'].values())
+                    and receipt['teardown_verified'] and qualified,
+                    'DEV11_BFF_CP_TRADE_CONNECTED_QUALIFICATION_FAILED')
     result = {'schema': 'infrastructure.dev07-bff-http-qualified.v1', 'lifecycle': receipt,
               'bff_http_qualified': bool(qualified), 'int05_qualified': False,
               'provider_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
