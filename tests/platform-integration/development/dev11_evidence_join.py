@@ -52,7 +52,7 @@ LABELS = {
         "artifact": "thamani-logistics-browser",
         "steps": {
             "playwright": "Verify landing and Next.js logistics routes",
-            "logistics_keyboard": "Run pnpm test:logistics:browser",
+            "logistics_keyboard": "Logistics keyboard and browser journeys",
             "accessibility": "WCAG landing-page and logistics-route accessibility",
             "visual": "Independent homepage visual layout and screenshot evidence",
             "lighthouse": "Isolated Lighthouse production-build lab",
