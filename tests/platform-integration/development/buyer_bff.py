@@ -57,7 +57,9 @@ def lock():
 
 
 def prepare():
-    run = dev.prepare(lock_name='buyer-bff-base-lock.json')
+    candidate = os.environ.get('DEV11_CONNECTED_BFF_REQUIRED') == 'true'
+    run = dev.prepare(lock_name='dev11-buyer-bff-base-lock.json'
+                      if candidate else 'buyer-bff-base-lock.json')
     try:
         directory, state = dev.current(run)
         state.update(buyer_identity_profile=True, buyer_bff_http_profile=True)
