@@ -14,8 +14,8 @@ ROLES = frozenset(("bff", "issuer", "cp", "engine", "outbox", "consumer"))
 REQUIRED_ROLES = frozenset(("bff", "issuer", "cp", "engine", "outbox"))
 RESULTS = frozenset(("PASS", "FAIL", "BLOCKED", "NOT_RUN"))
 SPAN_REF_KEYS = {"trace_id", "span_id"}
-HEX32 = __import__("re").compile(r"[0-9a-f]{32}\\Z")
-HEX16 = __import__("re").compile(r"[0-9a-f]{16}\\Z")
+HEX32 = __import__("re").compile(r"[0-9a-f]{32}")
+HEX16 = __import__("re").compile(r"[0-9a-f]{16}")
 
 
 def ref(obj):
@@ -109,8 +109,7 @@ def verify_graph(obj):
     for key, (boundary, event_id) in metadata.items():
         if boundary == "EVENT_CONSUME":
             require(any(metadata[link] == ("EVENT_PUBLISH", event_id)
-                        for link in edges[key] if link in metadata
-                        and link in edges[key][len(edges[key]) - len(indexed[key]["links"]):]))
+                        for link in (ref(v) for v in indexed[key]["links"])))
 
     aggregate = ("FAIL" if "FAIL" in outcomes else
                  "BLOCKED" if "BLOCKED" in outcomes else
