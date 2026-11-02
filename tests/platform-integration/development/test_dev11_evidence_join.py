@@ -164,6 +164,11 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         self.assertEqual(set(result["checks"]),
                          {"playwright", "accessibility", "visual",
                           "lighthouse", "static_budget"})
+        self.assertEqual(result["measured_results"]["playwright_passed_tests"]["functional"], 2)
+        self.assertGreaterEqual(
+            result["measured_results"]["lighthouse_labs"]["home"]["performance_score"], 90)
+        self.assertEqual(
+            result["measured_results"]["measured_static_bytes"]["css_total"], 32 * 1024)
 
     def test_skipped_lighthouse_is_not_pass(self):
         base = "/repos/baobab-platform/nabhold/actions/runs/1001/jobs?per_page=100"
@@ -237,6 +242,29 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         with self.assertRaises(Blocked) as error:
             self.check("zuribeans")
         self.assertEqual(error.exception.code, "LIGHTHOUSE_RESULT_INVALID")
+
+    def test_static_budget_threshold_inflation_does_not_grant_pass(self):
+        original = self.gh.blobs[("baobab-platform/thamani", 3)]
+        with zipfile.ZipFile(io.BytesIO(original)) as archive:
+            rows = {path: archive.read(path) for path in archive.namelist()}
+        key = "reports/static-budget.json"
+        budget = json.loads(rows[key])
+        budget["limits"]["allCss"] *= 2
+        rows[key] = json.dumps(budget).encode()
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w") as archive:
+            for path, body in rows.items():
+                archive.writestr(path, body)
+        modified = out.getvalue()
+        self.gh.blobs[("baobab-platform/thamani", 3)] = modified
+        entry = self.gh.urls[
+            "/repos/baobab-platform/thamani/actions/runs/1003/artifacts?per_page=100"
+        ]["artifacts"][0]
+        entry["digest"] = "sha256:" + hashlib.sha256(modified).hexdigest()
+        entry["size_in_bytes"] = len(modified)
+        with self.assertRaises(Blocked) as error:
+            self.check("thamani")
+        self.assertEqual(error.exception.code, "STATIC_BUDGET_RESULT_INVALID")
 
     def test_unverified_artifact_digest_is_blocked(self):
         base = "/repos/baobab-platform/nabhold/actions/runs/1001/artifacts?per_page=100"
