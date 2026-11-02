@@ -70,6 +70,12 @@ class FakeGitHub:
                 "id": run_id, "head_sha": sha, "path": item["workflow"],
                 "status": "completed", "conclusion": "success", "event": "pull_request",
                 "repository": {"full_name": "baobab-platform/" + item["repo"]},
+                "pull_requests": [{"number": index, "head": {"sha": sha}}],
+            }
+            self.urls[f"/repos/baobab-platform/{item['repo']}/pulls/{index}"] = {
+                "state": "open", "head": {
+                    "sha": sha, "repo": {"full_name": "baobab-platform/" + item["repo"]},
+                },
             }
             self.urls[base + "/jobs?per_page=100"] = {
                 "total_count": 1,
@@ -123,6 +129,13 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         with self.assertRaises(Blocked) as error:
             self.check("nabhold")
         self.assertEqual(error.exception.code, "RUN_FAILED")
+
+    def test_historical_success_with_new_pr_head_is_stale(self):
+        pr = "/repos/baobab-platform/nabhold/pulls/1"
+        self.gh.urls[pr]["head"]["sha"] = "9" * 40
+        with self.assertRaises(Blocked) as error:
+            self.check("nabhold")
+        self.assertEqual(error.exception.code, "RUN_STALE_HEAD")
 
     def test_forged_source_cannot_join(self):
         self.gh.urls["/repos/baobab-platform/nabhold/actions/runs/1001"]["head_sha"] = "0" * 40
