@@ -12,7 +12,8 @@ TRADE = "c" * 40
 ZURI = "d" * 40
 PINS = {
     "infrastructure": HEAD, "cp": CP, "baobab-cp": CP,
-    "baobab-trade": TRADE, "baobab-erp": "9" * 40, "nabhold": "e" * 40,
+    "baobab-trade": TRADE, "baobab-erp": "9" * 40,
+    "baobab-iam": "8" * 40, "nabhold": "e" * 40,
     "zuribeans": ZURI, "thamani": "f" * 40,
 }
 REQUIRED_BFF = (
@@ -121,6 +122,9 @@ def artifact_data(name):
         elif name == "l4_erp_native":
             engine = {
                 "schema": "erp.dev11.real-hydra-cp-rabbit-jvm-engine-local.v1",
+                "source_pins": {
+                    "baobab-cp": CP, "baobab-iam": PINS["baobab-iam"],
+                    "baobab-erp": PINS["baobab-erp"]},
                 "real_hydra_workload_token_observed": True,
                 "real_cp_runtime_context_and_mandate_observed": True,
                 "real_rabbitmq_durable_signed_event_to_erp_inbox": True,
@@ -228,6 +232,11 @@ class FakeGitHub:
 
         # Candidate companions are verified independently by current PR
         # head, not an arbitrarily pinned historical ERP/Infrastructure SHA.
+        for repo, number, pin in (
+            ("baobab-cp", 458, CP), ("baobab-iam", 153, PINS["baobab-iam"])):
+            self.urls[f"/repos/baobab-platform/{repo}/pulls/{number}"] = {
+                "state": "open", "head": {"sha": pin},
+            }
         self.urls["/repos/baobab-platform/baobab-erp/pulls/125"] = {
             "state": "open", "head": {"sha": PINS["baobab-erp"]},
         }
@@ -410,6 +419,19 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         result = join(self.gh.bindings, PINS, self.gh.api, self.gh.download)
         self.assertTrue(result["native_idempiere_engine_local_verified"])
         self.assertEqual(result["l4_ops_01"], "BLOCKED")
+
+    def test_stale_cp_or_iam_source_rejects_past_engine_native_success(self):
+        for source, number in (("baobab-cp", 458), ("baobab-iam", 153)):
+            with self.subTest(source=source):
+                path = f"/repos/baobab-platform/{source}/pulls/{number}"
+                original = self.gh.urls[path]["head"]["sha"]
+                self.gh.urls[path]["head"]["sha"] = "0" * 40
+                try:
+                    with self.assertRaises(Blocked) as reason:
+                        self.check("l4_erp_native")
+                    self.assertEqual(reason.exception.code, "RUN_STALE_HEAD")
+                finally:
+                    self.gh.urls[path]["head"]["sha"] = original
 
     def test_fake_native_order_or_missing_cp_jvm_lineage_does_not_join(self):
         key = ("baobab-platform/baobab-erp", 7)
