@@ -473,14 +473,25 @@ def verify_one(name, binding, pins, api, download):
     receipt = verify_zip(blob, digest, name)
     if name.startswith("l4_"):
         native_receipt(name, receipt, pins)
+    if name == "l4_exporter":
+        detail = {"actual_otlp_exporter_and_query": "PASS",
+                  "disposable_teardown": "PASS",
+                  "native_authority_or_effect": "NOT_PROVEN"}
+    elif name == "l4_rabbit":
+        detail = {"real_trade_rabbit_erp_admission": "PASS",
+                  "independently_exported_component_spans": "PASS",
+                  "native_idempiere_business_effect": "NOT_PROVEN"}
+    elif name.startswith("l4_"):
+        detail = {"native_runtime_negatives": "PASS",
+                  "independent_teardown": "PASS"}
+    else:
+        detail = {"measured_results": receipt}
     return {"result": "PASS", "run_id": run_id, "source_sha": sha,
             "job_id": job.get("id"), "artifact_id": art.get("id"),
             "run_url": f"https://github.com/{repo}/actions/runs/{run_id}",
             "artifact_zip_sha256": digest,
             "checks": {key: "PASS" for key in spec["steps"]},
-            **({"measured_results": receipt} if not name.startswith("l4_") else
-               {"native_runtime_negatives": "PASS",
-                "independent_teardown": "PASS"})}
+            **detail}
 
 def join(bindings, pins, api, download):
     rows = {}
@@ -495,13 +506,19 @@ def join(bindings, pins, api, download):
         except (TypeError, AttributeError, KeyError, ValueError):
             rows[name] = {"result": "BLOCKED", "reason": "GITHUB_EVIDENCE_UNAVAILABLE"}
     all_verified = all(row["result"] == "PASS" for row in rows.values())
-    # A real OTel collector graph and accepted native outbox + downstream
-    # consumer are not supplied by the current connected HTTP profiles.
+    # Actual cross-collector exporter and real broker/inbox component tests
+    # are independently joined, but iDempiere's governed native posting is
+    # not yet one of these seven proofs. Never promote a component test to
+    # L4-OPS-01, regardless of individual GitHub green statuses.
     return {"schema": "infrastructure.dev11.l4-ops-01-join.v1",
             "run_class": "INDEPENDENT_GITHUB_EVIDENCE_JOIN",
             "join_http_and_estates_verified": all_verified,
+            "component_and_estates_verified": all_verified,
+            "exporter_and_broker_verified": (
+                rows["l4_exporter"]["result"] == "PASS" and
+                rows["l4_rabbit"]["result"] == "PASS"),
             "l4_ops_01": "BLOCKED",
-            "l4_ops_01_reason": "NATIVE_OTLP_GRAPH_AND_BROKER_CONSUMER_NOT_QUALIFIED"
+            "l4_ops_01_reason": "NATIVE_IDEMPIERE_EFFECT_AND_FULL_DISTRIBUTED_AUTHORITY_NOT_QUALIFIED"
                                 if all_verified else "CONNECTED_OR_ESTATE_EVIDENCE_INCOMPLETE",
             "protected_acceptance": False,
             "production_authorized": False, "sources": rows}
