@@ -11,6 +11,7 @@ This work does not publish GHCR baobab-dev:v1.5.0, modify providers or merge PRs
   spans, exact parent linkage, a canonical UUID correlation ID, source SHA,
   scenario identity, and closed cause codes. This **linear reference** does
   not purport to represent every possible valid branched/asynchronous trace.
+- A second closed, strictly allowlisted **DAG trace projection** handles branching and async messaging. It validates W3C same-trace parents, cross-trace links, an anchored root, cycle/orphan refusal and the event ID relationship between outbox publish and consumer. The result strips raw spans and never self-qualifies runtime. This remains a structural source verifier; owner instrumentation and independent observations are still required.
 - Input is **allowlisted rather than post-hoc scrubbed**. Headers, bearer
   tokens, cookies, customer names, arbitrary URLs, error text, SQL and bodies
   are forbidden. Refusals never echo inputs. Outputs exclude raw spans and
@@ -32,10 +33,12 @@ This work does not publish GHCR baobab-dev:v1.5.0, modify providers or merge PRs
 
 ## Reproduce
 
-    python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev11_assurance.py' -v
+    python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev11*.py' -v
     python3 -B tests/platform-integration/development/dev11_assurance.py plan --full
     python3 -B tests/platform-integration/development/dev11_assurance.py plan --base <40-hex> --head <40-hex>
     python3 -B tests/platform-integration/development/dev11_assurance.py verify-chain --input /private/run-owned/safe-projection.json
+
+The `verify-chain` command also accepts the explicitly versioned `infrastructure.dev11.graph.v1` minimised graph projection; raw OTel exports are not admitted. A second-trace consumer must link to an included outbox publish span with the same canonical event ID.
 
 The verifier input must be a run-owned **closed projection**, never a raw
 OpenTelemetry dump. Do not publish original traces or credentials as CI
