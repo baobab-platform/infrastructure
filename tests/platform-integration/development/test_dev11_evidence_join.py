@@ -12,7 +12,7 @@ TRADE = "c" * 40
 ZURI = "d" * 40
 PINS = {
     "infrastructure": HEAD, "cp": CP, "baobab-cp": CP,
-    "baobab-trade": TRADE, "nabhold": "e" * 40,
+    "baobab-trade": TRADE, "baobab-erp": "9" * 40, "nabhold": "e" * 40,
     "zuribeans": ZURI, "thamani": "f" * 40,
 }
 REQUIRED_BFF = (
@@ -77,6 +77,46 @@ def artifact_data(name):
                     f"test-results/dev11-lighthouse/example/lighthouse-{route}.json",
                     json.dumps(report),
                 )
+        elif name == "l4_exporter":
+            doc = {
+                "schema": "infrastructure.dev11.exported-observation.v1",
+                "type": "READ_ONLY_JAEGER_V3_QUERY",
+                "exported_lineage_observed": True,
+                "native_source_attested": False,
+                "consumer_business_effect_qualified": False,
+                "observed_services": ["dev11-telemetry-probe"],
+                "observed_spans": 2, "parent_edges": 1,
+                "l4_ops_01": "BLOCKED", "production_authorized": False,
+            }
+            archive.writestr("dev11-exported-runtime.json", json.dumps(doc))
+        elif name == "l4_rabbit":
+            connected = {
+                "schema": "trade.dev11.real-rabbit-erp-inbox.v1",
+                "run_class": "REAL_NATIVE_MEDUSA_PG_RABBIT_ERPINBOX",
+                "native_medusa_outbox_persisted": True,
+                "real_rabbitmq_publisher_confirmed": True,
+                "erp_postgres_canonical_admission": True,
+                "unchanged_event_redelivery_deduplicated": True,
+                "changed_business_replay_rejected": True,
+                "bad_signature_rejected_to_dlx": True,
+                "mandatory_unroutable_rejected": True,
+                "native_erp_business_effect_qualified": False,
+                "l4_ops_01": "BLOCKED", "production_authorized": False,
+            }
+            exported = {
+                "schema": "infrastructure.dev11.exported-observation.v1",
+                "type": "READ_ONLY_JAEGER_V3_QUERY",
+                "exported_lineage_observed": True,
+                "observed_services": ["baobab-trade",
+                                      "baobab-trade-rabbit-publisher", "baobab-erp"],
+                "l4_ops_01": "BLOCKED", "production_authorized": False,
+            }
+            sources = {"trade_sha": TRADE, "erp_sha": PINS["baobab-erp"],
+                       "infrastructure_sha": HEAD}
+            for name, doc in (("connected.json", connected),
+                              ("independent-exported.json", exported),
+                              ("source-pins.json", sources)):
+                archive.writestr(name, json.dumps(doc))
         elif name == "l4_iam_cp":
             doc = {"source_pins": {"baobab-cp": CP},
                    "teardown_verified": True, "passed": True,
@@ -110,7 +150,7 @@ class FakeGitHub:
         self.bindings = {}
         for index, (name, item) in enumerate(LABELS.items(), 1):
             run_id = 1000 + index
-            sha = HEAD if name.startswith("l4_") else PINS[name]
+            sha = (TRADE if name == "l4_rabbit" else HEAD) if name.startswith("l4_") else PINS[name]
             self.bindings[name] = {"run_id": run_id, "sha": sha}
             base = f"/repos/baobab-platform/{item['repo']}/actions/runs/{run_id}"
             blob = artifact_data(name)
@@ -142,6 +182,15 @@ class FakeGitHub:
                     "digest": "sha256:" + hashlib.sha256(blob).hexdigest(),
                 }],
             }
+
+        # Candidate companions are verified independently by current PR
+        # head, not an arbitrarily pinned historical ERP/Infrastructure SHA.
+        self.urls["/repos/baobab-platform/baobab-erp/pulls/125"] = {
+            "state": "open", "head": {"sha": PINS["baobab-erp"]},
+        }
+        self.urls["/repos/baobab-platform/infrastructure/pulls/72"] = {
+            "state": "open", "head": {"sha": HEAD},
+        }
 
     def api(self, url):
         return self.urls[url]
@@ -283,9 +332,9 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         self.assertEqual(error.exception.code, "ARTIFACT_ARCHIVE_INVALID")
 
     def test_missing_runtime_teardown_blocks_l4_http(self):
-        base = "/repos/baobab-platform/infrastructure/actions/runs/1005/artifacts?per_page=100"
+        base = "/repos/baobab-platform/infrastructure/actions/runs/1007/artifacts?per_page=100"
         entry = self.gh.urls[base]["artifacts"][0]
-        original = self.gh.blobs[("baobab-platform/infrastructure", 5)]
+        original = self.gh.blobs[("baobab-platform/infrastructure", 7)]
         with zipfile.ZipFile(io.BytesIO(original)) as archive:
             doc = json.loads(archive.read("dev01-run/completed/receipt.json"))
         doc["teardown_verified"] = False
@@ -293,7 +342,7 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("dev01-run/completed/receipt.json", json.dumps(doc))
         invalid = out.getvalue()
-        self.gh.blobs[("baobab-platform/infrastructure", 5)] = invalid
+        self.gh.blobs[("baobab-platform/infrastructure", 7)] = invalid
         entry["digest"] = "sha256:" + hashlib.sha256(invalid).hexdigest()
         entry["size_in_bytes"] = len(invalid)
         with self.assertRaises(Blocked) as error:
@@ -306,7 +355,7 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         self.assertEqual(result["l4_ops_01"], "BLOCKED")
         self.assertEqual(
             result["l4_ops_01_reason"],
-            "NATIVE_OTLP_GRAPH_AND_BROKER_CONSUMER_NOT_QUALIFIED",
+            "NATIVE_IDEMPIERE_EFFECT_AND_FULL_DISTRIBUTED_AUTHORITY_NOT_QUALIFIED",
         )
         self.assertFalse(result["production_authorized"])
         self.assertFalse(result["protected_acceptance"])
