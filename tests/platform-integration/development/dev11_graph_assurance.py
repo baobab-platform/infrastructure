@@ -74,7 +74,8 @@ def verify_graph(obj):
             require(isinstance(row["event_id"], str)
                     and UUID.fullmatch(row["event_id"]) is not None)
         metadata[ident] = (boundary, row["event_id"])
-        require(row["result"] in RESULTS and row["cause"] in CAUSES)
+        require(isinstance(row["result"], str) and row["result"] in RESULTS
+                and isinstance(row["cause"], str) and row["cause"] in CAUSES)
         require((row["result"] == "PASS") == (row["cause"] == "NONE"))
         outcomes.append(row["result"])
         if row["cause"] != "NONE":
@@ -100,10 +101,11 @@ def verify_graph(obj):
         walk(key)
     require(len(visited) == len(indexed))
     # Every span must be causally anchored at the BFF root.
+    anchored = {roots[0]: True}
     def ancestors(key):
-        if key == roots[0]:
-            return True
-        return any(ancestors(parent) for parent in edges[key])
+        if key not in anchored:
+            anchored[key] = any(ancestors(parent) for parent in edges[key])
+        return anchored[key]
 
     require(all(ancestors(k) for k in indexed))
     for key, (boundary, event_id) in metadata.items():
