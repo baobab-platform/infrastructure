@@ -721,6 +721,77 @@ def provider_resolution():
     print(json.dumps({"matched":matched,"decision":decision,"reason":reason or "NONE"}))
 
 
+def dev11_trace_proof():
+    """Actual Keycloak-issued workload -> CP HTTPS request trace/denial proof.
+
+    No bearer, identity, trace ID or request body is emitted in the receipt.
+    This proves an observed HTTP segment, NOT issuer-exported spans or the
+    provider/outbox/consumer segment of full DEV-11 qualification.
+    """
+    import re
+    import secrets
+
+    fixture = json.loads((RUNTIME / "fixtures.json").read_text())
+    body = {"tenant_id": fixture["tenant"], "organisation_id": fixture["organisation"]}
+    trace_id = secrets.token_hex(16)
+    parent_span = secrets.token_hex(8)
+    correlation = str(uuid.uuid4())
+    traceparent = "00-" + trace_id + "-" + parent_span + "-01"
+    headers = {"traceparent": traceparent, "X-Correlation-ID": correlation}
+
+    def observed(response_headers, expected_trace):
+        value = next((v for k, v in response_headers.items() if k.lower() == "traceparent"), "")
+        match = re.fullmatch(r"00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})", value)
+        return bool(match and match.group(1) == expected_trace and match.group(2) != parent_span)
+
+    def echoed(response_headers):
+        return next((v for k, v in response_headers.items() if k.lower() == "x-correlation-id"), "") == correlation
+
+    positive, doc, response = request_with_headers(
+        "POST", CP + "/v1/platform-context/resolve", body, workload(), headers=headers
+    )
+    success = bool(positive == 200 and doc.get("tenant_id") == body["tenant_id"]
+                   and doc.get("organisation_id") == body["organisation_id"])
+    status_wrong, _, wrong_headers = request_with_headers(
+        "POST", CP + "/v1/platform-context/resolve", body, other(), headers=headers
+    )
+    status_foreign, _, foreign_headers = request_with_headers(
+        "POST", CP + "/v1/platform-context/resolve",
+        {"tenant_id": fixture["tenant"], "organisation_id": fixture["other_organisation"]},
+        workload(), headers=headers,
+    )
+    status_missing, _, missing_headers = request_with_headers(
+        "POST", CP + "/v1/platform-context/resolve", body, headers=headers
+    )
+    invalid_trace = "00-" + "0" * 32 + "-" + parent_span + "-01"
+    status_invalid, _, invalid_headers = request_with_headers(
+        "POST", CP + "/v1/platform-context/resolve", body,
+        headers={"traceparent": invalid_trace, "X-Correlation-ID": correlation},
+    )
+    invalid_observation = next(
+        (v for k, v in invalid_headers.items() if k.lower() == "traceparent"), ""
+    )
+    malformed_created_new_root = bool(re.fullmatch(
+        r"00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})", invalid_observation
+    ) and not invalid_observation.startswith("00-" + trace_id + "-")
+        and invalid_observation[3:35] != "0" * 32)
+    checks = {
+        "dev11_actual_issuer_cp_authorised_operation": success,
+        "dev11_cp_w3c_child_of_upstream": observed(response, trace_id),
+        "dev11_cp_correlation_preserved": echoed(response),
+        "dev11_wrong_audience_denied_with_trace": status_wrong == 401 and observed(wrong_headers, trace_id),
+        "dev11_foreign_organisation_denied_with_trace": status_foreign in (401, 403, 404)
+            and observed(foreign_headers, trace_id),
+        "dev11_missing_bearer_denied_with_trace": status_missing == 401
+            and observed(missing_headers, trace_id),
+        "dev11_untrusted_trace_creates_root_without_authority": status_invalid == 401
+            and malformed_created_new_root,
+    }
+    print(json.dumps({"checks": checks, "source": "real_keycloak_and_cp_https",
+                      "runtime_qualified": False, "outbox_consumer_qualified": False,
+                      "protected_acceptance": False}, sort_keys=True))
+
+
 def provider_outage():
     status,_=request("GET","https://pulse.int02.test/readyz")
     cp_status,_=request("GET",CP+"/readyz")
@@ -748,6 +819,8 @@ def main():
         exercise()
     elif name=="provider-resolution":
         provider_resolution()
+    elif name=="dev11-trace":
+        dev11_trace_proof()
     elif name=="provider-outage":
         provider_outage()
     elif name=="provider-current":
