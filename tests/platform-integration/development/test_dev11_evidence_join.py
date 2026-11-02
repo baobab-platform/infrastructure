@@ -96,6 +96,7 @@ def artifact_data(name):
                 "native_medusa_outbox_persisted": True,
                 "real_rabbitmq_publisher_confirmed": True,
                 "erp_postgres_canonical_admission": True,
+                "real_crash_after_inbox_commit_before_ack_recovered": True,
                 "unchanged_event_redelivery_deduplicated": True,
                 "changed_business_replay_rejected": True,
                 "bad_signature_rejected_to_dlx": True,
