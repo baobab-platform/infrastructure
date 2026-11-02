@@ -26,8 +26,57 @@ def artifact_data(name):
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         if name in ("nabhold", "zuribeans", "thamani"):
-            archive.writestr("playwright-report/index.html", "synthetic test display")
-            archive.writestr("test-results/.last-run.json", '{"status":"passed"}')
+            from dev11_evidence_join import BUDGETS, GATES
+            gates = (*GATES, "logistics") if name == "thamani" else GATES
+            for gate in gates:
+                archive.writestr(
+                    f"playwright-report/dev11-{gate}/index.html",
+                    "synthetic test display",
+                )
+                archive.writestr(
+                    f"reports/dev11-{gate}-playwright.json",
+                    json.dumps({
+                        "stats": {"expected": 2, "unexpected": 0, "flaky": 0, "skipped": 0},
+                        "suites": [{"title": "synthetic pass"}], "errors": [],
+                    }),
+                )
+            labels = ("totalJavaScript", "largestJavaScriptChunk", "totalCss",
+                      "largestPublicImage") if name != "thamani" else (
+                      "allClientJavaScript", "largestClientChunk",
+                      "allCss", "largestPublicImage")
+            if name == "nabhold":
+                budget = {"profile": "CI_PRODUCTION_BUILD",
+                          "limits": dict(zip(labels, BUDGETS)),
+                          "measured": [
+                              {"label": label, "actual": maximum // 2, "max": maximum}
+                              for label, maximum in zip(
+                                  ("All emitted client JavaScript",
+                                   "Largest JavaScript chunk (sample)",
+                                   "All emitted CSS",
+                                   "Largest public raster image (sample)"),
+                                  BUDGETS)],
+                          "oversized": []}
+            else:
+                budget = {"profile": "CI_PRODUCTION_BUILD",
+                          "limits": dict(zip(labels, BUDGETS)),
+                          "measured": {key: maximum // 2 for key, maximum in zip(labels, BUDGETS)},
+                          "oversized": []}
+            archive.writestr("reports/static-budget.json", json.dumps(budget))
+            for route in (("home", "quotes") if name == "thamani" else ("home", "markets")):
+                report = {
+                    "categories": {k: {"score": .96} for k in
+                                   ("performance", "accessibility", "best-practices", "seo")},
+                    "audits": {
+                        "cumulative-layout-shift": {"numericValue": .02},
+                        "largest-contentful-paint": {"numericValue": 1100},
+                        "resource-summary": {"details": {"items": [
+                            {"resourceType": "script", "transferSize": 200000}]}},
+                    },
+                }
+                archive.writestr(
+                    f"test-results/dev11-lighthouse/example/lighthouse-{route}.json",
+                    json.dumps(report),
+                )
         elif name == "l4_iam_cp":
             doc = {"source_pins": {"baobab-cp": CP},
                    "teardown_verified": True, "passed": True,
@@ -142,6 +191,52 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         with self.assertRaises(Blocked) as error:
             self.check("nabhold")
         self.assertEqual(error.exception.code, "RUN_SOURCE_MISMATCH")
+
+    def test_github_success_cannot_override_failed_playwright_json(self):
+        original = self.gh.blobs[("baobab-platform/nabhold", 1)]
+        with zipfile.ZipFile(io.BytesIO(original)) as archive:
+            rows = {key: archive.read(key) for key in archive.namelist()}
+        key = "reports/dev11-functional-playwright.json"
+        report = json.loads(rows[key])
+        report["stats"]["expected"] = 0
+        rows[key] = json.dumps(report).encode()
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w") as archive:
+            for path, body in rows.items():
+                archive.writestr(path, body)
+        modified = out.getvalue()
+        self.gh.blobs[("baobab-platform/nabhold", 1)] = modified
+        art = self.gh.urls[
+            "/repos/baobab-platform/nabhold/actions/runs/1001/artifacts?per_page=100"
+        ]["artifacts"][0]
+        art["digest"] = "sha256:" + hashlib.sha256(modified).hexdigest()
+        art["size_in_bytes"] = len(modified)
+        with self.assertRaises(Blocked) as error:
+            self.check("nabhold")
+        self.assertEqual(error.exception.code, "PLAYWRIGHT_RESULT_INVALID")
+
+    def test_lighthouse_below_threshold_is_rejected(self):
+        original = self.gh.blobs[("baobab-platform/zuribeans", 2)]
+        with zipfile.ZipFile(io.BytesIO(original)) as archive:
+            rows = {key: archive.read(key) for key in archive.namelist()}
+        key = "test-results/dev11-lighthouse/example/lighthouse-home.json"
+        report = json.loads(rows[key])
+        report["categories"]["performance"]["score"] = .89
+        rows[key] = json.dumps(report).encode()
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w") as archive:
+            for path, body in rows.items():
+                archive.writestr(path, body)
+        modified = out.getvalue()
+        self.gh.blobs[("baobab-platform/zuribeans", 2)] = modified
+        art = self.gh.urls[
+            "/repos/baobab-platform/zuribeans/actions/runs/1002/artifacts?per_page=100"
+        ]["artifacts"][0]
+        art["digest"] = "sha256:" + hashlib.sha256(modified).hexdigest()
+        art["size_in_bytes"] = len(modified)
+        with self.assertRaises(Blocked) as error:
+            self.check("zuribeans")
+        self.assertEqual(error.exception.code, "LIGHTHOUSE_RESULT_INVALID")
 
     def test_unverified_artifact_digest_is_blocked(self):
         base = "/repos/baobab-platform/nabhold/actions/runs/1001/artifacts?per_page=100"
