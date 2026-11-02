@@ -59,6 +59,27 @@ LABELS = {
             "static_budget": "Enforce emitted-asset performance budget",
         },
     },
+    "l4_exporter": {
+        "repo": "infrastructure", "workflow": ".github/workflows/dev11-otel-runtime.yml",
+        "job": "Real OTel SDK -> Collector -> independent Jaeger v2 API",
+        "artifact": "dev11-otel-real-exporter-only",
+        "steps": {
+            "native_sdk": "Export actual official SDK spans, not synthetic verifier input",
+            "independent_query": "Independent process queries Jaeger v3 read API after exported batch",
+            "teardown": "Independently tear down every disposable trace resource",
+        },
+    },
+    "l4_rabbit": {
+        "repo": "baobab-trade", "workflow": ".github/workflows/dev11-rabbit-connected.yml",
+        "job": "Real RabbitMQ confirms and signed ERP inbox replay/denial",
+        "artifact": "dev11-real-rabbit-erp-inbox",
+        "steps": {
+            "native_outbox": "Prepare canonical event with the actual Medusa module and native locking",
+            "broker_and_consumer": "Real RabbitMQ publisher confirmation, durable ERP inbox and replay/forgery negatives",
+            "independent_query": "Independently query actual native Trade, publisher and ERP spans",
+            "teardown": "Independently tear down disposable OTel runtime and remove private source IDs",
+        },
+    },
     "l4_iam_cp": {
         "repo": "infrastructure", "workflow": ".github/workflows/dev11-connected-int02.yml",
         "job": "Real Keycloak -> CP L4-01 acceptance",
@@ -85,6 +106,7 @@ CLOSED = {
     "ARTIFACT_ARCHIVE_INVALID", "BROWSER_REPORT_MISSING",
     "INT02_NATIVE_RECEIPT_INVALID", "BFF_NATIVE_RECEIPT_INVALID",
     "PROTECTED_EVIDENCE_FORBIDDEN",
+    "OTLP_EXPORTER_RECEIPT_INVALID", "RABBIT_CONNECTED_RECEIPT_INVALID",
     "PLAYWRIGHT_RESULT_INVALID", "LIGHTHOUSE_RESULT_INVALID",
     "STATIC_BUDGET_RESULT_INVALID",
 }
@@ -265,13 +287,68 @@ def verify_zip(blob, claimed_digest, category):
             matches = [x for x in names if x.endswith("/completed/receipt.json")]
             require(len(matches) == 1, "BFF_NATIVE_RECEIPT_INVALID")
             return untrusted_json(archive.read(matches[0]))
+        if category == "l4_exporter":
+            matches = [x for x in names if x == "dev11-exported-runtime.json"
+                       or x.endswith("/dev11-exported-runtime.json")]
+            require(len(matches) == 1, "OTLP_EXPORTER_RECEIPT_INVALID")
+            return untrusted_json(archive.read(matches[0]))
+        if category == "l4_rabbit":
+            def exact(suffix):
+                matches = [x for x in names if x == suffix or x.endswith("/" + suffix)]
+                require(len(matches) == 1, "RABBIT_CONNECTED_RECEIPT_INVALID")
+                return untrusted_json(archive.read(matches[0]))
+            return {"connected": exact("connected.json"),
+                    "exported": exact("independent-exported.json"),
+                    "source_pins": exact("source-pins.json")}
         return None
     except (zipfile.BadZipFile, OSError, RuntimeError, KeyError, ValueError):
         raise Blocked("ARTIFACT_ARCHIVE_INVALID") from None
 
 def native_receipt(category, value, pins):
-    require(type(value) is dict, ("INT02_NATIVE_RECEIPT_INVALID" if category == "l4_iam_cp"
-                                 else "BFF_NATIVE_RECEIPT_INVALID"))
+    require(type(value) is dict, "GITHUB_EVIDENCE_UNAVAILABLE")
+    if category == "l4_exporter":
+        require(value.get("schema") == "infrastructure.dev11.exported-observation.v1"
+                and value.get("exported_lineage_observed") is True
+                and value.get("native_source_attested") is False
+                and value.get("consumer_business_effect_qualified") is False
+                and value.get("l4_ops_01") == "BLOCKED"
+                and value.get("observed_services") == ["dev11-telemetry-probe"]
+                and type(value.get("observed_spans")) is int
+                and value["observed_spans"] >= 2
+                and type(value.get("parent_edges")) is int
+                and value["parent_edges"] >= 1
+                and value.get("production_authorized") is False,
+                "OTLP_EXPORTER_RECEIPT_INVALID")
+        return
+    if category == "l4_rabbit":
+        connected = value.get("connected")
+        exported = value.get("exported")
+        sources = value.get("source_pins")
+        required = {
+            "native_medusa_outbox_persisted", "real_rabbitmq_publisher_confirmed",
+            "erp_postgres_canonical_admission", "unchanged_event_redelivery_deduplicated",
+            "changed_business_replay_rejected", "bad_signature_rejected_to_dlx",
+            "mandatory_unroutable_rejected",
+        }
+        require(type(connected) is dict and type(exported) is dict
+                and type(sources) is dict
+                and connected.get("schema") == "trade.dev11.real-rabbit-erp-inbox.v1"
+                and connected.get("run_class") == "REAL_NATIVE_MEDUSA_PG_RABBIT_ERPINBOX"
+                and all(connected.get(key) is True for key in required)
+                and connected.get("native_erp_business_effect_qualified") is False
+                and connected.get("l4_ops_01") == "BLOCKED"
+                and exported.get("schema") == "infrastructure.dev11.exported-observation.v1"
+                and exported.get("exported_lineage_observed") is True
+                and all(x in exported.get("observed_services", []) for x in (
+                    "baobab-trade", "baobab-trade-rabbit-publisher", "baobab-erp"))
+                and exported.get("l4_ops_01") == "BLOCKED"
+                and sources.get("trade_sha") == pins["baobab-trade"]
+                and sources.get("erp_sha") == pins["baobab-erp"]
+                and sources.get("infrastructure_sha") == pins["infrastructure"]
+                and connected.get("production_authorized") is False
+                and exported.get("production_authorized") is False,
+                "RABBIT_CONNECTED_RECEIPT_INVALID")
+        return
     require(value.get("protected_acceptance") is not True
             and value.get("production_authorized") is not True, "PROTECTED_EVIDENCE_FORBIDDEN")
     if category == "l4_iam_cp":
@@ -350,9 +427,21 @@ def verify_one(name, binding, pins, api, download):
     require(run.get("status") == "completed", "RUN_NOT_COMPLETE")
     require(run.get("conclusion") == "success", "RUN_FAILED")
     if name.startswith("l4_"):
-        require(sha == pins["infrastructure"], "RUN_SOURCE_MISMATCH")
+        required_sha = pins["baobab-trade"] if name == "l4_rabbit" else pins["infrastructure"]
+        require(sha == required_sha, "RUN_SOURCE_MISMATCH")
     else:
         require(sha == pins[name], "RUN_SOURCE_MISMATCH")
+    if name == "l4_rabbit":
+        # A passing Trade workflow pinned to a superseded ERP or Infrastructure
+        # companion is never current native evidence.
+        for dependent, number, pin in (
+            ("baobab-erp", 125, "baobab-erp"),
+            ("infrastructure", 72, "infrastructure"),
+        ):
+            owner = api(f"/repos/baobab-platform/{dependent}/pulls/{number}")
+            require(owner.get("state") == "open"
+                    and owner.get("head", {}).get("sha") == pins[pin],
+                    "RUN_STALE_HEAD")
     jobs = api(f"{root}/runs/{run_id}/jobs?per_page=100")
     items = jobs.get("jobs")
     require(isinstance(items, list) and len(items) == jobs.get("total_count")
@@ -473,7 +562,8 @@ def main():
         require(set(data) == {"schema", "pins", "runs"}
                 and data["schema"] == "infrastructure.dev11.join-input.v1"
                 and set(data["pins"]) == {"infrastructure", "cp", "baobab-cp",
-                                          "baobab-trade", "nabhold", "zuribeans", "thamani"}
+                                          "baobab-trade", "baobab-erp",
+                                          "nabhold", "zuribeans", "thamani"}
                 and all(isinstance(v, str) and SHA.fullmatch(v)
                         for v in data["pins"].values())
                 and data["pins"]["cp"] == data["pins"]["baobab-cp"],
