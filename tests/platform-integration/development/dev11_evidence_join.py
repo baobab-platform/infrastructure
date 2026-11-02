@@ -76,7 +76,7 @@ LABELS = {
 }
 CLOSED = {
     "MISSING_RUN_PIN", "INVALID_RUN_PIN", "GITHUB_EVIDENCE_UNAVAILABLE",
-    "RUN_IDENTITY_MISMATCH", "RUN_SOURCE_MISMATCH", "RUN_NOT_COMPLETE",
+    "RUN_IDENTITY_MISMATCH", "RUN_SOURCE_MISMATCH", "RUN_STALE_HEAD", "RUN_NOT_COMPLETE",
     "RUN_FAILED", "RUN_WORKFLOW_MISMATCH", "RUN_EVENT_UNTRUSTED",
     "JOB_NOT_UNIQUE", "JOB_FAILED", "REQUIRED_STEP_NOT_PASSED",
     "ARTIFACT_NOT_UNIQUE", "ARTIFACT_EXPIRED", "ARTIFACT_TOO_LARGE",
@@ -186,6 +186,33 @@ def verify_one(name, binding, pins, api, download):
     require(run.get("path") == spec["workflow"], "RUN_WORKFLOW_MISMATCH")
     require(run.get("event") in ("pull_request", "push", "workflow_dispatch"),
             "RUN_EVENT_UNTRUSTED")
+    # Independently read the *current* remote PR or main/dispatch branch.
+    # Matching an old historical workflow SHA is not current-head evidence.
+    if run["event"] == "pull_request":
+        prs = run.get("pull_requests")
+        require(isinstance(prs, list) and len(prs) == 1,
+                "RUN_STALE_HEAD")
+        row = prs[0]
+        number = row.get("number")
+        require(type(number) is int and number > 0
+                and row.get("head", {}).get("sha") == sha,
+                "RUN_STALE_HEAD")
+        live_pr = api(f"/repos/{repo}/pulls/{number}")
+        require(live_pr.get("state") == "open"
+                and live_pr.get("head", {}).get("sha") == sha
+                and live_pr.get("head", {}).get("repo", {}).get("full_name") == repo,
+                "RUN_STALE_HEAD")
+    else:
+        branch = run.get("head_branch")
+        require(isinstance(branch, str) and re.fullmatch(
+                r"[a-zA-Z0-9._/-]{1,120}", branch)
+                and not branch.startswith("-") and ".." not in branch,
+                "RUN_STALE_HEAD")
+        if run["event"] == "push":
+            require(branch == "main", "RUN_STALE_HEAD")
+        live_branch = api(f"/repos/{repo}/branches/{urllib.parse.quote(branch, safe='')}")
+        require(live_branch.get("commit", {}).get("sha") == sha,
+                "RUN_STALE_HEAD")
     require(run.get("status") == "completed", "RUN_NOT_COMPLETE")
     require(run.get("conclusion") == "success", "RUN_FAILED")
     if name.startswith("l4_"):
