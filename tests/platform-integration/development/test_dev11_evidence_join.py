@@ -118,6 +118,46 @@ def artifact_data(name):
                               ("independent-exported.json", exported),
                               ("source-pins.json", sources)):
                 archive.writestr(name, json.dumps(doc))
+        elif name == "l4_erp_native":
+            engine = {
+                "schema": "erp.dev11.real-hydra-cp-rabbit-jvm-engine-local.v1",
+                "real_hydra_workload_token_observed": True,
+                "real_cp_runtime_context_and_mandate_observed": True,
+                "real_rabbitmq_durable_signed_event_to_erp_inbox": True,
+                "real_cp_authorized_idempiere_jvm_sales_order": True,
+                "independent_native_order_and_cp_lineage_readback": True,
+                "real_live_cp_mandate_revocation_denied_next_order": True,
+                "real_broker_redelivery_one_native_order": True,
+                "synthetic_trade_origin_not_authorized_commitment": True,
+                "full_medusa_buyer_commitment_proven": False,
+                "independent_exported_trace_graph_proven": False,
+                "l4_ops_01": "BLOCKED", "protected_acceptance": False,
+            }
+            native = {
+                "schema": "erp.dev11.independent-real-native-order.v1",
+                "native_order_effect_qualified": True,
+                "native_jvm_authority_attribution_observed": True,
+                "l4_ops_01": "BLOCKED",
+            }
+            lineage = {
+                "schema": "baobab.erp.dev11.independent-cp-jvm-lineage.v1",
+                "source": "TWO_INDEPENDENT_POSTGRES_READ_ONLY_OBSERVERS",
+                "immutable_cp_decisions_match_jvm_native_attributions": True,
+                "native_cp_lineage_qualified": True,
+                "independent_maker_checker_mandate_history": True,
+                "l4_ops_01": "BLOCKED",
+            }
+            teardown = {
+                "status": "COMPLETE",
+                "remaining": {"container": 0, "network": 0, "volume": 0},
+                "temporary_directory_removed": True, "host_or_image_teardown": False,
+            }
+            for file, receipt in (
+                    ("dev11-engine-local.json", engine),
+                    ("dev11-native-effect.json", native),
+                    ("dev11-cp-jvm-lineage.json", lineage),
+                    ("dev09-cleanup.json", teardown)):
+                archive.writestr(file, json.dumps(receipt))
         elif name == "l4_iam_cp":
             doc = {"source_pins": {"baobab-cp": CP},
                    "teardown_verified": True, "passed": True,
@@ -151,7 +191,9 @@ class FakeGitHub:
         self.bindings = {}
         for index, (name, item) in enumerate(LABELS.items(), 1):
             run_id = 1000 + index
-            sha = (TRADE if name == "l4_rabbit" else HEAD) if name.startswith("l4_") else PINS[name]
+            sha = (TRADE if name == "l4_rabbit" else
+                   PINS["baobab-erp"] if name == "l4_erp_native" else
+                   HEAD) if name.startswith("l4_") else PINS[name]
             self.bindings[name] = {"run_id": run_id, "sha": sha}
             base = f"/repos/baobab-platform/{item['repo']}/actions/runs/{run_id}"
             blob = artifact_data(name)
@@ -333,9 +375,9 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         self.assertEqual(error.exception.code, "ARTIFACT_ARCHIVE_INVALID")
 
     def test_missing_runtime_teardown_blocks_l4_http(self):
-        base = "/repos/baobab-platform/infrastructure/actions/runs/1007/artifacts?per_page=100"
+        base = "/repos/baobab-platform/infrastructure/actions/runs/1008/artifacts?per_page=100"
         entry = self.gh.urls[base]["artifacts"][0]
-        original = self.gh.blobs[("baobab-platform/infrastructure", 7)]
+        original = self.gh.blobs[("baobab-platform/infrastructure", 8)]
         with zipfile.ZipFile(io.BytesIO(original)) as archive:
             doc = json.loads(archive.read("dev01-run/completed/receipt.json"))
         doc["teardown_verified"] = False
@@ -343,7 +385,7 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("dev01-run/completed/receipt.json", json.dumps(doc))
         invalid = out.getvalue()
-        self.gh.blobs[("baobab-platform/infrastructure", 7)] = invalid
+        self.gh.blobs[("baobab-platform/infrastructure", 8)] = invalid
         entry["digest"] = "sha256:" + hashlib.sha256(invalid).hexdigest()
         entry["size_in_bytes"] = len(invalid)
         with self.assertRaises(Blocked) as error:
@@ -356,10 +398,41 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         self.assertEqual(result["l4_ops_01"], "BLOCKED")
         self.assertEqual(
             result["l4_ops_01_reason"],
-            "NATIVE_IDEMPIERE_EFFECT_AND_FULL_DISTRIBUTED_AUTHORITY_NOT_QUALIFIED",
+            "GOVERNED_MEDUSA_COMMITMENT_AND_CROSS_ENGINE_TRACE_NOT_PROVEN",
         )
         self.assertFalse(result["production_authorized"])
         self.assertFalse(result["protected_acceptance"])
+
+    def test_independent_native_cp_jvm_engine_local_evidence_cannot_grant_l4(self):
+        observed = self.check("l4_erp_native")
+        self.assertEqual(observed["real_hydra_cp_broker_native_idempiere"], "PASS")
+        self.assertEqual(observed["real_medusa_buyer_commitment"], "NOT_PROVEN")
+        result = join(self.gh.bindings, PINS, self.gh.api, self.gh.download)
+        self.assertTrue(result["native_idempiere_engine_local_verified"])
+        self.assertEqual(result["l4_ops_01"], "BLOCKED")
+
+    def test_fake_native_order_or_missing_cp_jvm_lineage_does_not_join(self):
+        key = ("baobab-platform/baobab-erp", 7)
+        old = self.gh.blobs[key]
+        with zipfile.ZipFile(io.BytesIO(old)) as archive:
+            all_rows = {name: archive.read(name) for name in archive.namelist()}
+        lineage = json.loads(all_rows["dev11-cp-jvm-lineage.json"])
+        lineage["native_cp_lineage_qualified"] = False
+        all_rows["dev11-cp-jvm-lineage.json"] = json.dumps(lineage).encode()
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w") as archive:
+            for path, body in all_rows.items():
+                archive.writestr(path, body)
+        blob = out.getvalue()
+        self.gh.blobs[key] = blob
+        artifact = self.gh.urls[
+            "/repos/baobab-platform/baobab-erp/actions/runs/1007/artifacts?per_page=100"
+        ]["artifacts"][0]
+        artifact["digest"] = "sha256:" + hashlib.sha256(blob).hexdigest()
+        artifact["size_in_bytes"] = len(blob)
+        with self.assertRaises(Blocked) as error:
+            self.check("l4_erp_native")
+        self.assertEqual(error.exception.code, "ERP_NATIVE_CONNECTED_RECEIPT_INVALID")
 
     def test_real_exporter_component_does_not_prove_native_business_effect(self):
         record = self.check("l4_exporter")
