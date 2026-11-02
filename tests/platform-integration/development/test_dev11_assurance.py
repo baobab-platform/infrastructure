@@ -24,7 +24,8 @@ class Dev11AssuranceTests(unittest.TestCase):
 
     def test_closed_chain(self):
         out = verify_chain(self.sample())
-        self.assertTrue(out['runtime_qualified'])
+        self.assertTrue(out['trace_chain_valid'])
+        self.assertFalse(out['runtime_qualified'])
         self.assertTrue(out['teardown_verified'])
         self.assertFalse(out['protected_acceptance'])
         self.assertNotIn('hops', out)
