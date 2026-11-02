@@ -105,7 +105,7 @@ def untrusted_json(data):
         raise Blocked("ARTIFACT_ARCHIVE_INVALID") from None
 
 def verify_zip(blob, claimed_digest, category):
-    require(len(blob) <= MAX_ZIP and blob[:4] == b"PK\\x03\\x04", "ARTIFACT_ARCHIVE_INVALID")
+    require(len(blob) <= MAX_ZIP and blob[:4] == b"PK\x03\x04", "ARTIFACT_ARCHIVE_INVALID")
     require("sha256:" + hashlib.sha256(blob).hexdigest() == claimed_digest,
             "ARTIFACT_DIGEST_MISMATCH")
     try:
@@ -286,8 +286,7 @@ class GitHub:
         host = (url.hostname or "").lower()
         require(url.scheme == "https" and (
             host.endswith(".blob.core.windows.net") or
-            host.endswith(".actions.githubusercontent.com") or
-            host == "pipelines.actions.githubusercontent.com"),
+            host.endswith(".githubusercontent.com")),
             "GITHUB_EVIDENCE_UNAVAILABLE")
         # GitHub's short-lived signed artifact URL is fetched WITHOUT the
         # GitHub access token, to avoid forwarding credentials to cloud storage.
@@ -331,10 +330,10 @@ def main():
                   "l4_ops_01_reason": "GITHUB_EVIDENCE_UNAVAILABLE", "sources": {},
                   "protected_acceptance": False, "production_authorized": False}
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    raw = (json.dumps(result, sort_keys=True, indent=2) + "\\n").encode()
+    raw = (json.dumps(result, sort_keys=True, indent=2) + "\n").encode()
     args.output.write_bytes(raw)
     args.output.with_suffix(args.output.suffix + ".sha256").write_text(
-        hashlib.sha256(raw).hexdigest() + "  " + args.output.name + "\\n")
+        hashlib.sha256(raw).hexdigest() + "  " + args.output.name + "\n")
     print("L4-OPS-01=" + result["l4_ops_01"] + " REASON=" + result["l4_ops_01_reason"])
     if not result["join_http_and_estates_verified"]:
         return 2
