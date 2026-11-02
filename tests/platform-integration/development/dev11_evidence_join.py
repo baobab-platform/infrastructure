@@ -349,6 +349,10 @@ def native_receipt(category, value, pins):
         t = value.get("teardown")
         require(all(type(x) is dict for x in (e, n, a, t))
                 and e.get("schema") == "erp.dev11.real-hydra-cp-rabbit-jvm-engine-local.v1"
+                and type(e.get("source_pins")) is dict
+                and e["source_pins"].get("baobab-cp") == pins["cp"]
+                and e["source_pins"].get("baobab-iam") == pins["baobab-iam"]
+                and e["source_pins"].get("baobab-erp") == pins["baobab-erp"]
                 and e.get("real_hydra_workload_token_observed") is True
                 and e.get("real_cp_runtime_context_and_mandate_observed") is True
                 and e.get("real_rabbitmq_durable_signed_event_to_erp_inbox") is True
@@ -492,6 +496,18 @@ def verify_one(name, binding, pins, api, download):
         require(sha == required_sha, "RUN_SOURCE_MISMATCH")
     else:
         require(sha == pins[name], "RUN_SOURCE_MISMATCH")
+    if name == "l4_erp_native":
+        # Trust only the *current* approved CP/IAM candidate source heads.
+        # The ERP workflow pins both; an old passing JVM run is not
+        # authority after a principal, policy or issuer code change.
+        for dependent, number, pin in (
+            ("baobab-cp", 458, "cp"),
+            ("baobab-iam", 153, "baobab-iam"),
+        ):
+            actual = api(f"/repos/baobab-platform/{dependent}/pulls/{number}")
+            require(actual.get("state") == "open"
+                    and actual.get("head", {}).get("sha") == pins[pin],
+                    "RUN_STALE_HEAD")
     if name == "l4_rabbit":
         # A passing Trade workflow pinned to a superseded ERP or Infrastructure
         # companion is never current native evidence.
