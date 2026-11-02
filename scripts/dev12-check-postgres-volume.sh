@@ -35,7 +35,7 @@ try:
     obj=json.load(sys.stdin)
     service=obj["services"]["postgresql"]
     image=service["image"]
-    if not re.fullmatch(r"postgres:17(?:\\.[0-9]+)?(?:-[A-Za-z0-9._-]+)?", image):
+    if not re.fullmatch(r"postgres:17(?:\.[0-9]+)?(?:-[A-Za-z0-9._-]+)?", image):
         raise ValueError("only the governed PostgreSQL 17 image is accepted")
     mounts=[v for v in service["volumes"] if v["type"]=="volume"
             and v["target"]=="/var/lib/postgresql/data"]
@@ -49,7 +49,7 @@ try:
     print(image)
     print(volume)
 except (KeyError, TypeError, ValueError, IndexError) as error:
-    sys.stderr.write("DEV12_DENIED: resolved PostgreSQL model cannot be verified: "+str(error)+"\\n")
+    sys.stderr.write("DEV12_DENIED: resolved PostgreSQL model cannot be verified: "+str(error)+"\n")
     sys.exit(2)
 '); then
   echo "DEV12_DENIED: cannot establish authoritative PostgreSQL image/volume identity" >&2
