@@ -199,7 +199,10 @@ def _browser_summary(archive, names, owner):
         for key, minimum in minimums.items():
             entry = categories.get(key)
             value = entry.get("score") if isinstance(entry, dict) else None
-            require(finite_number(value) and minimum <= value <= 1,
+            # Match each owning Playwright spec's Math.round(score * 100)
+            # threshold, without accepting a different owner budget.
+            require(finite_number(value) and value <= 1
+                    and math.floor(value * 100 + 0.5) >= minimum * 100,
                     "LIGHTHOUSE_RESULT_INVALID")
         audits = result["audits"]
         cls = audits.get("cumulative-layout-shift")
@@ -217,10 +220,10 @@ def _browser_summary(archive, names, owner):
                 and scripts[0]["transferSize"] <= 250 * 1024,
                 "LIGHTHOUSE_RESULT_INVALID")
         lab[route] = {
-            "performance_score": round(categories["performance"]["score"] * 100),
-            "accessibility_score": round(categories["accessibility"]["score"] * 100),
-            "best_practices_score": round(categories["best-practices"]["score"] * 100),
-            "seo_score": round(categories["seo"]["score"] * 100) if
+            "performance_score": math.floor(categories["performance"]["score"] * 100 + 0.5),
+            "accessibility_score": math.floor(categories["accessibility"]["score"] * 100 + 0.5),
+            "best_practices_score": math.floor(categories["best-practices"]["score"] * 100 + 0.5),
+            "seo_score": math.floor(categories["seo"]["score"] * 100 + 0.5) if
                          "seo" in minimums else None,
             "cls": round(cls_value, 4),
             "lcp_lab_ms": round(lcp_value),
