@@ -1,0 +1,55 @@
+name: DEV-11 source routing and privacy assurance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Planning/audit only; live nightly qualification remains independently gated.
+    - cron: '47 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dev11-source:
+    name: DEV-11 correlation/diagnostic policy and affected-profile plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Reject unsafe trace and diagnostic evidence
+        run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev11_assurance.py' -v
+      - name: Compute affected-profile plan without asserting execution
+        env:
+          DEV11_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DEV11_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == 'pull_request' ]]; then
+            python3 -B tests/platform-integration/development/dev11_assurance.py plan \
+              --base "$DEV11_BASE_SHA" --head "$DEV11_HEAD_SHA" \
+              --output "$RUNNER_TEMP/dev11-routing.json"
+          else
+            python3 -B tests/platform-integration/development/dev11_assurance.py plan \
+              --full --output "$RUNNER_TEMP/dev11-routing.json"
+          fi
+          python3 - "$RUNNER_TEMP/dev11-routing.json" <<'PY'
+          import json,sys
+          x=json.load(open(sys.argv[1],encoding='utf-8'))
+          assert x['routing_result']=='PLANNED_NOT_EXECUTED'
+          assert x['runtime_qualified'] is False
+          assert x['production_authorized'] is False
+          print('DEV11_ROUTING_PLAN_ONLY',x['routing_mode'],len(x['affected_profiles']))
+          PY
+      - name: Publish sanitized source-only routing plan
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev11-source-routing
+          path: ${{ runner.temp }}/dev11-routing.json
+          if-no-files-found: error
+          retention-days: 14
