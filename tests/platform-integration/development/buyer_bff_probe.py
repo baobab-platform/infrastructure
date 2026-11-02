@@ -7,6 +7,7 @@ from http.cookiejar import CookieJar
 import json
 import os
 import re
+import secrets
 import sys
 import time
 import urllib.error
@@ -166,8 +167,58 @@ def revoke():
     observed('issuer-consent-revocation')
 
 
+def dev11_connected_trace():
+    """Exercise real BFF -> IAM/CP -> Trade HTTP with verified private TLS.
+
+    Run-owned trace IDs remain inside /run/dev01; only booleans leave the
+    private runtime. The host separately checks real BFF/Trade service logs.
+    """
+    browser = p.read('bff-browser.json')
+    fixture = p.read('buyer-fixture.json')
+    trace = secrets.token_hex(16)
+    upstream = secrets.token_hex(8)
+    carrier = '00-' + trace + '-' + upstream + '-01'
+    args = {'organisationId': fixture['organisation_id'], 'countryCode': 'UG',
+            'csrfToken': browser['csrf']}
+    request_headers = {'Cookie': browser['cookie'], 'traceparent': carrier}
+    code, body, headers = http('POST', '/api/buyer/context', args, headers=request_headers)
+    observed = headers.get('traceparent', '')
+    valid = re.fullmatch(r'00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})', observed)
+    positive = bool(code == 200 and valid and valid.group(1) == trace
+                    and valid.group(2) != upstream and set(json.loads(body)) == {'buyer'})
+
+    bad = {**args, 'csrfToken': 'x' * 43}
+    denied_code, denied_body, denied_headers = http(
+        'POST', '/api/buyer/context', bad, headers=request_headers)
+    wrong = denied_headers.get('traceparent', '')
+    wrong_span = re.fullmatch(r'00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})', wrong)
+    csrf_denied = (denied_code == 401 and json.loads(denied_body) ==
+                   {'code': 'AUTHENTICATION_UNAVAILABLE_OR_DENIED'} and
+                   wrong_span is not None and wrong_span.group(1) == trace)
+
+    no_custody, response, absent_headers = http(
+        'POST', '/api/buyer/context', args, headers={'traceparent': carrier})
+    missing_span = re.fullmatch(
+        r'00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})',
+        absent_headers.get('traceparent', ''))
+    no_custody_denied = (no_custody == 401 and
+                        json.loads(response) == {'code': 'AUTHENTICATION_UNAVAILABLE_OR_DENIED'}
+                        and missing_span is not None and missing_span.group(1) == trace)
+    p.write('dev11-trace-marker.json', {'trace': trace, 'upstream': upstream})
+    print(json.dumps({
+        'scope': 'NATIVE_NEXT_TRADE_HTTP_WITH_CURRENT_IAM_CP',
+        'checks': {'dev11_bff_authorised_route_w3c': positive,
+                   'dev11_bff_csrf_denied_w3c': csrf_denied,
+                   'dev11_bff_missing_session_denied_w3c': no_custody_denied},
+        'outbox_consumer_qualified': False, 'production_authorized': False,
+    }, sort_keys=True))
+
+
 def main(action):
     p.require(p.read('state.json').get('buyer_bff_http_profile') is True)
+    if action == 'dev11-trace':
+        dev11_connected_trace()
+        return
     if action == 'health':
         result = {'trade': p.request('GET', 'https://engine.baobab-dev.test/health', timeout=3)[0],
                   'bff': http('GET', '/api/health')[0]}
