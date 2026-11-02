@@ -1,7 +1,7 @@
 name: DEV-11 independent L4-OPS-01 and estate evidence custody
 
 # Separate reviewer execution. No owner may mark its own results accepted.
-# Requires exact source SHAs and seven immutable GitHub run IDs via one JSON.
+# Requires exact source SHAs and eight immutable GitHub run IDs via one JSON.
 # Missing cross-repo Actions read access remains BLOCKED, never green.
 on:
   pull_request:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       bindings_json:
-        description: "JSON infrastructure.dev11.join-input.v1 (seven exact run IDs, current source SHAs, no tokens)"
+        description: "JSON infrastructure.dev11.join-input.v1 (eight exact run IDs, current source SHAs, no tokens)"
         required: true
         type: string
 
