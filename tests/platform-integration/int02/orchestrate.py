@@ -941,6 +941,22 @@ def test(lock):
     # before returning; a failed restore aborts rather than tainting evidence.
     workload_report = json.loads(run_probe(p, envfile, "workload-proof"))
     report = json.loads(run_probe(p, envfile, "test"))
+    # DEV-11 candidate-only: real Keycloak token readback through the live CP
+    # process with W3C lineage and unchanged authority denials. A standard
+    # INT-02 run does not assert observations from an uninstrumented CP pin.
+    if os.environ.get("INT02_DEV11_CONNECTED_REQUIRED") == "true":
+        connected = json.loads(run_probe(p, envfile, "dev11-trace"))
+        observed = connected.get("checks")
+        must(connected.get("source") == "real_keycloak_and_cp_https"
+             and connected.get("runtime_qualified") is False
+             and connected.get("outbox_consumer_qualified") is False
+             and isinstance(observed, dict) and len(observed) == 7
+             and all(k.startswith("dev11_") and type(v) is bool for k, v in observed.items()),
+             "DEV11_CONNECTED_RECEIPT_INVALID")
+        report.setdefault("checks", {}).update(observed)
+        report.setdefault("observations", {})["dev11_connected_scope"] = "KEYCLOAK_CP_HTTP_ONLY"
+        write_evidence(p, lock, report, accepted=False)
+        must(all(observed.values()), "DEV11_CONNECTED_IAM_CP_TRACE_OR_DENIAL_FAILED")
     http_report = json.loads(run_probe(p, envfile, "pulse-http"))
     apply_pulse_http_proof(report, http_report)
     apply_pulse_native_proof(report, native_report)
