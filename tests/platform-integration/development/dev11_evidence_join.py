@@ -668,7 +668,7 @@ def main():
         require(set(data) == {"schema", "pins", "runs"}
                 and data["schema"] == "infrastructure.dev11.join-input.v1"
                 and set(data["pins"]) == {"infrastructure", "cp", "baobab-cp",
-                                          "baobab-trade", "baobab-erp",
+                                          "baobab-iam", "baobab-trade", "baobab-erp",
                                           "nabhold", "zuribeans", "thamani"}
                 and all(isinstance(v, str) and SHA.fullmatch(v)
                         for v in data["pins"].values())
