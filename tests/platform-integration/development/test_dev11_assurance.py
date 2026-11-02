@@ -1,10 +1,11 @@
 """DEV-11 synthetic source tests; not live cross-engine proof."""
 from pathlib import Path
+import json
 import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from dev11_assurance import HOPS, VERSION, Refused, route, traceparent, verify_chain
+from dev11_assurance import HOPS, VERSION, Refused, route, traceparent, verify_chain, unique_pairs
 
 class Dev11AssuranceTests(unittest.TestCase):
     def sample(self):
@@ -109,6 +110,10 @@ class Dev11AssuranceTests(unittest.TestCase):
         self.assertIn('ESTATE-BROWSER',result['external_owner_checks'])
         self.assertIn('DEV-14-15',result['affected_profiles'])
         self.assertFalse(result['runtime_qualified'])
+
+    def test_duplicate_receipt_keys_are_refused_before_validation(self):
+        with self.assertRaises(Refused):
+            json.loads('{"source_sha":"a","source_sha":"b"}', object_pairs_hook=unique_pairs)
 
     def test_untrusted_path_not_echoed(self):
         for name in ('../private/.env','/private/access','secret\nAuthorization: token'):
