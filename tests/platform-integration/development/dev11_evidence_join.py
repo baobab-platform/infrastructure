@@ -251,8 +251,8 @@ def verify_zip(blob, claimed_digest, category):
         names = [r.filename for r in rows]
         for item in rows:
             path = item.filename
-            require(not path.startswith("/") and not path.startswith("\\\\")
-                    and "\\\\" not in path and ".." not in Path(path).parts
+            require(not path.startswith("/") and not path.startswith("\\")
+                    and "\\" not in path and ".." not in Path(path).parts
                     and item.file_size <= 80 * 1024 * 1024,
                     "ARTIFACT_ARCHIVE_INVALID")
         if category in ("nabhold", "zuribeans", "thamani"):
