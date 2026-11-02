@@ -175,7 +175,15 @@ def main():
             require(args.input is not None and not args.full and args.base is None and args.head is None)
             require(args.input.is_file() and not args.input.is_symlink()
                     and args.input.stat().st_size <= 32768)
-            data = verify_chain(json.loads(args.input.read_text(encoding='utf-8'), object_pairs_hook=unique_pairs))
+            document = json.loads(args.input.read_text(encoding='utf-8'), object_pairs_hook=unique_pairs)
+            require(isinstance(document, dict))
+            if document.get('schema') == VERSION:
+                data = verify_chain(document)
+            elif document.get('schema') == 'infrastructure.dev11.graph.v1':
+                from dev11_graph_assurance import verify_graph
+                data = verify_graph(document)
+            else:
+                raise Refused('DEV11_INPUT_REFUSED')
         value = json.dumps(data, sort_keys=True, separators=(',', ':')) + '\n'
         if args.output:
             require(not args.output.is_symlink() and args.output.parent.is_dir())
