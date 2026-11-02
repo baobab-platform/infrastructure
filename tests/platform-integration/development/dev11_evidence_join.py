@@ -87,6 +87,16 @@ LABELS = {
         "steps": {"native": "INT-02 inside the integration devcontainer",
                   "teardown": "Destroy any disposable resources left behind"},
     },
+    "l4_erp_native": {
+        "repo": "baobab-erp", "workflow": ".github/workflows/dev11-real-native-engine.yml",
+        "job": "Actual Hydra and CP authority, RabbitMQ, ERP and JVM veto native order",
+        "artifact": "dev11-real-hydra-cp-native-jvm-engine-local",
+        "steps": {
+            "real_engine": "Build REAL iDempiere13 JVM with finance veto, then real Gate D OSGi acceptance driver",
+            "native_process": "Actual CP/Ory, RabbitMQ, durable inbox, protected JVM, independent CP/native/negative tests",
+            "teardown": "Retain only sanitised engine-local independent receipts",
+        },
+    },
     "l4_bff_trade": {
         "repo": "infrastructure", "workflow": ".github/workflows/dev11-connected-bff-trade.yml",
         "job": "Current IAM/CP and native BFF Trade W3C allow/deny/teardown",
@@ -107,6 +117,7 @@ CLOSED = {
     "INT02_NATIVE_RECEIPT_INVALID", "BFF_NATIVE_RECEIPT_INVALID",
     "PROTECTED_EVIDENCE_FORBIDDEN",
     "OTLP_EXPORTER_RECEIPT_INVALID", "RABBIT_CONNECTED_RECEIPT_INVALID",
+    "ERP_NATIVE_CONNECTED_RECEIPT_INVALID",
     "PLAYWRIGHT_RESULT_INVALID", "LIGHTHOUSE_RESULT_INVALID",
     "STATIC_BUDGET_RESULT_INVALID",
 }
@@ -292,6 +303,17 @@ def verify_zip(blob, claimed_digest, category):
                        or x.endswith("/dev11-exported-runtime.json")]
             require(len(matches) == 1, "OTLP_EXPORTER_RECEIPT_INVALID")
             return untrusted_json(archive.read(matches[0]))
+        if category == "l4_erp_native":
+            def receipt(suffix):
+                rows = [n for n in names if n == suffix or n.endswith("/" + suffix)]
+                require(len(rows) == 1, "ERP_NATIVE_CONNECTED_RECEIPT_INVALID")
+                return untrusted_json(archive.read(rows[0]))
+            return {
+                "engine": receipt("dev11-engine-local.json"),
+                "native": receipt("dev11-native-effect.json"),
+                "lineage": receipt("dev11-cp-jvm-lineage.json"),
+                "teardown": receipt("dev09-cleanup.json"),
+            }
         if category == "l4_rabbit":
             def exact(suffix):
                 matches = [x for x in names if x == suffix or x.endswith("/" + suffix)]
@@ -319,6 +341,41 @@ def native_receipt(category, value, pins):
                 and value["parent_edges"] >= 1
                 and value.get("production_authorized") is False,
                 "OTLP_EXPORTER_RECEIPT_INVALID")
+        return
+    if category == "l4_erp_native":
+        e = value.get("engine")
+        n = value.get("native")
+        a = value.get("lineage")
+        t = value.get("teardown")
+        require(all(type(x) is dict for x in (e, n, a, t))
+                and e.get("schema") == "erp.dev11.real-hydra-cp-rabbit-jvm-engine-local.v1"
+                and e.get("real_hydra_workload_token_observed") is True
+                and e.get("real_cp_runtime_context_and_mandate_observed") is True
+                and e.get("real_rabbitmq_durable_signed_event_to_erp_inbox") is True
+                and e.get("real_cp_authorized_idempiere_jvm_sales_order") is True
+                and e.get("independent_native_order_and_cp_lineage_readback") is True
+                and e.get("real_live_cp_mandate_revocation_denied_next_order") is True
+                and e.get("real_broker_redelivery_one_native_order") is True
+                and e.get("synthetic_trade_origin_not_authorized_commitment") is True
+                and e.get("full_medusa_buyer_commitment_proven") is False
+                and e.get("independent_exported_trace_graph_proven") is False
+                and e.get("l4_ops_01") == "BLOCKED"
+                and e.get("protected_acceptance") is False
+                and n.get("schema") == "erp.dev11.independent-real-native-order.v1"
+                and n.get("native_order_effect_qualified") is True
+                and n.get("native_jvm_authority_attribution_observed") is True
+                and n.get("l4_ops_01") == "BLOCKED"
+                and a.get("schema") == "baobab.erp.dev11.independent-cp-jvm-lineage.v1"
+                and a.get("source") == "TWO_INDEPENDENT_POSTGRES_READ_ONLY_OBSERVERS"
+                and a.get("immutable_cp_decisions_match_jvm_native_attributions") is True
+                and a.get("native_cp_lineage_qualified") is True
+                and a.get("independent_maker_checker_mandate_history") is True
+                and a.get("l4_ops_01") == "BLOCKED"
+                and t.get("status") == "COMPLETE"
+                and t.get("remaining") == {"container": 0, "network": 0, "volume": 0}
+                and t.get("temporary_directory_removed") is True
+                and t.get("host_or_image_teardown") is False,
+                "ERP_NATIVE_CONNECTED_RECEIPT_INVALID")
         return
     if category == "l4_rabbit":
         connected = value.get("connected")
@@ -429,7 +486,9 @@ def verify_one(name, binding, pins, api, download):
     require(run.get("status") == "completed", "RUN_NOT_COMPLETE")
     require(run.get("conclusion") == "success", "RUN_FAILED")
     if name.startswith("l4_"):
-        required_sha = pins["baobab-trade"] if name == "l4_rabbit" else pins["infrastructure"]
+        required_sha = (pins["baobab-trade"] if name == "l4_rabbit" else
+                        pins["baobab-erp"] if name == "l4_erp_native" else
+                        pins["infrastructure"])
         require(sha == required_sha, "RUN_SOURCE_MISMATCH")
     else:
         require(sha == pins[name], "RUN_SOURCE_MISMATCH")
@@ -479,6 +538,14 @@ def verify_one(name, binding, pins, api, download):
         detail = {"actual_otlp_exporter_and_query": "PASS",
                   "disposable_teardown": "PASS",
                   "native_authority_or_effect": "NOT_PROVEN"}
+    elif name == "l4_erp_native":
+        detail = {
+            "real_hydra_cp_broker_native_idempiere": "PASS",
+            "independently_verified_cp_jvm_lineage": "PASS",
+            "isolated_native_order_and_cleanup": "PASS",
+            "real_medusa_buyer_commitment": "NOT_PROVEN",
+            "cross_system_otel_lineage": "NOT_PROVEN",
+        }
     elif name == "l4_rabbit":
         detail = {"real_trade_rabbit_erp_admission": "PASS",
                   "independently_exported_component_spans": "PASS",
@@ -509,18 +576,22 @@ def join(bindings, pins, api, download):
             rows[name] = {"result": "BLOCKED", "reason": "GITHUB_EVIDENCE_UNAVAILABLE"}
     all_verified = all(row["result"] == "PASS" for row in rows.values())
     # Actual cross-collector exporter and real broker/inbox component tests
-    # are independently joined, but iDempiere's governed native posting is
-    # not yet one of these seven proofs. Never promote a component test to
+    # and real iDempiere engine-local readback can be independently joined.
+    # Neither synthetic ERP-A order provenance nor disjoint component traces
+    # establish genuine Medusa buyer commitment or one end-to-end L4 run.
+    # Never promote an engine-local/component test to
     # L4-OPS-01, regardless of individual GitHub green statuses.
     return {"schema": "infrastructure.dev11.l4-ops-01-join.v1",
             "run_class": "INDEPENDENT_GITHUB_EVIDENCE_JOIN",
             "join_http_and_estates_verified": all_verified,
             "component_and_estates_verified": all_verified,
+            "native_idempiere_engine_local_verified":
+                rows["l4_erp_native"]["result"] == "PASS",
             "exporter_and_broker_verified": (
                 rows["l4_exporter"]["result"] == "PASS" and
                 rows["l4_rabbit"]["result"] == "PASS"),
             "l4_ops_01": "BLOCKED",
-            "l4_ops_01_reason": "NATIVE_IDEMPIERE_EFFECT_AND_FULL_DISTRIBUTED_AUTHORITY_NOT_QUALIFIED"
+            "l4_ops_01_reason": "GOVERNED_MEDUSA_COMMITMENT_AND_CROSS_ENGINE_TRACE_NOT_PROVEN"
                                 if all_verified else "CONNECTED_OR_ESTATE_EVIDENCE_INCOMPLETE",
             "protected_acceptance": False,
             "production_authorized": False, "sources": rows}
