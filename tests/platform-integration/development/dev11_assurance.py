@@ -85,12 +85,10 @@ def verify_chain(obj):
     results = [r['result'] for r in rows]
     aggregate = 'PASS' if all(r == 'PASS' for r in results) else (
         'FAIL' if 'FAIL' in results else 'BLOCKED' if 'BLOCKED' in results else 'NOT_RUN')
-    qualified = (aggregate == 'PASS' and chain['runtime_observed'] is True
-                 and chain['teardown_verified'] is True
-                 and chain['evidence_class'] == 'REAL_COMPONENT_SYNTHETIC_DATA')
+    qualified = False  # Caller-reported fields cannot establish independent runtime proof.
     return {'schema': VERSION, 'source_sha': chain['source_sha'],
             'profile': chain['profile'], 'scenario': chain['scenario'],
-            'result': aggregate, 'runtime_qualified': qualified,
+            'result': aggregate, 'trace_chain_valid': True, 'runtime_qualified': qualified,
             'runtime_observed': chain['runtime_observed'],
             'teardown_verified': chain['teardown_verified'],
             'cause_codes': sorted({r['cause'] for r in rows if r['cause'] != 'NONE'}),
