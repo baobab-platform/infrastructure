@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import io
+import math
 import json
 import os
 from pathlib import Path
@@ -84,6 +85,8 @@ CLOSED = {
     "ARTIFACT_ARCHIVE_INVALID", "BROWSER_REPORT_MISSING",
     "INT02_NATIVE_RECEIPT_INVALID", "BFF_NATIVE_RECEIPT_INVALID",
     "PROTECTED_EVIDENCE_FORBIDDEN",
+    "PLAYWRIGHT_RESULT_INVALID", "LIGHTHOUSE_RESULT_INVALID",
+    "STATIC_BUDGET_RESULT_INVALID",
 }
 MAX_ZIP = 200 * 1024 * 1024
 
@@ -98,11 +101,141 @@ def require(ok, code):
         raise Blocked(code)
 
 def untrusted_json(data):
-    require(len(data) <= 2_000_000, "ARTIFACT_ARCHIVE_INVALID")
+    require(len(data) <= 12_000_000, "ARTIFACT_ARCHIVE_INVALID")
     try:
         return json.loads(data)
     except (ValueError, UnicodeError):
         raise Blocked("ARTIFACT_ARCHIVE_INVALID") from None
+
+# These are the existing approved owner budgets, not values supplied by an
+# untrusted artifact. Raising a figure in an estate JSON can never grant PASS.
+BUDGETS = (800 * 1024, 250 * 1024, 64 * 1024, 250 * 1024)
+GATES = ("functional", "accessibility", "visual", "lighthouse")
+
+def finite_number(value, minimum=0):
+    return type(value) in (int, float) and math.isfinite(value) and value >= minimum
+
+def _one_path(names, expected, reason):
+    found = [name for name in names if name == expected]
+    require(len(found) == 1, reason)
+    return found[0]
+
+def _browser_summary(archive, names, owner):
+    required_gates = (*GATES, "logistics") if owner == "thamani" else GATES
+    counts = {}
+    for gate in required_gates:
+        name = _one_path(names, f"reports/dev11-{gate}-playwright.json",
+                         "PLAYWRIGHT_RESULT_INVALID")
+        html = f"playwright-report/dev11-{gate}/index.html"
+        require(html in names, "BROWSER_REPORT_MISSING")
+        summary = untrusted_json(archive.read(name))
+        require(type(summary) is dict and isinstance(summary.get("suites"), list)
+                and summary["suites"] and isinstance(summary.get("stats"), dict),
+                "PLAYWRIGHT_RESULT_INVALID")
+        stats = summary["stats"]
+        require(type(stats.get("expected")) is int and stats["expected"] > 0
+                and stats.get("unexpected") == 0
+                and stats.get("flaky") == 0
+                and isinstance(summary.get("errors", []), list)
+                and not summary.get("errors"),
+                "PLAYWRIGHT_RESULT_INVALID")
+        counts[gate] = stats["expected"]
+
+    budget = untrusted_json(archive.read(
+        _one_path(names, "reports/static-budget.json", "STATIC_BUDGET_RESULT_INVALID")))
+    require(type(budget) is dict and budget.get("profile") == "CI_PRODUCTION_BUILD"
+            and budget.get("oversized") == []
+            and isinstance(budget.get("limits"), dict),
+            "STATIC_BUDGET_RESULT_INVALID")
+    if owner == "nabhold":
+        keys = ("totalJavaScript", "largestJavaScriptChunk",
+                "totalCss", "largestPublicImage")
+        measured = budget.get("measured")
+        require(type(measured) is list and len(measured) == 4,
+                "STATIC_BUDGET_RESULT_INVALID")
+        labels = ("All emitted client JavaScript", "Largest JavaScript chunk",
+                  "All emitted CSS", "Largest public raster image")
+        values = []
+        for i, row in enumerate(measured):
+            require(type(row) is dict and
+                    isinstance(row.get("label"), str) and
+                    row["label"].startswith(labels[i]) and
+                    row.get("max") == BUDGETS[i] and
+                    finite_number(row.get("actual")) and row["actual"] <= BUDGETS[i],
+                    "STATIC_BUDGET_RESULT_INVALID")
+            values.append(row["actual"])
+    else:
+        keys = ("totalJavaScript", "largestJavaScriptChunk",
+                "totalCss", "largestPublicImage") if owner == "zuribeans" else (
+                    "allClientJavaScript", "largestClientChunk",
+                    "allCss", "largestPublicImage")
+        measured = budget.get("measured")
+        require(type(measured) is dict and set(measured) == set(keys),
+                "STATIC_BUDGET_RESULT_INVALID")
+        values = [measured[k] for k in keys]
+        require(all(finite_number(v) and v <= BUDGETS[i]
+                    for i, v in enumerate(values)), "STATIC_BUDGET_RESULT_INVALID")
+    require(set(budget["limits"]) == set(keys)
+            and all(budget["limits"][key] == BUDGETS[i]
+                    for i, key in enumerate(keys)),
+            "STATIC_BUDGET_RESULT_INVALID")
+
+    routes = ("home", "quotes") if owner == "thamani" else ("home", "markets")
+    lab = {}
+    for route in routes:
+        matching = [name for name in names if
+                    name.startswith("test-results/dev11-lighthouse/") and
+                    name.endswith("/lighthouse-" + route + ".json")]
+        require(len(matching) == 1, "LIGHTHOUSE_RESULT_INVALID")
+        result = untrusted_json(archive.read(matching[0]))
+        require(type(result) is dict and isinstance(result.get("categories"), dict)
+                and isinstance(result.get("audits"), dict),
+                "LIGHTHOUSE_RESULT_INVALID")
+        categories = result["categories"]
+        minimums = {"performance": 0.9, "accessibility": 0.95,
+                    "best-practices": 0.95}
+        if owner != "thamani" or route == "home":
+            minimums["seo"] = 0.95
+        for key, minimum in minimums.items():
+            entry = categories.get(key)
+            value = entry.get("score") if isinstance(entry, dict) else None
+            require(finite_number(value) and minimum <= value <= 1,
+                    "LIGHTHOUSE_RESULT_INVALID")
+        audits = result["audits"]
+        cls = audits.get("cumulative-layout-shift")
+        lcp = audits.get("largest-contentful-paint")
+        cls_value = cls.get("numericValue") if isinstance(cls, dict) else None
+        lcp_value = lcp.get("numericValue") if isinstance(lcp, dict) else None
+        require(finite_number(cls_value) and cls_value <= 0.1
+                and finite_number(lcp_value), "LIGHTHOUSE_RESULT_INVALID")
+        resource = audits.get("resource-summary")
+        details = resource.get("details") if isinstance(resource, dict) else None
+        items = details.get("items") if isinstance(details, dict) else None
+        scripts = [row for row in items if isinstance(row, dict)
+                   and row.get("resourceType") == "script"] if isinstance(items, list) else []
+        require(len(scripts) == 1 and finite_number(scripts[0].get("transferSize"))
+                and scripts[0]["transferSize"] <= 250 * 1024,
+                "LIGHTHOUSE_RESULT_INVALID")
+        lab[route] = {
+            "performance_score": round(categories["performance"]["score"] * 100),
+            "accessibility_score": round(categories["accessibility"]["score"] * 100),
+            "best_practices_score": round(categories["best-practices"]["score"] * 100),
+            "seo_score": round(categories["seo"]["score"] * 100) if
+                         "seo" in minimums else None,
+            "cls": round(cls_value, 4),
+            "lcp_lab_ms": round(lcp_value),
+            "transferred_script_bytes": scripts[0]["transferSize"],
+        }
+    # This is an independently projected, allowlisted numerical summary;
+    # browser originals (including screenshots and raw Lighthouse JSON) stay
+    # solely within their owning GitHub Actions artifact.
+    return {
+        "playwright_passed_tests": counts,
+        "measured_static_bytes": dict(zip(
+            ("javascript_total", "javascript_largest", "css_total", "image_largest"),
+            values)),
+        "lighthouse_labs": lab,
+    }
 
 def verify_zip(blob, claimed_digest, category):
     require(len(blob) <= MAX_ZIP and blob[:4] == b"PK\x03\x04", "ARTIFACT_ARCHIVE_INVALID")
@@ -120,9 +253,7 @@ def verify_zip(blob, claimed_digest, category):
                     and item.file_size <= 80 * 1024 * 1024,
                     "ARTIFACT_ARCHIVE_INVALID")
         if category in ("nabhold", "zuribeans", "thamani"):
-            require(any(x.endswith("playwright-report/index.html") for x in names)
-                    and any("test-results/" in x for x in names),
-                    "BROWSER_REPORT_MISSING")
+            return _browser_summary(archive, names, category)
         if category == "l4_iam_cp":
             matches = [x for x in names if x.endswith("-int02.json")]
             require(len(matches) == 1, "INT02_NATIVE_RECEIPT_INVALID")
@@ -252,8 +383,12 @@ def verify_one(name, binding, pins, api, download):
         native_receipt(name, receipt, pins)
     return {"result": "PASS", "run_id": run_id, "source_sha": sha,
             "job_id": job.get("id"), "artifact_id": art.get("id"),
+            "run_url": f"https://github.com/{repo}/actions/runs/{run_id}",
             "artifact_zip_sha256": digest,
-            "checks": {key: "PASS" for key in spec["steps"]}}
+            "checks": {key: "PASS" for key in spec["steps"]},
+            **({"measured_results": receipt} if not name.startswith("l4_") else
+               {"native_runtime_negatives": "PASS",
+                "independent_teardown": "PASS"})}
 
 def join(bindings, pins, api, download):
     rows = {}
