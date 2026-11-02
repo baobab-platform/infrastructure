@@ -150,13 +150,28 @@ services:
     image: otel/opentelemetry-collector-contrib:0.159.0
     command: [--config=/etc/otelcol-contrib/config.yaml]
     volumes:
-      - ./otel/collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ${OTEL_COLLECTOR_CONFIG:-./otel/collector.yaml}:/etc/otelcol-contrib/config.yaml:ro
     ports:
       - 127.0.0.1:${OTEL_GRPC_PORT:-4317}:4317
       - 127.0.0.1:${OTEL_HTTP_PORT:-4318}:4318
       - 127.0.0.1:${OTEL_HEALTH_PORT:-13133}:13133
     networks:
       - observability
+
+  # Explicitly requested DEV-11 disposable trace storage. Never expose its
+  # query UI over the host network or enable this profile in production.
+  jaeger:
+    <<: *service-defaults
+    image: jaegertracing/jaeger:2.22.0
+    profiles: [dev11]
+    restart: "no"
+    networks:
+      - observability
+    healthcheck:
+      test: [CMD, /jaeger, --version]
+      interval: 20s
+      timeout: 5s
+      retries: 3
 
   smoke:
     image: curlimages/curl:8.16.0
