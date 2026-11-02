@@ -113,6 +113,24 @@ def verify_graph(obj):
             require(any(metadata[link] == ("EVENT_PUBLISH", event_id)
                         for link in (ref(v) for v in indexed[key]["links"])))
 
+    # Roles alone are insufficient: refuse a fabricated disconnected/parallel
+    # set of services that never formed a BFF -> issuer -> CP -> engine -> outbox
+    # causal path. Intervening child spans and legitimate branches are allowed.
+    from functools import lru_cache
+    required_path = ("bff", "issuer", "cp", "engine", "outbox")
+
+    @lru_cache(maxsize=64 * len(required_path))
+    def path_matches(key, position):
+        role = indexed[key]["service_role"]
+        if role == required_path[position]:
+            if position == 0:
+                return key == roots[0]
+            return any(path_matches(pred, position - 1) for pred in edges[key])
+        return any(path_matches(pred, position) for pred in edges[key])
+
+    require(any(path_matches(k, len(required_path) - 1)
+                for k in indexed if indexed[k]["service_role"] == "outbox"))
+
     aggregate = ("FAIL" if "FAIL" in outcomes else
                  "BLOCKED" if "BLOCKED" in outcomes else
                  "NOT_RUN" if "NOT_RUN" in outcomes else "PASS")
