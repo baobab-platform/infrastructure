@@ -132,6 +132,7 @@ def artifact_data(name):
                 "independent_native_order_and_cp_lineage_readback": True,
                 "real_live_cp_mandate_revocation_denied_next_order": True,
                 "real_broker_redelivery_one_native_order": True,
+                "real_jvm_committed_then_worker_outcome_lost_and_adopted": True,
                 "synthetic_trade_origin_not_authorized_commitment": True,
                 "full_medusa_buyer_commitment_proven": False,
                 "independent_exported_trace_graph_proven": False,
@@ -143,6 +144,7 @@ def artifact_data(name):
                 "native_jvm_authority_attribution_observed": True,
                 "l4_ops_01": "BLOCKED",
             }
+            recovered = {**native, "adopted_after_recovery": True}
             lineage = {
                 "schema": "baobab.erp.dev11.independent-cp-jvm-lineage.v1",
                 "source": "TWO_INDEPENDENT_POSTGRES_READ_ONLY_OBSERVERS",
@@ -159,6 +161,7 @@ def artifact_data(name):
             for file, receipt in (
                     ("dev11-engine-local.json", engine),
                     ("dev11-native-effect.json", native),
+                    ("dev11-native-unknown-adopted.json", recovered),
                     ("dev11-cp-jvm-lineage.json", lineage),
                     ("dev09-cleanup.json", teardown)):
                 archive.writestr(file, json.dumps(receipt))
