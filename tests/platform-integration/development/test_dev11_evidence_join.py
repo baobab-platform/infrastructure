@@ -360,6 +360,46 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         self.assertFalse(result["production_authorized"])
         self.assertFalse(result["protected_acceptance"])
 
+    def test_real_exporter_component_does_not_prove_native_business_effect(self):
+        record = self.check("l4_exporter")
+        self.assertEqual(record["actual_otlp_exporter_and_query"], "PASS")
+        self.assertEqual(record["native_authority_or_effect"], "NOT_PROVEN")
+
+    def test_signed_rabbit_erp_inbox_and_three_exported_services_join(self):
+        record = self.check("l4_rabbit")
+        self.assertEqual(record["independently_exported_component_spans"], "PASS")
+        self.assertEqual(record["native_idempiere_business_effect"], "NOT_PROVEN")
+
+    def test_rabbit_workflow_stale_erp_companion_head_denied(self):
+        pr = "/repos/baobab-platform/baobab-erp/pulls/125"
+        self.gh.urls[pr]["head"]["sha"] = "0" * 40
+        with self.assertRaises(Blocked) as error:
+            self.check("l4_rabbit")
+        self.assertEqual(error.exception.code, "RUN_STALE_HEAD")
+
+    def test_false_broker_ack_report_cannot_be_admitted(self):
+        key = ("baobab-platform/baobab-trade", 5)
+        original = self.gh.blobs[key]
+        with zipfile.ZipFile(io.BytesIO(original)) as archive:
+            rows = {name: archive.read(name) for name in archive.namelist()}
+        report = json.loads(rows["connected.json"])
+        report["real_rabbitmq_publisher_confirmed"] = False
+        rows["connected.json"] = json.dumps(report).encode()
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w") as archive:
+            for path, body in rows.items():
+                archive.writestr(path, body)
+        blob = out.getvalue()
+        self.gh.blobs[key] = blob
+        art = self.gh.urls[
+            "/repos/baobab-platform/baobab-trade/actions/runs/1005/artifacts?per_page=100"
+        ]["artifacts"][0]
+        art["digest"] = "sha256:" + hashlib.sha256(blob).hexdigest()
+        art["size_in_bytes"] = len(blob)
+        with self.assertRaises(Blocked) as error:
+            self.check("l4_rabbit")
+        self.assertEqual(error.exception.code, "RABBIT_CONNECTED_RECEIPT_INVALID")
+
     def test_missing_one_owner_is_explicit_blocker(self):
         del self.gh.bindings["thamani"]
         result = join(self.gh.bindings, PINS, self.gh.api, self.gh.download)
