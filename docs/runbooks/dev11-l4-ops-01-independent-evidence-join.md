@@ -8,7 +8,7 @@
 
 An estate Playwright screenshot ZIP, its own summary, or a green *image build* is not an independent confirmation of functional browser execution, accessibility, visual regression or performance. Infrastructure `tests/platform-integration/development/dev11_evidence_join.py` is a separate, read-only GitHub Actions observer. It checks the **actual** Actions run ID, exact immutable SHA, current PR/branch head, workflow filename, successful *named* job and all required successful *named* steps before it downloads the estate-owned artifact.
 
-There are five required independently pinned runs: Infrastructure native issuer→CP, Infrastructure native BFF→IAM/CP→Trade, Nabhold quality, ZuriBeans quality and Thamani quality. The last three estates retain their own approved test suites, branding, browser matrices, screenshot baselines and budgets. The central verifier does not re-run or forge these suites.
+There are **seven** required independently pinned runs: Infrastructure native issuer→CP, Infrastructure native BFF→IAM/CP→Trade, Infrastructure real SDK→Collector→Jaeger exporter, Trade-native Medusa→RabbitMQ→independent ERP inbox + exported component lineage, Nabhold quality, ZuriBeans quality and Thamani quality. The last three estates retain their own approved test suites, branding, browser matrices, screenshot baselines and budgets. The central verifier does not re-run or forge these suites.
 
 For each estate the verified mandatory step outcomes are:
 
@@ -26,11 +26,11 @@ The verifier downloads each owner artifact using a **read-only GitHub Actions AP
 
 The Infrastructure IAM/CP artifact must include the actual seven W3C/current-authority observations and independently verified teardown. The Infrastructure BFF/Trade artifact must include current CP/Trade/ZuriBeans source pins, the six real native HTTP allow/deny/log-correlation checks, run-owned resources and issuance/revocation cleanup. Both owning workflows must pass. An *all-success source graph* without verified native evidence cannot pass.
 
-**Not yet complete:** the native real **OTLP collector / independently exported span graph**, real asynchronous RabbitMQ/outbox publisher→downstream consumer linkage, a business-effect/replay proof at the consumer's own transactional boundary, and failure diagnosis against those actual spans. The current native HTTP and deliberately failed-broker PostgreSQL tests do **not** provide those. Consequently, the join output's `l4_ops_01` remains **BLOCKED** even if `join_http_and_estates_verified` becomes `true`. Only a subsequent separately reviewed, real native collector + broker/consumer evidence gate may change this.
+**Not yet complete:** Infrastructure #72 now proposes real SDK→Collector→Jaeger export; Trade #188 and ERP #125 now propose a connected native Medusa PostgreSQL outbox→RabbitMQ quorum queue→independent ERP PostgreSQL inbox execution **with a real post-commit/pre-ACK process crash and recovery**, separate signed-payload denial/DLQ, and an independent backend query of the three native component span services. **These are unqualified current-head candidate workflows until their actual CI results pass**. A full authenticated BFF/IAM/CP→Trade→ERP trace plus actual current-authority iDempiere business-effect/replay/uncertain-outcome evidence is still missing. Consequently, `l4_ops_01` remains **BLOCKED** even when all seven component/estate runs eventually join. Never mistake a synthetic outbox event or a durable ERP inbox receipt for a native financial consequence.
 
 ## Execute independent verification
 
-Use GitHub Actions: `Infrastructure → DEV-11 independent L4-OPS-01 and estate evidence custody → Run workflow`. Supply the *single* `bindings_json` input with **actual current successful run IDs and immutable SHAs** for all five owners. The manifest uses the following shape (replace every placeholder; these are not real evidence):
+Use GitHub Actions: `Infrastructure → DEV-11 independent L4-OPS-01 and estate evidence custody → Run workflow`. Supply the *single* `bindings_json` input with **actual current successful run IDs and immutable SHAs** for all seven required owner/connected profiles. The manifest uses the following shape (replace every placeholder; these are not real evidence):
 
 ```json
 {
@@ -40,6 +40,7 @@ Use GitHub Actions: `Infrastructure → DEV-11 independent L4-OPS-01 and estate 
     "cp": "CP_HEAD_40_HEX",
     "baobab-cp": "CP_HEAD_40_HEX",
     "baobab-trade": "TRADE_HEAD_40_HEX",
+    "baobab-erp": "ERP_HEAD_40_HEX",
     "nabhold": "NABHOLD_HEAD_40_HEX",
     "zuribeans": "ZURIBEANS_HEAD_40_HEX",
     "thamani": "THAMANI_HEAD_40_HEX"
@@ -47,6 +48,8 @@ Use GitHub Actions: `Infrastructure → DEV-11 independent L4-OPS-01 and estate 
   "runs": {
     "l4_iam_cp": {"run_id": 0, "sha": "INFRA_HEAD_40_HEX"},
     "l4_bff_trade": {"run_id": 0, "sha": "INFRA_HEAD_40_HEX"},
+    "l4_exporter": {"run_id": 0, "sha": "INFRA_HEAD_40_HEX"},
+    "l4_rabbit": {"run_id": 0, "sha": "TRADE_HEAD_40_HEX"},
     "nabhold": {"run_id": 0, "sha": "NABHOLD_HEAD_40_HEX"},
     "zuribeans": {"run_id": 0, "sha": "ZURIBEANS_HEAD_40_HEX"},
     "thamani": {"run_id": 0, "sha": "THAMANI_HEAD_40_HEX"}
@@ -54,7 +57,7 @@ Use GitHub Actions: `Infrastructure → DEV-11 independent L4-OPS-01 and estate 
 }
 ```
 
-Access: `GITHUB_TOKEN` with `actions:read` may access these currently public repository artifacts; otherwise configure `DEV11_EVIDENCE_READ_TOKEN` as a *read-only* GitHub App/PAT secret scoped to the necessary five repositories. Missing/insufficient access is **BLOCKED**, not a skip. No write permission to another repository is used or needed.
+Access: `GITHUB_TOKEN` with `actions:read` may access these currently public repository artifacts; otherwise configure `DEV11_EVIDENCE_READ_TOKEN` as a *read-only* GitHub App/PAT secret scoped to the necessary seven evidence profiles and their repositories. Missing/insufficient access is **BLOCKED**, not a skip. No write permission to another repository is used or needed.
 
 Run receives a scrubbed `dev11-l4-ops-01-independent-join` artifact with `dev11-l4-ops-01.json` and `.sha256`. The independent job deliberately exits non-zero on incomplete connected evidence and on incomplete native OTLP/consumer qualification. Preserve both that outcome and the detailed per-owner cause in the audit.
 
