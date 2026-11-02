@@ -53,6 +53,15 @@ class Dev11GraphTests(unittest.TestCase):
         graph["spans"].append(extra)
         self.assertEqual(verify_graph(graph)["span_count"], 7)
 
+    def test_all_roles_present_but_wrong_causal_order_is_refused(self):
+        graph = make_graph()
+        # Preserve all roles and event IDs while making CP a child of the BFF,
+        # not the issuer. A set-membership-only implementation would pass.
+        graph["spans"][2]["parent"] = {
+            "trace_id": "a" * 32, "span_id": f"{1:016x}"}
+        with self.assertRaises(Refused):
+            verify_graph(graph)
+
     def test_missing_broken_and_cross_trace_parents_fail_closed(self):
         for edit in (
             lambda x: x["spans"][2]["parent"].update(span_id="f" * 16),
