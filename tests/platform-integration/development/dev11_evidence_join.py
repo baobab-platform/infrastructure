@@ -311,6 +311,7 @@ def verify_zip(blob, claimed_digest, category):
             return {
                 "engine": receipt("dev11-engine-local.json"),
                 "native": receipt("dev11-native-effect.json"),
+                "unknown_adopted": receipt("dev11-native-unknown-adopted.json"),
                 "lineage": receipt("dev11-cp-jvm-lineage.json"),
                 "teardown": receipt("dev09-cleanup.json"),
             }
@@ -345,9 +346,10 @@ def native_receipt(category, value, pins):
     if category == "l4_erp_native":
         e = value.get("engine")
         n = value.get("native")
+        recovered = value.get("unknown_adopted")
         a = value.get("lineage")
         t = value.get("teardown")
-        require(all(type(x) is dict for x in (e, n, a, t))
+        require(all(type(x) is dict for x in (e, n, recovered, a, t))
                 and e.get("schema") == "erp.dev11.real-hydra-cp-rabbit-jvm-engine-local.v1"
                 and type(e.get("source_pins")) is dict
                 and e["source_pins"].get("baobab-cp") == pins["cp"]
@@ -360,6 +362,7 @@ def native_receipt(category, value, pins):
                 and e.get("independent_native_order_and_cp_lineage_readback") is True
                 and e.get("real_live_cp_mandate_revocation_denied_next_order") is True
                 and e.get("real_broker_redelivery_one_native_order") is True
+                and e.get("real_jvm_committed_then_worker_outcome_lost_and_adopted") is True
                 and e.get("synthetic_trade_origin_not_authorized_commitment") is True
                 and e.get("full_medusa_buyer_commitment_proven") is False
                 and e.get("independent_exported_trace_graph_proven") is False
@@ -368,6 +371,11 @@ def native_receipt(category, value, pins):
                 and n.get("schema") == "erp.dev11.independent-real-native-order.v1"
                 and n.get("native_order_effect_qualified") is True
                 and n.get("native_jvm_authority_attribution_observed") is True
+                and recovered.get("schema") == "erp.dev11.independent-real-native-order.v1"
+                and recovered.get("native_order_effect_qualified") is True
+                and recovered.get("native_jvm_authority_attribution_observed") is True
+                and recovered.get("adopted_after_recovery") is True
+                and recovered.get("l4_ops_01") == "BLOCKED"
                 and n.get("l4_ops_01") == "BLOCKED"
                 and a.get("schema") == "baobab.erp.dev11.independent-cp-jvm-lineage.v1"
                 and a.get("source") == "TWO_INDEPENDENT_POSTGRES_READ_ONLY_OBSERVERS"
