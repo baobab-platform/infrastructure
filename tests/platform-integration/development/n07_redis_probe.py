@@ -8,7 +8,6 @@ It proves Redis transport/custody primitives, NOT a genuine Thamani session.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
