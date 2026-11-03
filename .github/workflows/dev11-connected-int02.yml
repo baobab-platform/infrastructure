@@ -21,6 +21,6 @@ jobs:
     with:
       harness_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       candidate_repository: baobab-cp
-      # Reviewed CP #458 candidate only; update to final head after correction.
-      candidate_sha: ab61e35c35028bad1090232bcf2d7c67a84ef959
+      # CP #458 is merged; pin exact accepted CP main with W3C code and preserve all original INT-02 cases.
+      candidate_sha: 6fee9fe9537409df428a2e3dd7b8f78ff8d1d456
       dev11_connected_required: true
