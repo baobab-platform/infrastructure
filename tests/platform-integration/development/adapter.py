@@ -58,7 +58,6 @@ def configure(directory, state):
         # A true disposable TLS Redis ACL, independently checked by the probe.
         # Only Thamani's run-owned namespace is available, and passwords are
         # hashed in the image-mounted ACL file rather than exposed in Compose.
-        import hashlib
         run = state['run_id']
         password = state['secrets']['redis']
         acl = ('user default off\n'
