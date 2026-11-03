@@ -6,7 +6,7 @@ It cannot independently attest execution, authority, or teardown.
 from __future__ import annotations
 
 from dev11_assurance import (
-    CASE, CAUSES, PROFILES, SHA, UUID, Refused, closed, require, traceparent,
+    CASE, CAUSES, PROFILES, SHA, UUID, closed, require, traceparent,
 )
 
 VERSION = "infrastructure.dev11.graph.v1"
