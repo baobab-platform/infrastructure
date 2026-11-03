@@ -36,6 +36,48 @@ jobs:
       - name: Validate Compose model
         run: docker compose --env-file compose/.env --file compose/compose.yaml config --quiet
 
+  dev12-physical-version-fence:
+    name: DEV-12 PostgreSQL 17 volume admission negative cases
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare disposable local project and verify absent/old/corrupt/17 cases
+        shell: bash
+        env:
+          COMPOSE_PROJECT_NAME: dev12-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          make ci-env
+          volume="${COMPOSE_PROJECT_NAME}_postgresql_data"
+          cleanup() {
+            docker volume rm -f "$volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          ./scripts/dev12-check-postgres-volume.sh | grep -q DEV12_POSTGRES_VOLUME_ABSENT
+          docker volume create "$volume" >/dev/null
+          image=postgres:17.11-alpine3.24
+          docker run --rm --network none --mount "type=volume,source=$volume,target=/pgdata" \
+            --entrypoint sh "$image" -ec 'printf 16 > /pgdata/PG_VERSION'
+          if ./scripts/dev12-check-postgres-volume.sh > "$RUNNER_TEMP/old.out" 2>&1; then
+            echo "::error::PostgreSQL 16 physical volume was admitted to PostgreSQL 17"
+            exit 1
+          fi
+          grep -q DEV12_DENIED "$RUNNER_TEMP/old.out"
+          docker run --rm --network none --mount "type=volume,source=$volume,target=/pgdata" \
+            --entrypoint sh "$image" -ec 'rm -f /pgdata/PG_VERSION; printf damaged > /pgdata/unknown'
+          if ./scripts/dev12-check-postgres-volume.sh > "$RUNNER_TEMP/unknown.out" 2>&1; then
+            echo "::error::Unidentified nonempty volume was admitted"
+            exit 1
+          fi
+          grep -q DEV12_DENIED "$RUNNER_TEMP/unknown.out"
+          docker run --rm --network none --mount "type=volume,source=$volume,target=/pgdata" \
+            --entrypoint sh "$image" -ec 'rm -f /pgdata/unknown; printf 17 > /pgdata/PG_VERSION'
+          ./scripts/dev12-check-postgres-volume.sh | grep -q DEV12_POSTGRES_VOLUME_MAJOR_17
+          echo "DEV12_VOLUME_GUARD_SOURCE_NEGATIVES_PASS; physical migration/recovery NOT qualified"
+
   # Full stack smoke is intentional but minute-heavy. Default: main, schedule, and
   # manual dispatch only — not every PR — so free-tier / limited billing still works.
   local-smoke:

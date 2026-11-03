@@ -47,6 +47,7 @@ compose() {
 }
 
 compose config --quiet
+"$repository_root/scripts/dev12-check-postgres-volume.sh"
 compose up -d --wait etcd postgresql rabbitmq redis otel-collector apisix
 compose --profile verify run --rm smoke
 compose ps
