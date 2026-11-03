@@ -3,7 +3,6 @@
 These are source contract tests, not a mocked positive real runtime receipt.
 The actual Docker services are owned by n07_disposable.py in separate CI.
 """
-import json
 from pathlib import Path
 import sys
 import tempfile
