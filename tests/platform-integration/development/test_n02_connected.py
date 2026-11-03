@@ -255,7 +255,7 @@ class N02CheckpointTests(unittest.TestCase):
                 return json.dumps(expected_container)
             if args[:3] == ["docker", "network", "inspect"]:
                 return json.dumps([{"Internal": True}])
-            self.fail("unexpected Docker source call")
+            raise AssertionError("unexpected Docker source call")
         with (patch.object(dev, "current", return_value=(self.root, state)),
               patch.object(dev, "verify_sources"),
               patch.object(dev, "compose", return_value=hydra),
