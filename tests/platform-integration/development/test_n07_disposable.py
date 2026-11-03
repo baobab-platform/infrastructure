@@ -57,6 +57,34 @@ class N07SourceTests(unittest.TestCase):
     def save(self, data):
         dev.write(self.path / "n07-redis-observation.json", data)
 
+    def test_native_n07_configuration_preserves_original_hydra_and_acl_hashing(self):
+        # Real configure path regression: the N07 digest code must not create
+        # a function-local hashlib binding before introspection is prepared.
+        source = self.path / "sources" / "baobab-iam" / "config" / "ory"
+        (source / "hydra").mkdir(parents=True)
+        (source / "kratos").mkdir(parents=True)
+        (source / "hydra" / "hydra.yml").write_text("urls: http://127.0.0.1:4444\\n")
+        (source / "kratos" / "kratos.yml").write_text("url: http://127.0.0.1:4433/\\n")
+        (source / "kratos" / "identity.schema.json").write_text("{}\\n")
+        state = {
+            "run_id": "a" * 32,
+            "n07_profile": True,
+            "secrets": {
+                "introspection": "native-introspection-key",
+                "verifier": "native-verifier-key",
+                "admin": "native-admin-key",
+                "hook": "h" * 64,
+                "redis": "r" * 64,
+            },
+        }
+        adapter.configure(self.path, state)
+        htpasswd = (self.path / "introspection.htpasswd").read_text()
+        acl = (self.path / "n07-redis.acl").read_text()
+        self.assertIn("baobab-dev-introspection:{SHA}", htpasswd)
+        self.assertIn("user n07 on #", acl)
+        self.assertNotIn(state["secrets"]["redis"], acl)
+        self.assertIn("tls-port 6380", (self.path / "n07-redis.conf").read_text())
+
     def test_real_candidate_source_lock_does_not_alter_dev04(self):
         candidate = dev.load_lock("n07-base-lock.json")
         accepted = dev.load_lock("lock.json")
