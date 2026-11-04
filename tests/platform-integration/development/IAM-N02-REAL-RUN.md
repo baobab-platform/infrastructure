@@ -199,3 +199,19 @@ TOTP synthetic user, no functioning real recovery courier or governed
 ACTIVE CP caller is evidenced. Until those exact pieces run in an
 approved disposable development host with original custody, this
 milestone's **connected browser-plus-CP acceptance remains BLOCKED**.
+# 4 November 2026 — offline ingress regression
+
+Run `bash tests/platform-integration/development/n02-ingress/syntax-check.sh`
+before starting the disposable topology. The pinned NGINX binary checks the
+actual rendered configuration as the host fixture owner, with no network,
+no capabilities, a read-only root filesystem and private read-only certificate
+mounts. Its PID file is explicitly redirected to a 0700, UID/GID-owned tmpfs.
+The previous `/var/run` mount left the image's `/run/nginx.pid` unwritable and
+failed run `41565383604` before any N02/N07 component execution.
+
+This is an offline syntax regression, never a browser, AAL2 or CP acceptance
+receipt. Shared #430 remains the consolidated unmerged authority proposal;
+CP #455 retains its accepted Shared pin. Neither this correction nor a green
+syntax check permits activating the proposed Principal reader. Preserve the
+same-run original browser/INT-03C evidence and independent teardown gates.
+

@@ -43,6 +43,11 @@ cp "$tmp/private/edge/fullchain.pem" "$tmp/private/upstream-roots.pem"
 # Run the offline syntax check as the fixture-owning host UID/GID rather than
 # capability-stripped root, which cannot traverse the host's 0700 directory.
 # Do not relax private key permissions or carry this syntax-only user to live ingress.
+# nginx -t also opens its PID file. /var/run resolves to root-owned /run in
+# this pinned image; use a private, UID-owned tmpfs and an explicit PID path.
+# Keep the certificate mount read-only, network disabled and capabilities empty.
+# References: https://nginx.org/en/docs/switches.html and
+# https://docs.docker.com/engine/storage/tmpfs/.
 # N02's exact reviewed edge-image digest, never floating nginx:latest.
 image="$(python3 - <<'PY'
 import json
@@ -62,9 +67,9 @@ timeout 120 docker run --rm \
   --security-opt no-new-privileges \
   --entrypoint /usr/sbin/nginx \
   --tmpfs /var/cache/nginx:rw,noexec,nosuid,size=16m \
-  --tmpfs /var/run:rw,noexec,nosuid,size=1m \
+  --tmpfs "/tmp/n02-nginx:rw,noexec,nosuid,nodev,size=1m,mode=0700,uid=$(id -u),gid=$(id -g)" \
   --mount "type=bind,src=$tmp/render/nginx.conf,dst=/etc/nginx/nginx.conf,readonly" \
   --mount "type=bind,src=$tmp/private,dst=/run/n02-private,readonly" \
-  "$image" -t -c /etc/nginx/nginx.conf
+  "$image" -t -e stderr -g 'pid /tmp/n02-nginx/nginx.pid;' -c /etc/nginx/nginx.conf
 
 printf '%s\n' "N02_INGRESS_SYNTAX_CHECKED_WITH_PINNED_IMAGE_SOURCE_ONLY"
