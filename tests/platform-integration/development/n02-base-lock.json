@@ -7,7 +7,7 @@
     "shared": "7f547ccdd759208355ef9224d2177929f4bf224e",
     "baobab-cp": "a5e5458ea6651657a66698b60b765eca5774daf4",
     "baobab-iam": "225ba193b4088960c5b64033bfce0f755ac347fb",
-    "zuribeans": "e4bc3b9582919f004bd86dfc70351fdd0027b1a8"
+    "zuribeans": "d08643d5275dff8a25b60e0181dadec6c26ee840"
   },
   "images": {
     "postgres": "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
