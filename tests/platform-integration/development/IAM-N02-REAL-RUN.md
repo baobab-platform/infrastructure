@@ -4,7 +4,7 @@
 This is a private **development** execution only under EA v2.3 / EA-DEV,
 ADR-SHARED-042/043 and current IAM ADRs. It does not activate staging,
 production, a canonical provider, legal mandate, customer or Trade buyer
-permission. All named PRs remain review-held and unmerged.
+permission. Shared #430 is accepted; the CP, IAM and estate companion PRs are still review-held and unmerged.
 
 ## Exact source and ownership gate
 
