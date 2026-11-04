@@ -123,8 +123,19 @@ def artifact_data(name):
             }
             sources = {"trade_sha": TRADE, "erp_sha": PINS["baobab-erp"],
                        "infrastructure_sha": HEAD}
+            origin = {
+                "schema": "baobab.trade.dev11.native-origin.v1",
+                "classification": "SOURCE_SQL_READBACK_ONLY",
+                "reason": "NATIVE_ORDER_ABSENT", "l4_ops_01": "BLOCKED",
+                **{key: False for key in (
+                    "native_origin_qualified", "native_order_readback", "enforced_b2b_commit",
+                    "exact_commit_transaction", "spend_commit_same_transaction",
+                    "current_iam_cp_authority_qualified", "native_erp_business_effect_qualified",
+                    "production_authorized")},
+            }
             for name, doc in (("connected.json", connected),
                               ("independent-exported.json", exported),
+                              ("native-origin.json", origin),
                               ("source-pins.json", sources)):
                 archive.writestr(name, json.dumps(doc))
         elif name == "l4_erp_native":
@@ -602,7 +613,47 @@ class DEV11IndependentJoinTests(unittest.TestCase):
     def test_signed_rabbit_erp_inbox_and_three_exported_services_join(self):
         record = self.check("l4_rabbit")
         self.assertEqual(record["independently_exported_component_spans"], "PASS")
+        self.assertEqual(record["synthetic_order_independently_refused"], "PASS")
         self.assertEqual(record["native_idempiere_business_effect"], "NOT_PROVEN")
+
+    def test_rabbit_origin_original_cannot_be_omitted_from_green_component_artifact(self):
+        original = artifact_data("l4_rabbit")
+        output = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(output, "w") as target:
+            for name in source.namelist():
+                if name != "native-origin.json":
+                    target.writestr(name, source.read(name))
+        blob = output.getvalue()
+        with self.assertRaises(Blocked) as failure:
+            verify_zip(blob, "sha256:" + hashlib.sha256(blob).hexdigest(), "l4_rabbit")
+        self.assertEqual(failure.exception.code, "RABBIT_CONNECTED_RECEIPT_INVALID")
+
+    def test_rabbit_origin_outage_unknown_fields_and_false_authority_are_refused(self):
+        blob = artifact_data("l4_rabbit")
+        value = verify_zip(blob, "sha256:" + hashlib.sha256(blob).hexdigest(), "l4_rabbit")
+        changes = [
+            {"reason": "NATIVE_ORIGIN_READBACK_UNAVAILABLE"},
+            {"reason": "NATIVE_SCHEMA_OR_FENCE_NOT_INSTALLED"},
+            {"buyer_authority_granted": True},
+            {"l4_ops_01": "PASS"},
+        ]
+        for key, initial in value["native_origin"].items():
+            if initial is False:
+                changes.extend({key: invalid} for invalid in (True, 0, None, "false"))
+        for change in changes:
+            with self.subTest(change=change), self.assertRaises(Blocked) as failure:
+                native_receipt("l4_rabbit", {**value,
+                    "native_origin": {**value["native_origin"], **change}}, PINS)
+            self.assertEqual(failure.exception.code, "RABBIT_CONNECTED_RECEIPT_INVALID")
+
+    def test_rabbit_origin_step_must_execute_successfully(self):
+        path = "/repos/baobab-platform/baobab-trade/actions/runs/1005/jobs?per_page=100"
+        step = next(s for s in self.gh.urls[path]["jobs"][0]["steps"]
+                    if s["name"] == LABELS["l4_rabbit"]["steps"]["native_origin_negative"])
+        step["conclusion"] = "skipped"
+        with self.assertRaises(Blocked) as failure:
+            self.check("l4_rabbit")
+        self.assertEqual(failure.exception.code, "REQUIRED_STEP_NOT_PASSED")
 
     def test_rabbit_workflow_stale_erp_companion_head_denied(self):
         pr = "/repos/baobab-platform/baobab-erp/pulls/125"

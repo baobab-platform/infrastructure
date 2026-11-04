@@ -78,6 +78,7 @@ LABELS = {
         "artifact": "dev11-real-rabbit-erp-inbox",
         "steps": {
             "native_outbox": "Prepare canonical event with the actual Medusa module and native locking",
+            "native_origin_negative": "Independently refuse synthetic outbox as native B2B buyer order",
             "broker_and_consumer": "Real RabbitMQ publisher confirmation, durable ERP inbox and replay/forgery negatives",
             "independent_query": "Independently query actual native Trade, publisher and ERP spans",
             "teardown": "Independently tear down disposable OTel runtime and remove private source IDs",
@@ -394,6 +395,7 @@ def verify_zip(blob, claimed_digest, category):
                 return untrusted_json(archive.read(matches[0]))
             return {"connected": exact("connected.json"),
                     "exported": exact("independent-exported.json"),
+                    "native_origin": exact("native-origin.json"),
                     "source_pins": exact("source-pins.json")}
         return None
     except (zipfile.BadZipFile, OSError, RuntimeError, KeyError, ValueError):
@@ -465,6 +467,25 @@ def native_receipt(category, value, pins):
         connected = value.get("connected")
         exported = value.get("exported")
         sources = value.get("source_pins")
+        origin = value.get("native_origin")
+        # This component profile deliberately publishes a synthetic event.
+        # Require the separate owner's real PG negative, not only a broker ACK.
+        # A native B2B positive needs its own qualified business/authority path;
+        # it cannot be smuggled into this negative profile as an extra flag.
+        origin_false = {
+            "native_origin_qualified", "native_order_readback", "enforced_b2b_commit",
+            "exact_commit_transaction", "spend_commit_same_transaction",
+            "current_iam_cp_authority_qualified", "native_erp_business_effect_qualified",
+            "production_authorized",
+        }
+        require(type(origin) is dict and set(origin) == origin_false | {
+                    "schema", "classification", "reason", "l4_ops_01"}
+                and origin.get("schema") == "baobab.trade.dev11.native-origin.v1"
+                and origin.get("classification") == "SOURCE_SQL_READBACK_ONLY"
+                and origin.get("reason") == "NATIVE_ORDER_ABSENT"
+                and origin.get("l4_ops_01") == "BLOCKED"
+                and all(origin.get(key) is False for key in origin_false),
+                "RABBIT_CONNECTED_RECEIPT_INVALID")
         required = {
             "native_medusa_outbox_persisted", "real_rabbitmq_publisher_confirmed",
             "erp_postgres_canonical_admission",
@@ -670,6 +691,7 @@ def verify_one(name, binding, pins, api, download):
         }
     elif name == "l4_rabbit":
         detail = {"real_trade_rabbit_erp_admission": "PASS",
+                  "synthetic_order_independently_refused": "PASS",
                   "independently_exported_component_spans": "PASS",
                   "native_idempiere_business_effect": "NOT_PROVEN"}
     elif name.startswith("l4_"):

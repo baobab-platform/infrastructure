@@ -8,7 +8,7 @@
 
 An estate Playwright screenshot ZIP, its own summary, or a green *image build* is not an independent confirmation of functional browser execution, accessibility, visual regression or performance. Infrastructure `tests/platform-integration/development/dev11_evidence_join.py` is a separate, read-only GitHub Actions observer. It checks the **actual** Actions run ID, exact immutable SHA, current PR/branch head, workflow filename, successful *named* job and all required successful *named* steps before it downloads the estate-owned artifact.
 
-There are **eight** required independently pinned runs: Infrastructure native issuer→CP, Infrastructure native BFF→IAM/CP→Trade, Infrastructure real SDK→Collector→Jaeger exporter, Trade-native Medusa→RabbitMQ→independent ERP inbox + exported component lineage, Nabhold quality, ZuriBeans quality and Thamani quality. The last three estates retain their own approved test suites, branding, browser matrices, screenshot baselines and budgets. The central verifier does not re-run or forge these suites.
+There are **eight** required independently pinned runs: Infrastructure native issuer→CP, Infrastructure native BFF→IAM/CP→Trade, Infrastructure real SDK→Collector→Jaeger exporter, Trade-native Medusa→RabbitMQ→independent ERP inbox + exported component lineage, ERP native Hydra/CP→protected iDempiere JVM business effect/recovery, Nabhold quality, ZuriBeans quality and Thamani quality. The last three estates retain their own approved test suites, branding, browser matrices, screenshot baselines and budgets. The central verifier does not re-run or forge these suites.
 
 The eighth owner is **ERP #125**: real Ory Hydra client credentials,
 current CP RUNTIME context and a separately approved sales mandate,
@@ -169,3 +169,13 @@ Source regressions pass 209 development and 94 INT-02 cases (26 independent
 verifier cases are included in 209). Actual current-head runtime evidence
 must be refreshed; source success does not resolve the reciprocal full-head
 compatibility decision or prove the native business vertical.
+
+The broker component's original ZIP must additionally contain
+`native-origin.json` from Trade's read-only PostgreSQL checker, and the exact
+`Independently refuse synthetic outbox as native B2B buyer order` job step
+must succeed. For this intentionally synthetic profile the only eligible
+result is `NATIVE_ORDER_ABSENT`, with all native-origin, buyer authority,
+atomic commitment/spend, ERP effect and production flags false and L4 blocked.
+A missing schema, database outage, skipped step, missing original or added
+authority claim cannot stand in for that negative. A future genuine B2B
+positive requires its own reviewed business/authority qualification path.

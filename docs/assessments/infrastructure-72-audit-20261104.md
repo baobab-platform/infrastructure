@@ -267,3 +267,54 @@ missing ERP binding and IAM pin. Local source gates pass 209 development /
 94 INT-02 cases. These are implementation updates, not retroactive changes
 to the audit of dd75599 above. Current-head connected tests must determine
 which runtime findings are resolved. Full DEV-11/L4 acceptance remains held.
+
+### Independently checked implementation checkpoint
+
+All 15 Infrastructure workflows at implementation source
+`9cecfcbc107bc558055951cce5830661a546bbbf` completed successfully. This
+statement concerns that immutable checkpoint, not an automatic acceptance of
+the full PR or any later documentation/verifier commit.
+
+| Finding | Incremental result | Remaining boundary |
+| --- | --- | --- |
+| F01 | #69's source reconciliation is composed. Real Ory/CP/PostgreSQL/TLS Redis N07 component job 126639462717 in run 41848810125 passes. | Full N02/N07 browser/native booking acceptance remains held. |
+| F02 | Both original INT-02 run 41848810136 and exact-head DEV-11 run 41848810142 pass all five cases, including own-record/isolation L4-CP-03. | Protected or programme acceptance is not inferred. |
+| F03/F04 | Merged-owner ancestry/current-main and original estate git-source requirements have source regressions; the DEV-11 IAM/CP original independently confirms exact harness 9cecfcbc and accepted CP 6fee9fe9. | The full eight-owner independent join has not executed. |
+| F05 | Trade's literal-percent SQL driver defect is corrected at c79a6ee3; real broker/crash/replay/exported-lineage run 41850390720 passes. | Native origin is explicitly refused; its imported companion tuple is historical, and native B2B enforcement is still SHADOW. |
+| F06 | ERP's exact native ID normalization and foreign/invalid-ID negatives pass in source tests. | Native runtime acceptance remains separate from source compatibility. |
+| F07 | The runbook lists and binds all eight owners, including ERP and IAM. | Reports must retain checkpoint/source distinctions as implementation moves. |
+
+The exact-head IAM/CP original artifact `13336440258` was downloaded and its
+SHA-256 independently matched to GitHub:
+`80575f840c4f3da67ed6629bf7c6f6eece89484d411d809758c864818459f6e4`.
+The actual harness readback equals `9cecfcbc107bc558055951cce5830661a546bbbf`;
+accepted CP is `6fee9fe9537409df428a2e3dd7b8f78ff8d1d456`. All five
+scenarios, seven DEV-11 authority/W3C checks and teardown pass.
+
+Trade source `c79a6ee370ad2a07f73648bac2c85e3020c3500f` has 13 focused
+source tests passing. Its real run's artifact `13336060681` independently
+matches SHA-256
+`f63902de30f487a8859abba80b8212828ff4a994bb31efe6abe28997e4e239ce`.
+Original receipts record the precise `NATIVE_ORDER_ABSENT` PostgreSQL refusal,
+both real crash windows, fenced reclaim, immutable replay/DLX/unroutable
+negatives, seven exported spans and six parent edges across the three services.
+The exact imported ERP `88c2cdca` / Infrastructure `a4cc31b1` sources are
+retained; this is not the current composite and native business acceptance
+remains false.
+
+ERP's subsequent real run 41849461938 narrowed the worker failure to
+`CP_HTTP_REQUEST`. Source inspection of accepted CP's shared `redeemContext`
+guard found that the worker omitted its independently required
+`context:resolve` scope. The harness preflight had requested that already
+registered scope. ERP follow-up `b7cecfb7f5b5018fafe24b4415cf0b061f2725ef`
+requests the three assessment/context scopes without the separate JVM
+posting-authority scope, with 392 local unit tests passing. Real run
+41851433377 must still establish the actual native effect/recovery result.
+
+The independent broker verifier now also requires Trade's original
+`native-origin.json` and its successful named native-origin refusal step.
+Missing originals, outages/schema errors, skipped steps or claimed native
+authority in this synthetic profile are blocked. This consumes the owner's
+existing proof without changing the native commitment or source freshness
+requirements. The genuine governed Medusa commitment, current native ERP
+effect, same-event cross-engine trace and eight-owner join remain unqualified.

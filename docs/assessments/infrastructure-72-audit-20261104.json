@@ -710,5 +710,101 @@
     "protected_acceptance": false,
     "production_authorized": false
   },
-  "implementation_change_policy": "Audit/documentation only in this increment; findings are not silently marked resolved by adding the audit."
+  "implementation_change_policy": "Audit/documentation only in this increment; findings are not silently marked resolved by adding the audit.",
+  "implementation_follow_up": {
+    "classification": "INCREMENTAL_IMPLEMENTATION_NOT_PROGRAMME_ACCEPTANCE",
+    "original_audit_preserved": true,
+    "infrastructure": {
+      "tested_implementation_sha": "9cecfcbc107bc558055951cce5830661a546bbbf",
+      "composed_pr69_sha": "45a71c0177ca6122ff2b3a4911d3c66bdca85548",
+      "source_tests": {
+        "development": 209,
+        "int02": 94,
+        "result": "PASS",
+        "local_python": "3.12"
+      },
+      "workflows_at_checkpoint": {
+        "count": 15,
+        "all_completed_successfully": true
+      },
+      "n07_real_ory_cp_tls_redis_component": {
+        "run_id": 41848810125,
+        "job_id": 126639462717,
+        "result": "PASS",
+        "full_n02_n07_or_booking_accepted": false
+      },
+      "independent_iam_cp_original": {
+        "run_id": 41848810142,
+        "job_id": 126639407993,
+        "artifact_id": 13336440258,
+        "sha256": "80575f840c4f3da67ed6629bf7c6f6eece89484d411d809758c864818459f6e4",
+        "actual_harness_sha": "9cecfcbc107bc558055951cce5830661a546bbbf",
+        "cp_sha": "6fee9fe9537409df428a2e3dd7b8f78ff8d1d456",
+        "all_five_scenarios": "PASS",
+        "all_seven_dev11_authority_w3c_checks": true,
+        "teardown_verified": true,
+        "original_zip_digest_and_receipt_independently_checked": true
+      },
+      "fixes": {
+        "F01": "COMPOSED_AND_COMPONENT_RUNTIME_PASSED",
+        "F02": "REAL_OWN_POSITIVE_AND_ISOLATION_PASSED",
+        "F03": "SOURCE_TESTED_MERGED_OWNER_ELIGIBILITY",
+        "F04": "SOURCE_TESTED_EXACT_CHECKOUT_AND_ORIGINAL_READBACK",
+        "F07": "EIGHT_OWNER_DOCUMENTATION_CORRECTED"
+      },
+      "independent_eight_owner_join_executed": false
+    },
+    "trade": {
+      "source_sha": "c79a6ee370ad2a07f73648bac2c85e3020c3500f",
+      "source_tests": 13,
+      "run_id": 41850390720,
+      "job_id": 126644815314,
+      "result": "PASS_COMPONENT_ONLY",
+      "artifact_id": 13336060681,
+      "sha256": "f63902de30f487a8859abba80b8212828ff4a994bb31efe6abe28997e4e239ce",
+      "original_zip_digest_and_receipts_independently_checked": true,
+      "native_origin_refusal": "NATIVE_ORDER_ABSENT",
+      "native_origin_qualified": false,
+      "real_broker_crash_replay_dlx_and_unroutable_checks": true,
+      "independently_exported_spans": 7,
+      "parent_edges": 6,
+      "imported_erp_sha": "88c2cdcac6a3a2f2eaf0165e1bb5e284dbde6a0e",
+      "imported_infrastructure_sha": "a4cc31b1806fce3d80814b82af4a1652aa11964d",
+      "current_composite_qualified": false
+    },
+    "erp": {
+      "source_sha": "b7cecfb7f5b5018fafe24b4415cf0b061f2725ef",
+      "source_tests": 392,
+      "native_id_compatibility": "SOURCE_FIXED_WITH_NEGATIVES",
+      "previous_run": 41849461938,
+      "previous_worker_stages": [
+        "CP_REQUEST",
+        "CP_HTTP_REQUEST"
+      ],
+      "previous_outcome": "blocked/LEGAL_ACTOR_DENIED",
+      "source_correction": "Request already registered context:resolve scope required by accepted CP redeemContext guard; preserve ownership and native authority checks.",
+      "fresh_run_id": 41851433377,
+      "fresh_runtime_result": "PENDING"
+    },
+    "additional_custody_correction": {
+      "scope": "Require actual native-origin.json and successful independent synthetic-origin refusal step for broker component receipt.",
+      "source_tests": {
+        "development": 212,
+        "int02": 94,
+        "verifier": 29,
+        "result": "PASS",
+        "downloaded_trade_original_rechecked": true
+      },
+      "programme_acceptance_inferred": false
+    },
+    "remaining_findings": [
+      "F05: reviewed reciprocal-source compatibility decision",
+      "F05: genuine ENFORCED buyer/seller/spend native Medusa commit",
+      "F05: current native ERP effect/recovery qualification",
+      "F05: same-event cross-engine trace and independent eight-owner join"
+    ],
+    "l4_ops_01": "BLOCKED",
+    "protected_acceptance": false,
+    "production_authorized": false
+  }
 }
