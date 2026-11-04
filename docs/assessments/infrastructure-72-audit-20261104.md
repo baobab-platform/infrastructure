@@ -255,3 +255,15 @@ approval. The machine-readable companion preserves exact findings and runs.
 | [thamani#51](https://github.com/baobab-platform/thamani/pull/51) | [f7936c051659](https://github.com/baobab-platform/thamani/commit/f7936c051659d555fd5890f4f57a9704dcebe4c8) | MERGED | Source/runtime or contract review |
 | [nabhold#99](https://github.com/baobab-platform/nabhold/pull/99) | [b2a6e67c9534](https://github.com/baobab-platform/nabhold/commit/b2a6e67c9534df0984eddc9974c372cd8602e8ce) | MERGED | Dependency metadata |
 | [nabhold#103](https://github.com/baobab-platform/nabhold/pull/103) | [c37ffd83bd0e](https://github.com/baobab-platform/nabhold/commit/c37ffd83bd0eaba4ad0b702f3ed96347ef7b37bb) | MERGED | Source/runtime or contract review |
+
+
+## Implementation follow-up after the recorded audit
+
+The first correction composes the existing #69 source reconciliation and
+implements source-tested corrections for F01, F03 and F04. F02's fixture
+grant environment is aligned with the CP server without changing its
+authorisation checks. The corrected eight-owner runbook also supplies its
+missing ERP binding and IAM pin. Local source gates pass 209 development /
+94 INT-02 cases. These are implementation updates, not retroactive changes
+to the audit of dd75599 above. Current-head connected tests must determine
+which runtime findings are resolved. Full DEV-11/L4 acceptance remains held.

@@ -27,6 +27,7 @@ def artifact_data(name):
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         if name in ("nabhold", "zuribeans", "thamani"):
+            archive.writestr("reports/dev11-source-sha.txt", PINS[name] + "\n")
             from dev11_evidence_join import BUDGETS, GATES
             gates = (*GATES, "logistics") if name == "thamani" else GATES
             for gate in gates:
@@ -286,7 +287,7 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         self.assertEqual(result["result"], "PASS")
         self.assertEqual(set(result["checks"]),
                          {"playwright", "accessibility", "visual",
-                          "lighthouse", "static_budget"})
+                          "lighthouse", "static_budget", "source"})
         self.assertEqual(result["measured_results"]["playwright_passed_tests"]["functional"], 2)
         self.assertGreaterEqual(
             result["measured_results"]["lighthouse_labs"]["home"]["performance_score"], 90)
@@ -300,6 +301,43 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         with self.assertRaises(Blocked) as error:
             self.check("nabhold")
         self.assertEqual(error.exception.code, "REQUIRED_STEP_NOT_PASSED")
+
+    def test_original_source_readback_must_match_candidate_even_with_valid_zip_digest(self):
+        blob_key = ("baobab-platform/nabhold", 1)
+        original = self.gh.blobs[blob_key]
+        with zipfile.ZipFile(io.BytesIO(original)) as archive:
+            rows = {name: archive.read(name) for name in archive.namelist()}
+        artifact = self.gh.urls[
+            "/repos/baobab-platform/nabhold/actions/runs/1001/artifacts?per_page=100"
+        ]["artifacts"][0]
+        for source in (None, "0" * 40, "temporary-merge"):
+            with self.subTest(source=source):
+                changed = dict(rows)
+                if source is None:
+                    del changed["reports/dev11-source-sha.txt"]
+                else:
+                    changed["reports/dev11-source-sha.txt"] = source.encode()
+                out = io.BytesIO()
+                with zipfile.ZipFile(out, "w") as archive:
+                    for name, data in changed.items():
+                        archive.writestr(name, data)
+                blob = out.getvalue()
+                self.gh.blobs[blob_key] = blob
+                artifact["digest"] = "sha256:" + hashlib.sha256(blob).hexdigest()
+                artifact["size_in_bytes"] = len(blob)
+                with self.assertRaises(Blocked) as reason:
+                    self.check("nabhold")
+                self.assertEqual(reason.exception.code, "RUN_SOURCE_MISMATCH")
+
+    def test_skipped_owner_source_guard_cannot_qualify_reports(self):
+        job = self.gh.urls[
+            "/repos/baobab-platform/nabhold/actions/runs/1001/jobs?per_page=100"
+        ]["jobs"][0]
+        next(step for step in job["steps"] if step["name"] ==
+             "Verify exact owner source SHA")["conclusion"] = "skipped"
+        with self.assertRaises(Blocked) as reason:
+            self.check("nabhold")
+        self.assertEqual(reason.exception.code, "REQUIRED_STEP_NOT_PASSED")
 
     def test_browser_summary_cannot_hide_unexecuted_or_failed_cases(self):
         original = artifact_data("nabhold")
@@ -491,6 +529,47 @@ class DEV11IndependentJoinTests(unittest.TestCase):
                     self.assertEqual(reason.exception.code, "RUN_STALE_HEAD")
                 finally:
                     self.gh.urls[path]["head"]["sha"] = original
+
+    def merged_cp_owner(self):
+        root = "/repos/baobab-platform/baobab-cp"
+        merge = "7" * 40
+        self.gh.urls[root + "/pulls/458"] = {
+            "state": "closed", "merged": True, "merge_commit_sha": merge,
+            "base": {"ref": "main"}, "head": {"sha": "8" * 40},
+        }
+        self.gh.urls[root + "/branches/main"] = {"commit": {"sha": CP}}
+        self.gh.urls[f"{root}/compare/{merge}...{CP}"] = {
+            "status": "ahead", "merge_base_commit": {"sha": merge},
+        }
+        return root, merge
+
+    def test_merged_cp_current_main_with_approved_merge_is_eligible(self):
+        self.merged_cp_owner()
+        self.assertEqual(self.check("l4_erp_native")[
+            "real_hydra_cp_broker_native_idempiere"], "PASS")
+
+    def test_closed_or_stale_or_unrelated_merged_owner_is_denied(self):
+        for defect in ("unmerged", "missing-merge", "wrong-base", "stale-main",
+                       "unrelated-main", "diverged", "behind"):
+            with self.subTest(defect=defect):
+                root, merge = self.merged_cp_owner()
+                owner = self.gh.urls[root + "/pulls/458"]
+                comparison = self.gh.urls[f"{root}/compare/{merge}...{CP}"]
+                if defect == "unmerged":
+                    owner["merged"] = False
+                elif defect == "missing-merge":
+                    owner["merge_commit_sha"] = None
+                elif defect == "wrong-base":
+                    owner["base"]["ref"] = "unreviewed"
+                elif defect == "stale-main":
+                    self.gh.urls[root + "/branches/main"]["commit"]["sha"] = "0" * 40
+                elif defect == "unrelated-main":
+                    comparison["merge_base_commit"]["sha"] = "0" * 40
+                else:
+                    comparison["status"] = defect
+                with self.assertRaises(Blocked) as reason:
+                    self.check("l4_erp_native")
+                self.assertEqual(reason.exception.code, "RUN_STALE_HEAD")
 
     def test_fake_native_order_or_missing_cp_jvm_lineage_does_not_join(self):
         key = ("baobab-platform/baobab-erp", 7)

@@ -49,7 +49,7 @@ The Infrastructure IAM/CP artifact must include the actual seven W3C/current-aut
 
 ## Execute independent verification
 
-Use GitHub Actions: `Infrastructure → DEV-11 independent L4-OPS-01 and estate evidence custody → Run workflow`. Supply the *single* `bindings_json` input with **actual current successful run IDs and immutable SHAs** for all seven required owner/connected profiles. The manifest uses the following shape (replace every placeholder; these are not real evidence):
+Use GitHub Actions: `Infrastructure → DEV-11 independent L4-OPS-01 and estate evidence custody → Run workflow`. Supply the *single* `bindings_json` input with **actual current successful run IDs and immutable SHAs** for all eight required owner/connected profiles. The manifest uses the following shape (replace every placeholder; these are not real evidence):
 
 ```json
 {
@@ -58,6 +58,7 @@ Use GitHub Actions: `Infrastructure → DEV-11 independent L4-OPS-01 and estate 
     "infrastructure": "INFRA_HEAD_40_HEX",
     "cp": "CP_HEAD_40_HEX",
     "baobab-cp": "CP_HEAD_40_HEX",
+    "baobab-iam": "IAM_HEAD_40_HEX",
     "baobab-trade": "TRADE_HEAD_40_HEX",
     "baobab-erp": "ERP_HEAD_40_HEX",
     "nabhold": "NABHOLD_HEAD_40_HEX",
@@ -69,6 +70,7 @@ Use GitHub Actions: `Infrastructure → DEV-11 independent L4-OPS-01 and estate 
     "l4_bff_trade": {"run_id": 0, "sha": "INFRA_HEAD_40_HEX"},
     "l4_exporter": {"run_id": 0, "sha": "INFRA_HEAD_40_HEX"},
     "l4_rabbit": {"run_id": 0, "sha": "TRADE_HEAD_40_HEX"},
+    "l4_erp_native": {"run_id": 0, "sha": "ERP_HEAD_40_HEX"},
     "nabhold": {"run_id": 0, "sha": "NABHOLD_HEAD_40_HEX"},
     "zuribeans": {"run_id": 0, "sha": "ZURIBEANS_HEAD_40_HEX"},
     "thamani": {"run_id": 0, "sha": "THAMANI_HEAD_40_HEX"}
@@ -76,7 +78,29 @@ Use GitHub Actions: `Infrastructure → DEV-11 independent L4-OPS-01 and estate 
 }
 ```
 
-Access: `GITHUB_TOKEN` with `actions:read` may access these currently public repository artifacts; otherwise configure `DEV11_EVIDENCE_READ_TOKEN` as a *read-only* GitHub App/PAT secret scoped to the necessary seven evidence profiles and their repositories. Missing/insufficient access is **BLOCKED**, not a skip. No write permission to another repository is used or needed.
+Access: `GITHUB_TOKEN` with `actions:read` may access these currently public repository artifacts; otherwise configure `DEV11_EVIDENCE_READ_TOKEN` as a *read-only* GitHub App/PAT secret scoped to the necessary eight evidence profiles and their repositories. Missing/insufficient access is **BLOCKED**, not a skip. No write permission to another repository is used or needed.
+
+### Current accepted dependencies after an owner PR merges
+
+The native ERP owner depends on CP #458 and IAM #153. An open owner must
+match its exact current PR head. For a merged owner, the reviewer requires
+`merged=true`, target `main`, the exact current `main` SHA as the source pin,
+and independently queried GitHub comparison ancestry containing the recorded
+merge commit. A closed unmerged PR, historical branch tip, stale main pin,
+foreign base, diverged ancestry or missing merge identity remains denied.
+This handles already merged CP #458 without accepting an old green source.
+
+### Estate checkout provenance
+
+Each estate quality job must pass `Verify exact owner source SHA` and retain
+`reports/dev11-source-sha.txt` from `git rev-parse HEAD`. Its original value
+must match the pinned run source. Actions defaults to a PR merge checkout;
+`run.head_sha` alone cannot establish which bytes the job actually tested.
+The owner explicitly checks out `github.event.pull_request.head.sha` (or the
+event SHA for main/dispatch) and verifies that readback before browser tests.
+Historical artifacts lacking this binding need fresh qualification. See the
+official checkout behaviour at
+https://github.com/actions/checkout#checkout-pull-request-head-commit-instead-of-merge-commit.
 
 Run receives a scrubbed `dev11-l4-ops-01-independent-join` artifact with `dev11-l4-ops-01.json` and `.sha256`. The independent job deliberately exits non-zero on incomplete connected evidence and on incomplete native OTLP/consumer qualification. Preserve both that outcome and the detailed per-owner cause in the audit.
 
@@ -120,3 +144,28 @@ size to 1 GiB. JSON rejects duplicate keys, non-finite values and excessive
 nesting. These are input-integrity checks, not attestations of runtime success.
 Regression tests retain the real/fixture distinction and L4-OPS-01 remains
 BLOCKED until the governed commitment and same-event native trace proof exist.
+
+
+## Audit follow-up: source reconciliation and provenance (4 November 2026)
+
+The DEV-11 branch now composes Infrastructure #69 at
+`45a71c0177ca6122ff2b3a4911d3c66bdca85548`: N02/N07 consume accepted Shared
+#430 and byte-matched candidate CP #455, with the original PROVISIONED and
+protected-acceptance boundaries retained. This removes the superseded source
+lock mismatch; it does not certify browser or native booking cases.
+
+INT-02 grants now use CP's governed `development` deployment environment.
+The harness's integration evidence class is distinct from that server
+environment. Previously the grants selected `integration`, so CP correctly
+denied own-Organisation overviews and could not establish the positive
+prerequisite for isolation. Exact per-Organisation scope, four principals,
+foreign/spoof denials and full teardown remain mandatory in the real rerun.
+
+Verifier changes require current accepted main plus recorded merge ancestry
+for merged owners, and bind estate originals to the actual git source
+readback and its named successful source guard. Infrastructure checkouts
+explicitly select the PR/event source instead of a temporary merge ref.
+Source regressions pass 209 development and 94 INT-02 cases (26 independent
+verifier cases are included in 209). Actual current-head runtime evidence
+must be refreshed; source success does not resolve the reciprocal full-head
+compatibility decision or prove the native business vertical.

@@ -1,6 +1,6 @@
 # IAM-N07 — Source-pinned disposable Ory/CP/Redis development run
 
-31 October 2026 | Infrastructure PR #69; EA v2.3 / EA-DEV DEV-04/07/08/11/14.
+4 November 2026 | Infrastructure PR #69; EA v2.3 / EA-DEV DEV-04/07/08/11/14.
 STATUS: REAL-COMPONENT ENGINEERING, CONNECTED N07/TMS ACCEPTANCE HELD.
 
 ## Immutable source and images
@@ -8,11 +8,15 @@ STATUS: REAL-COMPONENT ENGINEERING, CONNECTED N07/TMS ACCEPTANCE HELD.
 The dedicated n07-base-lock.json pins exact Shared, CP, IAM, Nabhold,
 ZuriBeans, Thamani and TMS revisions plus digest-specific PG17, Hydra,
 Kratos, NGINX, Python and Redis images. It is separate from the accepted
-DEV-01/04 lock.json and N02 first-party candidate. CP #455 retains accepted
-Shared `2fde03e2f5f3a8a6cbc1e2081b4859fdccc1bb53`; its proposed identities
-are inert review data. Shared #430 supersedes the overlapping #420/#421/#422
-proposals and is still unmerged. The historical candidate lock is not current
-accepted-source adoption of that inventory.
+DEV-01/04 lock.json and N02 first-party candidate. Shared #430 is now accepted on `main` at
+`7f547ccdd759208355ef9224d2177929f4bf224e`.
+The N07 source lock now pins CP #455's **unmerged** candidate head
+`a5e5458ea6651657a66698b60b765eca5774daf4`, whose embedded
+workload registry is byte-identical to this accepted Shared revision.
+It additionally pins accepted ZuriBeans main `d08643d5275dff8a25b60e0181dadec6c26ee840`, accepted Nabhold main `7f25aaea378d420e04c4f4f735b03613c518c419`, and current **unmerged review** heads for Thamani #44 and TMS #28. Current estate source pins establish provenance, not a customer mandate or live resource authority.
+This resolves the observed `EMBEDDED_CONTRACT_DRIFT` mismatch but
+does not activate a single proposed issuer client or CP Principal.
+The original DEV-01/04 accepted source lock remains unchanged.
 Therefore the candidate must never claim a registered ACTIVE TMS native
 resource or booking authorization from this source lock.
 
@@ -86,6 +90,9 @@ witness, and then obtain separately registered ACTIVE native TMS
 binding/operation proof with original revocation and teardown.
 A passing unit suite or this component receipt cannot substitute.
 
-When consolidated Shared #430 becomes accepted and reachable from Shared main, CP must independently adopt its
-exact registry; update its embedded contracts and the N07 lock together.
-No late CI convenience override may turn PROVISIONED into ACTIVE.
+Shared #430's merged contract and CP #455's candidate registry are now
+source-reconciled, but CP #455 remains unmerged, and issuer/CP actual
+resource admission is still separately qualified. A later CP mainline
+merge requires fresh source-lock review, new original same-run evidence,
+and complete independent teardown. PROVISIONED must never become ACTIVE
+as a CI convenience override.

@@ -33,6 +33,7 @@ LABELS = {
             "visual": "Landing-page visual and layout gate",
             "lighthouse": "Isolated production-build Lighthouse lab",
             "static_budget": "Enforce approved static budgets after all browser diagnostics",
+            "source": "Verify exact owner source SHA",
         },
     },
     "zuribeans": {
@@ -44,6 +45,7 @@ LABELS = {
             "visual": "Landing-page visual regression checks",
             "lighthouse": "Isolated Lighthouse performance lab",
             "static_budget": "Enforce frontend performance budgets",
+            "source": "Verify exact owner source SHA",
         },
     },
     "thamani": {
@@ -57,6 +59,7 @@ LABELS = {
             "visual": "Independent homepage visual layout and screenshot evidence",
             "lighthouse": "Isolated Lighthouse production-build lab",
             "static_budget": "Enforce emitted-asset performance budget",
+            "source": "Verify exact owner source SHA",
         },
     },
     "l4_exporter": {
@@ -207,6 +210,14 @@ def _playwright_executions(suites):
     return count
 
 def _browser_summary(archive, names, owner):
+    # run.head_sha names the candidate but checkout defaults to a temporary
+    # merge. The named source guard and original git readback bind the tests
+    # to the same immutable source before any measured result is attributed.
+    path = _one_path(names, "reports/dev11-source-sha.txt", "RUN_SOURCE_MISMATCH")
+    require(archive.getinfo(path).file_size in (40, 41), "RUN_SOURCE_MISMATCH")
+    source = archive.read(path)
+    require(re.fullmatch(rb"[a-f0-9]{40}\n?", source), "RUN_SOURCE_MISMATCH")
+    source_sha = source.decode("ascii").removesuffix("\n")
     required_gates = (*GATES, "logistics") if owner == "thamani" else GATES
     counts = {}
     for gate in required_gates:
@@ -322,6 +333,7 @@ def _browser_summary(archive, names, owner):
     # solely within their owning GitHub Actions artifact.
     return {
         "playwright_passed_tests": counts,
+        "owner_source_sha": source_sha,
         "measured_static_bytes": dict(zip(
             ("javascript_total", "javascript_largest", "css_total", "image_largest"),
             values)),
@@ -516,6 +528,31 @@ def native_receipt(category, value, pins):
                 and all(v is True for v in conn["checks"].values()),
                 "BFF_NATIVE_RECEIPT_INVALID")
 
+def verify_current_owner_source(repo, number, pin, api):
+    """Require the open candidate head or current main containing its merge.
+
+    A merged owner PR stops being an open candidate. Verify both current main
+    identity and merge ancestry instead of accepting its historical branch head
+    or treating the closed PR as permanently ineligible evidence.
+    """
+    root = f"/repos/baobab-platform/{repo}"
+    owner = api(f"{root}/pulls/{number}")
+    if owner.get("state") == "open":
+        require(owner.get("head", {}).get("sha") == pin, "RUN_STALE_HEAD")
+        return
+    merged = owner.get("merge_commit_sha")
+    require(owner.get("state") == "closed" and owner.get("merged") is True
+            and owner.get("base", {}).get("ref") == "main"
+            and isinstance(merged, str) and SHA.fullmatch(merged),
+            "RUN_STALE_HEAD")
+    main = api(f"{root}/branches/main")
+    require(main.get("commit", {}).get("sha") == pin, "RUN_STALE_HEAD")
+    ancestry = api(f"{root}/compare/{merged}...{pin}")
+    require(ancestry.get("status") in ("ahead", "identical")
+            and ancestry.get("merge_base_commit", {}).get("sha") == merged,
+            "RUN_STALE_HEAD")
+
+
 def verify_one(name, binding, pins, api, download):
     spec = LABELS[name]
     repo = "baobab-platform/" + spec["repo"]
@@ -567,17 +604,14 @@ def verify_one(name, binding, pins, api, download):
     else:
         require(sha == pins[name], "RUN_SOURCE_MISMATCH")
     if name == "l4_erp_native":
-        # Trust only the *current* approved CP/IAM candidate source heads.
+        # Trust current owner candidates or accepted main after their merge.
         # The ERP workflow pins both; an old passing JVM run is not
         # authority after a principal, policy or issuer code change.
         for dependent, number, pin in (
             ("baobab-cp", 458, "cp"),
             ("baobab-iam", 153, "baobab-iam"),
         ):
-            actual = api(f"/repos/baobab-platform/{dependent}/pulls/{number}")
-            require(actual.get("state") == "open"
-                    and actual.get("head", {}).get("sha") == pins[pin],
-                    "RUN_STALE_HEAD")
+            verify_current_owner_source(dependent, number, pins[pin], api)
     if name == "l4_rabbit":
         # A passing Trade workflow pinned to a superseded ERP or Infrastructure
         # companion is never current native evidence.
@@ -618,6 +652,8 @@ def verify_one(name, binding, pins, api, download):
     require(isinstance(digest, str) and DIGEST.fullmatch(digest), "ARTIFACT_DIGEST_MISSING")
     blob = download(repo, art["id"])
     receipt = verify_zip(blob, digest, name)
+    if not name.startswith("l4_"):
+        require(receipt["owner_source_sha"] == sha, "RUN_SOURCE_MISMATCH")
     if name.startswith("l4_"):
         native_receipt(name, receipt, pins)
     if name == "l4_exporter":

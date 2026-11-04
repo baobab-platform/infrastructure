@@ -12,6 +12,30 @@ m=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 class ContractTest(unittest.TestCase):
+    def test_each_isolation_grant_matches_cp_deployment_and_retains_exact_scope(self):
+        import uuid
+        import re
+        fixtures = {name: {"organisation": str(uuid.uuid4()), "tenant": "tn_" + name}
+                    for name in ("parent", "subsidiary", "sibling", "external")}
+        ids = {name + "_sub": str(uuid.uuid4()) for name in fixtures}
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(m, "cp_sql") as sql:
+            directory = Path(d)
+            (directory / "fixtures.json").write_text(json.dumps({"isolation": fixtures}))
+            m.seed_isolation_authority("synthetic", directory, "private.env", ids)
+        statements = [call.args[3] for call in sql.call_args_list
+                      if "INSERT INTO policy.administrative_grant" in call.args[3]]
+        self.assertEqual(len(statements), 4)
+        scopes = [json.loads(re.search(r"'(\{[^\n]*\})'::jsonb", text).group(1))
+                  for text in statements]
+        self.assertEqual({s["organisation_id"] for s in scopes},
+                         {v["organisation"] for v in fixtures.values()})
+        for scope in scopes:
+            self.assertEqual(scope, {"level": "ORGANISATION", "mode": "EXACT",
+                                    "organisation_id": scope["organisation_id"],
+                                    "environment": "development"})
+        cp = (BASE / "compose.yaml").read_text().split("\n  cp:\n", 1)[1].split("\n  edge:\n", 1)[0]
+        self.assertIn("BAOBAB_ENVIRONMENT: " + m.CP_RUNTIME_ENVIRONMENT, cp)
+
     def test_named_development_clients_do_not_bypass_environment_admission(self):
         source = (BASE / "compose.yaml").read_text()
         cp = source.split("\n  cp:\n", 1)[1].split("\n  edge:\n", 1)[0]

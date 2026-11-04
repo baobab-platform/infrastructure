@@ -42,6 +42,10 @@ SERVICES = {"keycloak", "iam-db", "cp", "cp-db", "edge", "probe", "human",
 # against its own head through the reusable workflow; only these two pins
 # may be replaced, and only by a full commit SHA.
 CANDIDATE_REPOSITORIES = {"baobab-iam", "baobab-cp"}
+# This is CP's deployment environment, not the integration test's evidence
+# class. Accepted named development workloads and Organisation read grants
+# must agree with the same server environment; no caller override is allowed.
+CP_RUNTIME_ENVIRONMENT = "development"
 
 class Blocked(Exception):
     pass
@@ -827,7 +831,8 @@ def seed_isolation_authority(p, directory, envfile, ids):
         subject = ids[label + "_sub"]
         must(re.fullmatch(r"[0-9a-f-]{36}", subject) is not None, "Invalid isolation subject")
         org = target["organisation"]
-        scope = json.dumps({"level":"ORGANISATION","organisation_id":org,"mode":"EXACT","environment":"integration"})
+        scope = json.dumps({"level":"ORGANISATION","organisation_id":org,"mode":"EXACT",
+                            "environment":CP_RUNTIME_ENVIRONMENT})
         cp_sql(p, envfile, "identity_human", f"""
           INSERT INTO policy.administrative_grant
           (grant_id,principal_id,permission,scope_level,scope,grant_type,source,

@@ -62,8 +62,14 @@ class N02CheckpointTests(unittest.TestCase):
         self.assertNotEqual(candidate["sources"]["shared"],
                             accepted["sources"]["shared"])
         self.assertRegex(candidate["sources"]["zuribeans"], r"^[a-f0-9]{40}$")
+        self.assertEqual(candidate["sources"]["zuribeans"],
+                         "d08643d5275dff8a25b60e0181dadec6c26ee840")
         self.assertEqual(candidate["sources"]["baobab-cp"],
-                         "af86ff3e23e097f7ac26ecf2f13741e71f84fa02")
+                         "a5e5458ea6651657a66698b60b765eca5774daf4")
+        # A proposed PR head is never the accepted Shared registry source.
+        # The development CP checkout may be a candidate, not a grant.
+        self.assertEqual(candidate["sources"]["shared"],
+                         "7f547ccdd759208355ef9224d2177929f4bf224e")
         with self.assertRaises(dev.Refused):
             dev.load_lock("../../other-unsafe-lock.json")
 
