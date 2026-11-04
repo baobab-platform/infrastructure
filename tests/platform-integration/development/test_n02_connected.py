@@ -62,6 +62,8 @@ class N02CheckpointTests(unittest.TestCase):
         self.assertNotEqual(candidate["sources"]["shared"],
                             accepted["sources"]["shared"])
         self.assertRegex(candidate["sources"]["zuribeans"], r"^[a-f0-9]{40}$")
+        self.assertEqual(candidate["sources"]["zuribeans"],
+                         "d08643d5275dff8a25b60e0181dadec6c26ee840")
         self.assertEqual(candidate["sources"]["baobab-cp"],
                          "a5e5458ea6651657a66698b60b765eca5774daf4")
         # A proposed PR head is never the accepted Shared registry source.
