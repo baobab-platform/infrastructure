@@ -12,10 +12,12 @@ The independent N02 **candidate** source lock is
 `tests/platform-integration/development/n02-base-lock.json`. It pins
 **four** exact independently reviewable owner commits:
 Shared #421, CP #455, IAM #147 and ZuriBeans #141. This is distinct
-from the accepted three-source DEV-04 `lock.json`. CP #455 pins the
-exact Shared #421 commit in both `contracts.lock.yaml` references and
-embeds the byte-identical changed workload and scope registries; CP Go
-contracts and generated CP console client must pass at that exact head.
+from the accepted three-source DEV-04 `lock.json`. These are historical
+candidate pins, not an accepted authority foundation. CP #455 restored both
+accepted Shared pins to `2fde03e2f5f3a8a6cbc1e2081b4859fdccc1bb53` and
+keeps proposed identities inert. Shared #430 now consolidates #420/#421/#422;
+its accepted-source adoption is unavailable while that proposal is unmerged.
+The candidate must remain BLOCKED, rather than activate a PROVISIONED reader.
 A Shared or CP PR change invalidates this candidate lock until updated
 and reviewed. The current browser producer, attached original and
 pre-deactivation checkpoint must each bind the **same** first-party
@@ -199,13 +201,15 @@ TOTP synthetic user, no functioning real recovery courier or governed
 ACTIVE CP caller is evidenced. Until those exact pieces run in an
 approved disposable development host with original custody, this
 milestone's **connected browser-plus-CP acceptance remains BLOCKED**.
-# 4 November 2026 — offline ingress regression
+## 4 November 2026 — offline ingress regression
 
 Run `bash tests/platform-integration/development/n02-ingress/syntax-check.sh`
 before starting the disposable topology. The pinned NGINX binary checks the
 actual rendered configuration as the host fixture owner, with no network,
 no capabilities, a read-only root filesystem and private read-only certificate
-mounts. Its PID file is explicitly redirected to a 0700, UID/GID-owned tmpfs.
+mounts. Its PID and cache directories use separate 0700, UID/GID-owned tmpfs
+mounts. Run `41799823526` confirmed that the PID correction alone left the
+cache root-owned; both writable scratch directories must match the fixture UID.
 The previous `/var/run` mount left the image's `/run/nginx.pid` unwritable and
 failed run `41565383604` before any N02/N07 component execution.
 

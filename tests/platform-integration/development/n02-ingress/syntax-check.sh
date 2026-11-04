@@ -66,7 +66,7 @@ timeout 120 docker run --rm \
   --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges \
   --entrypoint /usr/sbin/nginx \
-  --tmpfs /var/cache/nginx:rw,noexec,nosuid,size=16m \
+  --tmpfs "/var/cache/nginx:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=$(id -u),gid=$(id -g)" \
   --tmpfs "/tmp/n02-nginx:rw,noexec,nosuid,nodev,size=1m,mode=0700,uid=$(id -u),gid=$(id -g)" \
   --mount "type=bind,src=$tmp/render/nginx.conf,dst=/etc/nginx/nginx.conf,readonly" \
   --mount "type=bind,src=$tmp/private,dst=/run/n02-private,readonly" \
