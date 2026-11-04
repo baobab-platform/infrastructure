@@ -135,9 +135,20 @@ def require(ok, code):
 
 def untrusted_json(data):
     require(len(data) <= 12_000_000, "ARTIFACT_ARCHIVE_INVALID")
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON member")
+            result[key] = value
+        return result
+
+    def invalid_constant(_value):
+        raise ValueError("non-finite JSON value")
+
     try:
-        return json.loads(data)
-    except (ValueError, UnicodeError):
+        return json.loads(data, object_pairs_hook=unique, parse_constant=invalid_constant)
+    except (ValueError, UnicodeError, RecursionError):
         raise Blocked("ARTIFACT_ARCHIVE_INVALID") from None
 
 # These are the existing approved owner budgets, not values supplied by an
@@ -153,6 +164,48 @@ def _one_path(names, expected, reason):
     require(len(found) == 1, reason)
     return found[0]
 
+def _playwright_executions(suites):
+    """Count original passing executions; summary counters alone prove nothing.
+
+    A report containing only passed tests plus a skipped mandatory case used
+    to qualify because skipped was never checked. Walk Playwright's actual
+    nested suite/spec/test/results tree and reconcile its count with stats.
+    Expected failures, retries, absent results and skipped tests cannot become
+    successful qualification. This does not replace the owner job/source gate.
+    """
+    pending = [(suite, 0) for suite in suites]
+    count = 0
+    visited = 0
+    while pending:
+        suite, depth = pending.pop()
+        visited += 1
+        require(type(suite) is dict and depth <= 64 and visited <= 10000,
+                "PLAYWRIGHT_RESULT_INVALID")
+        children, specs = suite.get("suites", []), suite.get("specs", [])
+        require(type(children) is list and type(specs) is list,
+                "PLAYWRIGHT_RESULT_INVALID")
+        pending.extend((child, depth + 1) for child in children)
+        for spec in specs:
+            require(type(spec) is dict and spec.get("ok") is True
+                    and type(spec.get("tests")) is list and spec["tests"],
+                    "PLAYWRIGHT_RESULT_INVALID")
+            for test in spec["tests"]:
+                require(type(test) is dict and test.get("expectedStatus") == "passed"
+                        and test.get("status") == "expected"
+                        and type(test.get("results")) is list
+                        and len(test["results"]) == 1,
+                        "PLAYWRIGHT_RESULT_INVALID")
+                result = test["results"][0]
+                require(type(result) is dict and result.get("status") == "passed"
+                        and type(result.get("retry")) is int and result["retry"] == 0
+                        and finite_number(result.get("duration"))
+                        and not result.get("errors", []) and not result.get("error"),
+                        "PLAYWRIGHT_RESULT_INVALID")
+                count += 1
+                require(count <= 100000, "PLAYWRIGHT_RESULT_INVALID")
+    require(count > 0, "PLAYWRIGHT_RESULT_INVALID")
+    return count
+
 def _browser_summary(archive, names, owner):
     required_gates = (*GATES, "logistics") if owner == "thamani" else GATES
     counts = {}
@@ -167,10 +220,12 @@ def _browser_summary(archive, names, owner):
                 "PLAYWRIGHT_RESULT_INVALID")
         stats = summary["stats"]
         require(type(stats.get("expected")) is int and stats["expected"] > 0
-                and stats.get("unexpected") == 0
-                and stats.get("flaky") == 0
+                and all(type(stats.get(key)) is int and stats[key] == 0
+                        for key in ("unexpected", "flaky", "skipped"))
                 and isinstance(summary.get("errors", []), list)
                 and not summary.get("errors"),
+                "PLAYWRIGHT_RESULT_INVALID")
+        require(_playwright_executions(summary["suites"]) == stats["expected"],
                 "PLAYWRIGHT_RESULT_INVALID")
         counts[gate] = stats["expected"]
 
@@ -282,6 +337,11 @@ def verify_zip(blob, claimed_digest, category):
         rows = archive.infolist()
         require(0 < len(rows) <= 10000, "ARTIFACT_ARCHIVE_INVALID")
         names = [r.filename for r in rows]
+        # Duplicate ZIP entries can present two different originals under the
+        # same name. Bound total decompression as well as each individual file.
+        require(len(set(names)) == len(names)
+                and sum(item.file_size for item in rows) <= 1024 * 1024 * 1024,
+                "ARTIFACT_ARCHIVE_INVALID")
         for item in rows:
             path = item.filename
             require(not path.startswith("/") and not path.startswith("\\")
@@ -397,6 +457,8 @@ def native_receipt(category, value, pins):
             "native_medusa_outbox_persisted", "real_rabbitmq_publisher_confirmed",
             "erp_postgres_canonical_admission",
             "real_crash_after_inbox_commit_before_ack_recovered",
+            "real_crash_after_broker_confirm_before_pg_settlement_recovered",
+            "broker_unknown_outcome_reclaimed_with_fenced_attempt",
             "unchanged_event_redelivery_deduplicated",
             "changed_business_replay_rejected", "bad_signature_rejected_to_dlx",
             "mandatory_unroutable_rejected",

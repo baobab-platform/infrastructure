@@ -148,7 +148,10 @@ services:
     image: ${L4_CP_IMAGE:?project-scoped built image}
     restart: "no"
     environment:
-      BAOBAB_ENVIRONMENT: integration
+      # ADR-SHARED-043's named synthetic clients are DEVELOPMENT-only. Current
+      # CP rejects their still-valid tokens in any other environment; retain
+      # that runtime fence and correctly identify this disposable profile.
+      BAOBAB_ENVIRONMENT: development
       HTTP_ADDRESS: ":8080"
       DATABASE_URL: postgres://controlplane:${L4_CP_DB_PASSWORD}@cp-db:5432/controlplane?sslmode=disable
       PLATFORM_CONTEXT_TTL: 5m

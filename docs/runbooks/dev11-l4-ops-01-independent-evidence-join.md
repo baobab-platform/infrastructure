@@ -102,3 +102,21 @@ The owner CI branches now deliberately **retain different output directories for
 The independent verifier checks actual `stats.expected > 0`, `stats.unexpected == 0`, `stats.flaky == 0`, and an empty Playwright top-level error list. It parses the native Lighthouse reports to enforce each owner's approved minimum performance (90) and accessibility/best-practices (95) scores, public-page SEO (95), CLS no more than 0.1 and transferred JavaScript no more than 250 KiB. Thamani's intentionally `noindex` quote workspace is **not required to meet a public SEO indexability target**; it retains the original owner test's security policy. Single-run Lighthouse LCP is recorded as a **lab diagnostic**, never a fabricated field P75 LCP or INP result.
 
 The original four static limits remain exact: total JavaScript 800 KiB, largest chunk 250 KiB, total CSS 64 KiB and largest raster image 250 KiB. The verifier compares the source-owned report's limits to those independently hardcoded values, then compares actual measured byte counts to them. A report that raises its own limits or has an empty/incorrect sample **cannot pass**, even after a successful GitHub step. Only bounded numbers and fixed category labels leave the private join, never raw reports or screenshot data.
+
+
+## 4 November 2026 verifier hardening
+
+Browser evidence must contain the original nested Playwright executions as
+well as its statistics. Every test must have one passing result, retry zero,
+expected status passed, no error and a finite duration. Counts must match the
+original summary; skipped, flaky and unexpected counts must all be integer
+zero. Missing executions, expected failures, retries and skipped cases refuse
+the candidate even if GitHub marks the owner job green. HTML alone cannot
+supply measured results. The eight owner groups and all original estate
+budgets remain unchanged.
+
+The ZIP reader also rejects duplicate member names and bounds total expanded
+size to 1 GiB. JSON rejects duplicate keys, non-finite values and excessive
+nesting. These are input-integrity checks, not attestations of runtime success.
+Regression tests retain the real/fixture distinction and L4-OPS-01 remains
+BLOCKED until the governed commitment and same-event native trace proof exist.

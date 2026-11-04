@@ -12,6 +12,16 @@ m=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 class ContractTest(unittest.TestCase):
+    def test_named_development_clients_do_not_bypass_environment_admission(self):
+        source = (BASE / "compose.yaml").read_text()
+        cp = source.split("\n  cp:\n", 1)[1].split("\n  edge:\n", 1)[0]
+        # CP's current WorkloadEnvironmentRegistry only admits the accepted
+        # development-only Pulse consumer when deployment is development.
+        # Keep the registry mounted and enabled rather than bypassing it.
+        self.assertIn("BAOBAB_ENVIRONMENT: development", cp)
+        self.assertIn("WORKLOAD_REGISTRY_FILE: /run/l4-workload-registry.yaml", cp)
+        self.assertIn("${L4_WORKLOAD_REGISTRY:?pinned Shared registry required}", cp)
+
     def test_http_observations_are_strict_and_cannot_promote_provider(self):
         report = {"scenarios":{"L4-CP-02":"BLOCKED"}}
         m.apply_pulse_http_proof(report, {"checks":{name:True for name in m.PULSE_HTTP_REQUIRED}})

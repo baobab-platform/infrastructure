@@ -4,7 +4,7 @@ import json
 import unittest
 import zipfile
 
-from dev11_evidence_join import LABELS, Blocked, join, verify_one, verify_zip
+from dev11_evidence_join import LABELS, Blocked, join, native_receipt, verify_one, verify_zip
 
 HEAD = "a" * 40
 CP = "b" * 40
@@ -38,7 +38,12 @@ def artifact_data(name):
                     f"reports/dev11-{gate}-playwright.json",
                     json.dumps({
                         "stats": {"expected": 2, "unexpected": 0, "flaky": 0, "skipped": 0},
-                        "suites": [{"title": "synthetic pass"}], "errors": [],
+                        "suites": [{"title": "synthetic unit fixture", "specs": [{
+                            "ok": True,
+                            "tests": [{"expectedStatus": "passed", "status": "expected",
+                                       "results": [{"status": "passed", "retry": 0,
+                                                    "duration": 10, "errors": []}]} for _ in range(2)],
+                        }]}], "errors": [],
                     }),
                 )
             labels = ("totalJavaScript", "largestJavaScriptChunk", "totalCss",
@@ -98,6 +103,8 @@ def artifact_data(name):
                 "real_rabbitmq_publisher_confirmed": True,
                 "erp_postgres_canonical_admission": True,
                 "real_crash_after_inbox_commit_before_ack_recovered": True,
+                "real_crash_after_broker_confirm_before_pg_settlement_recovered": True,
+                "broker_unknown_outcome_reclaimed_with_fenced_attempt": True,
                 "unchanged_event_redelivery_deduplicated": True,
                 "changed_business_replay_rejected": True,
                 "bad_signature_rejected_to_dlx": True,
@@ -262,6 +269,18 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         return verify_one(name, self.gh.bindings[name], PINS,
                           self.gh.api, self.gh.download)
 
+    def test_broker_confirmation_crash_and_fenced_reclaim_are_both_required(self):
+        blob = artifact_data("l4_rabbit")
+        value = verify_zip(blob, "sha256:" + hashlib.sha256(blob).hexdigest(), "l4_rabbit")
+        for key in ("real_crash_after_broker_confirm_before_pg_settlement_recovered",
+                    "broker_unknown_outcome_reclaimed_with_fenced_attempt"):
+            for replacement in (False, None, "true", 1):
+                with self.subTest(key=key, replacement=replacement):
+                    changed = {**value, "connected": {**value["connected"], key: replacement}}
+                    with self.assertRaises(Blocked) as error:
+                        native_receipt("l4_rabbit", changed, PINS)
+                    self.assertEqual(error.exception.code, "RABBIT_CONNECTED_RECEIPT_INVALID")
+
     def test_green_owner_job_artifact_sha_and_five_real_gates(self):
         result = self.check("nabhold")
         self.assertEqual(result["result"], "PASS")
@@ -281,6 +300,43 @@ class DEV11IndependentJoinTests(unittest.TestCase):
         with self.assertRaises(Blocked) as error:
             self.check("nabhold")
         self.assertEqual(error.exception.code, "REQUIRED_STEP_NOT_PASSED")
+
+    def test_browser_summary_cannot_hide_unexecuted_or_failed_cases(self):
+        original = artifact_data("nabhold")
+        with zipfile.ZipFile(io.BytesIO(original)) as archive:
+            originals = {key: archive.read(key) for key in archive.namelist()}
+        key = "reports/dev11-functional-playwright.json"
+        for change in ("skipped", "missing-skipped", "summary-only", "count-drift",
+                       "failed-result", "expected-failure", "retried", "missing-result"):
+            with self.subTest(change=change):
+                rows = dict(originals)
+                report = json.loads(rows[key])
+                test = report["suites"][0]["specs"][0]["tests"][0]
+                if change == "skipped":
+                    report["stats"]["skipped"] = 1
+                elif change == "missing-skipped":
+                    del report["stats"]["skipped"]
+                elif change == "summary-only":
+                    report["suites"] = [{"title": "no execution"}]
+                elif change == "count-drift":
+                    report["stats"]["expected"] = 3
+                elif change == "failed-result":
+                    test["results"][0]["status"] = "failed"
+                elif change == "expected-failure":
+                    test["expectedStatus"] = "failed"
+                elif change == "retried":
+                    test["results"][0]["retry"] = 1
+                else:
+                    test["results"] = []
+                rows[key] = json.dumps(report).encode()
+                out = io.BytesIO()
+                with zipfile.ZipFile(out, "w") as archive:
+                    for path, body in rows.items():
+                        archive.writestr(path, body)
+                blob = out.getvalue()
+                with self.assertRaises(Blocked) as error:
+                    verify_zip(blob, "sha256:" + hashlib.sha256(blob).hexdigest(), "nabhold")
+                self.assertEqual(error.exception.code, "PLAYWRIGHT_RESULT_INVALID")
 
     def test_failed_owner_run_with_artifact_is_not_pass(self):
         self.gh.urls["/repos/baobab-platform/nabhold/actions/runs/1001"]["conclusion"] = "failure"

@@ -1,0 +1,2518 @@
+{
+  "schema": "baobab.infrastructure.engineering-reconciliation.v1",
+  "as_of_date": "2026-11-04",
+  "governing_architecture": [
+    "EA v2.3",
+    "EA-DEV",
+    "EA-XB v1.1"
+  ],
+  "merge_policy": "DO_NOT_MERGE",
+  "protected_acceptance": false,
+  "production_authorized": false,
+  "observation_policy": "Source SHAs are the live heads observed before this register commit. CI belongs only to the recorded source. Local working-patch validations are not connected acceptance. Refresh this dated observation after changes; no self-referential head attestation.",
+  "phase_status": {
+    "phase_0": "IMPLEMENTED_RECONCILIATION_SNAPSHOT",
+    "phase_1": "BLOCKED_ACCEPTED_SHARED_430_ADOPTION",
+    "phase_2": "BLOCKED_REAL_N02_N07_TOPOLOGY_AND_ORIGINALS",
+    "phase_3": "IMPLEMENTATION_CORRECTIONS_IN_PROGRESS",
+    "phase_4": "BROKER_INBOX_EXPORTER_COMPONENT_OBSERVED_FULL_BUSINESS_VERTICAL_BLOCKED",
+    "phase_5": "OWNER_QUALITY_RERUNS_IN_PROGRESS",
+    "phase_6": "BLOCKED_CURRENT_COHERENT_EIGHT_OWNER_JOIN",
+    "phase_7": "NOT_EXECUTED_FULL_FINAL_AUDIT"
+  },
+  "records": [
+    {
+      "repository": "baobab-platform/infrastructure",
+      "pull_request": 69,
+      "url": "https://github.com/baobab-platform/infrastructure/pull/69",
+      "workstreams": [
+        "DEV-04",
+        "DEV-03",
+        "DEV-05",
+        "DEV-08",
+        "DEV-11",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/iam-n02-connected-dev04-join-20261031",
+      "source_sha": "9eb810dd4724e0126c9772db542fc0dfc0f5cdf8",
+      "base_branch": "main",
+      "base_sha": "bcbcf2aaf7c9ee720f16952890de7c8a52c35371",
+      "merged": false,
+      "inspection_scope": "CODE_AND_SOURCE_TESTS_OR_RUNTIME_DIAGNOSIS",
+      "implementation_obligations": [
+        "Same-run seven N02 browser and seven INT-03C cases",
+        "Real issuer/CP/native N07 readbacks",
+        "Private original custody and independently verified teardown"
+      ],
+      "fulfilled_obligations": [
+        "Source regression: 155 development tests passed locally",
+        "Offline NGINX PID and cache ownership corrections; full syntax rerun required",
+        "N02/N07 runbook source-authority claims corrected"
+      ],
+      "unresolved_defects": [
+        "Shared #430 unmerged; CP accepted-source adoption unavailable",
+        "First-party BFF/TLS/courier/AAL2/browser topology and same-run originals absent",
+        "Current N02/N07 locks retain historical Shared #421, not accepted consolidated inventory",
+        "Actual N07 run 41801929672 refuses EMBEDDED_CONTRACT_DRIFT after NGINX/source gate passes; accepted CP and historical Shared #421 candidate bytes disagree"
+      ],
+      "source_test_results": {
+        "classification": "IMPLEMENTED",
+        "notes": [
+          "Source regression: 155 development tests passed locally",
+          "Offline NGINX PID and cache ownership corrections; full syntax rerun required",
+          "N02/N07 runbook source-authority claims corrected"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41803536068,
+          "name": "DEV-15 connected authority and native evidence",
+          "status": "in_progress",
+          "conclusion": null,
+          "source_sha": "9eb810dd4724e0126c9772db542fc0dfc0f5cdf8"
+        },
+        {
+          "run_id": 41803536119,
+          "name": "DEV-15 native components on disposable IAM CP",
+          "status": "in_progress",
+          "conclusion": null,
+          "source_sha": "9eb810dd4724e0126c9772db542fc0dfc0f5cdf8"
+        },
+        {
+          "run_id": 41803536228,
+          "name": "INT-02 real IAM and CP integration",
+          "status": "in_progress",
+          "conclusion": null,
+          "source_sha": "9eb810dd4724e0126c9772db542fc0dfc0f5cdf8"
+        },
+        {
+          "run_id": 41803537322,
+          "name": "Foundation Repository Gates",
+          "status": "queued",
+          "conclusion": null,
+          "source_sha": "9eb810dd4724e0126c9772db542fc0dfc0f5cdf8"
+        },
+        {
+          "run_id": 41803536135,
+          "name": "Infrastructure CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "9eb810dd4724e0126c9772db542fc0dfc0f5cdf8"
+        },
+        {
+          "run_id": 41803536030,
+          "name": "Platform L4 INT-01 Codespaces/Actions parity",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "9eb810dd4724e0126c9772db542fc0dfc0f5cdf8"
+        },
+        {
+          "run_id": 41803536111,
+          "name": "DEV-01 to DEV-07 development qualification",
+          "status": "in_progress",
+          "conclusion": null,
+          "source_sha": "9eb810dd4724e0126c9772db542fc0dfc0f5cdf8"
+        },
+        {
+          "run_id": 41803535863,
+          "name": "Subscriptions native development onboarding",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "9eb810dd4724e0126c9772db542fc0dfc0f5cdf8"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "IN_PROGRESS"
+    },
+    {
+      "repository": "baobab-platform/infrastructure",
+      "pull_request": 72,
+      "url": "https://github.com/baobab-platform/infrastructure/pull/72",
+      "workstreams": [
+        "DEV-11",
+        "DEV-07",
+        "DEV-09",
+        "DEV-12",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/dev11-assurance-routing-20261102",
+      "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d",
+      "base_branch": "main",
+      "base_sha": "bcbcf2aaf7c9ee720f16952890de7c8a52c35371",
+      "merged": false,
+      "inspection_scope": "CODE_AND_SOURCE_TESTS_OR_RUNTIME_DIAGNOSIS",
+      "implementation_obligations": [
+        "One reusable lifecycle incorporating #69 without source-lock loss",
+        "Current independently sourced eight-owner evidence join",
+        "Governed native order, crash/replay and same-event exported trace proof"
+      ],
+      "fulfilled_obligations": [
+        "Combined #69/#72 lifecycle source tests: 205 pass locally; INT-02 source tests: 93 pass",
+        "Reject skipped/unexecuted/mismatched Playwright evidence and duplicate/unbounded archives",
+        "Require both producer crash/reclaim observations",
+        "Updated BFF peer source pins and accepted CP source alignment"
+      ],
+      "unresolved_defects": [
+        "Full governed Medusa buyer commitment and native ERP same-event graph absent",
+        "Native ERP fixture not ready; exact missing native component still being diagnosed",
+        "Current eight-owner source tuple/evidence join unavailable; no acceptance"
+      ],
+      "source_test_results": {
+        "classification": "IMPLEMENTED",
+        "notes": [
+          "Combined #69/#72 lifecycle source tests: 205 pass locally; INT-02 source tests: 93 pass",
+          "Reject skipped/unexecuted/mismatched Playwright evidence and duplicate/unbounded archives",
+          "Require both producer crash/reclaim observations",
+          "Updated BFF peer source pins and accepted CP source alignment"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41601943412,
+          "name": "INT-03 identity smoke and CMS component preparation",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943336,
+          "name": "DEV-11 connected Keycloak / CP W3C candidate qualification",
+          "status": "completed",
+          "conclusion": "failure",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943323,
+          "name": "DEV-11 source routing and privacy assurance",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601944560,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943289,
+          "name": "DEV-01 to DEV-07 development qualification",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943140,
+          "name": "Infrastructure CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943251,
+          "name": "Platform L3 harness",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943274,
+          "name": "DEV-11 independent L4-OPS-01 and estate evidence custody",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943138,
+          "name": "INT-02 real IAM and CP integration",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943172,
+          "name": "DEV-11 actual OTLP exported trace smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943236,
+          "name": "DEV-15 native components on disposable IAM CP",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943117,
+          "name": "DEV-11 connected confidential BFF IAM CP Trade candidate",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943265,
+          "name": "Subscriptions native development onboarding",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943174,
+          "name": "Platform L4 INT-01 Codespaces/Actions parity",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        },
+        {
+          "run_id": 41601943212,
+          "name": "DEV-15 connected authority and native evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "4ce0154dde964bdfcac3216f851a44a475fceb2d"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "NEEDS_CORRECTION",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "FAILED"
+    },
+    {
+      "repository": "baobab-platform/shared",
+      "pull_request": 420,
+      "url": "https://github.com/baobab-platform/shared/pull/420",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n04-development-runtime-reader-ceiling",
+      "source_sha": "750ab553402c7b7485a8c74fe0e1a167eed1a6a7",
+      "base_branch": "main",
+      "base_sha": "c97387ed8e27eeffb0c0382e043db98cb450b900",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41517960133,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "750ab553402c7b7485a8c74fe0e1a167eed1a6a7"
+        },
+        {
+          "run_id": 41517960409,
+          "name": "DEV-10 environment and private consumer",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "750ab553402c7b7485a8c74fe0e1a167eed1a6a7"
+        },
+        {
+          "run_id": 41517960078,
+          "name": "Codespaces Registry and Image Contract",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "750ab553402c7b7485a8c74fe0e1a167eed1a6a7"
+        },
+        {
+          "run_id": 41517960346,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "750ab553402c7b7485a8c74fe0e1a167eed1a6a7"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "Superseded by consolidated Shared #430; do not merge independently"
+      ],
+      "external_blockers": [
+        "Owner supersession decision"
+      ],
+      "merge_readiness": "SUPERSEDED",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/shared",
+      "pull_request": 421,
+      "url": "https://github.com/baobab-platform/shared/pull/421",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n02-zuribeans-cp-reader-ceiling-20261031",
+      "source_sha": "38704895c3b0c2897d4c72d4b1353945d2bbb2ff",
+      "base_branch": "main",
+      "base_sha": "c97387ed8e27eeffb0c0382e043db98cb450b900",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41211679321,
+          "name": "DEV-10 environment and private consumer",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "38704895c3b0c2897d4c72d4b1353945d2bbb2ff"
+        },
+        {
+          "run_id": 41211679368,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "38704895c3b0c2897d4c72d4b1353945d2bbb2ff"
+        },
+        {
+          "run_id": 41211679310,
+          "name": "Codespaces Registry and Image Contract",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "38704895c3b0c2897d4c72d4b1353945d2bbb2ff"
+        },
+        {
+          "run_id": 41211679407,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "38704895c3b0c2897d4c72d4b1353945d2bbb2ff"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "Superseded by consolidated Shared #430; do not merge independently"
+      ],
+      "external_blockers": [
+        "Owner supersession decision"
+      ],
+      "merge_readiness": "SUPERSEDED",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/shared",
+      "pull_request": 422,
+      "url": "https://github.com/baobab-platform/shared/pull/422",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/tms-n07-development-workload-ceiling-20261031",
+      "source_sha": "3b24291f2c164ecdbadc7e3a4c190790b86b73d2",
+      "base_branch": "main",
+      "base_sha": "c97387ed8e27eeffb0c0382e043db98cb450b900",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41555056080,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "3b24291f2c164ecdbadc7e3a4c190790b86b73d2"
+        },
+        {
+          "run_id": 41555055867,
+          "name": "Codespaces Registry and Image Contract",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "3b24291f2c164ecdbadc7e3a4c190790b86b73d2"
+        },
+        {
+          "run_id": 41555055313,
+          "name": "DEV-10 environment and private consumer",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "3b24291f2c164ecdbadc7e3a4c190790b86b73d2"
+        },
+        {
+          "run_id": 41555055647,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "3b24291f2c164ecdbadc7e3a4c190790b86b73d2"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "Superseded by consolidated Shared #430; do not merge independently"
+      ],
+      "external_blockers": [
+        "Owner supersession decision"
+      ],
+      "merge_readiness": "SUPERSEDED",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/shared",
+      "pull_request": 429,
+      "url": "https://github.com/baobab-platform/shared/pull/429",
+      "workstreams": [
+        "DEV-11"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/dev11-observability-source-contract-20261102",
+      "source_sha": "f56cf41d8572ec67ca52dd4172d2f1fa08a58dea",
+      "base_branch": "main",
+      "base_sha": "35505365765073e9b7261a3f6f61a3d002de3538",
+      "merged": false,
+      "inspection_scope": "CODE_AND_SOURCE_TESTS_OR_RUNTIME_DIAGNOSIS",
+      "implementation_obligations": [
+        "Canonical asynchronous trace semantics",
+        "Evidence-source conformance without runtime self-certification"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41597832456,
+          "name": "Codespaces Registry and Image Contract",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f56cf41d8572ec67ca52dd4172d2f1fa08a58dea"
+        },
+        {
+          "run_id": 41597832392,
+          "name": "DEV-10 environment and private consumer",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f56cf41d8572ec67ca52dd4172d2f1fa08a58dea"
+        },
+        {
+          "run_id": 41597832315,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f56cf41d8572ec67ca52dd4172d2f1fa08a58dea"
+        },
+        {
+          "run_id": 41597832532,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f56cf41d8572ec67ca52dd4172d2f1fa08a58dea"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "READY_FOR_OWNER_REVIEW",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/shared",
+      "pull_request": 430,
+      "url": "https://github.com/baobab-platform/shared/pull/430",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-08",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-closed-n02-n04-n07-reconciliation-20261103",
+      "source_sha": "1dc7a7eba0c197159473864c5cd8bea7637e4a8c",
+      "base_branch": "main",
+      "base_sha": "cf506e9f651f1157880d57d4f5f792ec1263a7ac",
+      "merged": false,
+      "inspection_scope": "CODE_AND_SOURCE_TESTS_OR_RUNTIME_DIAGNOSIS",
+      "implementation_obligations": [
+        "One closed N02/N04/N07 inventory",
+        "Browser/workload identity separation and PROVISIONED ceilings",
+        "Accepted-source owner adoption before runtime activation"
+      ],
+      "fulfilled_obligations": [
+        "Closed source inventory and six focused Python negatives verified locally",
+        "Existing exact-head CI reports success; no runtime authority conferred"
+      ],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "IMPLEMENTED",
+        "notes": [
+          "Closed source inventory and six focused Python negatives verified locally",
+          "Existing exact-head CI reports success; no runtime authority conferred"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41556696689,
+          "name": "Codespaces Registry and Image Contract",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "1dc7a7eba0c197159473864c5cd8bea7637e4a8c"
+        },
+        {
+          "run_id": 41556696867,
+          "name": "DEV-10 environment and private consumer",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "1dc7a7eba0c197159473864c5cd8bea7637e4a8c"
+        },
+        {
+          "run_id": 41556696740,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "1dc7a7eba0c197159473864c5cd8bea7637e4a8c"
+        },
+        {
+          "run_id": 41556696871,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "1dc7a7eba0c197159473864c5cd8bea7637e4a8c"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "READY_FOR_OWNER_REVIEW",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-cp",
+      "pull_request": 454,
+      "url": "https://github.com/baobab-platform/baobab-cp/pull/454",
+      "workstreams": [
+        "DEV-03"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n04-current-binding-response-validation",
+      "source_sha": "efa4418e41a5be5b75f37f2de9adfed9aaa45d57",
+      "base_branch": "main",
+      "base_sha": "03e53eae95b6a277bd866a617653afb6634262bb",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41554971066,
+          "name": "Resolution Production Readiness",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "efa4418e41a5be5b75f37f2de9adfed9aaa45d57"
+        },
+        {
+          "run_id": 41554971127,
+          "name": "Codespaces Registry and Image Contract",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "efa4418e41a5be5b75f37f2de9adfed9aaa45d57"
+        },
+        {
+          "run_id": 41554971541,
+          "name": "Security",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "efa4418e41a5be5b75f37f2de9adfed9aaa45d57"
+        },
+        {
+          "run_id": 41554971990,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "efa4418e41a5be5b75f37f2de9adfed9aaa45d57"
+        },
+        {
+          "run_id": 41554971109,
+          "name": "Go CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "efa4418e41a5be5b75f37f2de9adfed9aaa45d57"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-cp",
+      "pull_request": 455,
+      "url": "https://github.com/baobab-platform/baobab-cp/pull/455",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-08"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n02-cp-governed-registry-20261031",
+      "source_sha": "83f5f656f2790c8861b0d68c54bf2f2caf6f4847",
+      "base_branch": "main",
+      "base_sha": "03e53eae95b6a277bd866a617653afb6634262bb",
+      "merged": false,
+      "inspection_scope": "CODE_AND_SOURCE_TESTS_OR_RUNTIME_DIAGNOSIS",
+      "implementation_obligations": [
+        "Inert consolidated candidate provenance and negative admission",
+        "Unchanged accepted Shared lock/embedded bytes",
+        "Future accepted-source adoption and actual Principal/grant qualification"
+      ],
+      "fulfilled_obligations": [
+        "Original Shared #430 candidate bytes bound by SHA-256 provenance",
+        "All proposed clients denied scopes, environments and delegation",
+        "Full local internal/auth suite passes; current published-head CI reports success"
+      ],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "IMPLEMENTED",
+        "notes": [
+          "Original Shared #430 candidate bytes bound by SHA-256 provenance",
+          "All proposed clients denied scopes, environments and delegation",
+          "Full local internal/auth suite passes; current published-head CI reports success"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41801032825,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "83f5f656f2790c8861b0d68c54bf2f2caf6f4847"
+        },
+        {
+          "run_id": 41801032132,
+          "name": "Security",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "83f5f656f2790c8861b0d68c54bf2f2caf6f4847"
+        },
+        {
+          "run_id": 41801031681,
+          "name": "Resolution Production Readiness",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "83f5f656f2790c8861b0d68c54bf2f2caf6f4847"
+        },
+        {
+          "run_id": 41801031707,
+          "name": "Go CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "83f5f656f2790c8861b0d68c54bf2f2caf6f4847"
+        },
+        {
+          "run_id": 41801031643,
+          "name": "Codespaces Registry and Image Contract",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "83f5f656f2790c8861b0d68c54bf2f2caf6f4847"
+        },
+        {
+          "run_id": 41801031639,
+          "name": "ERP event convergence",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "83f5f656f2790c8861b0d68c54bf2f2caf6f4847"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-cp",
+      "pull_request": 458,
+      "url": "https://github.com/baobab-platform/baobab-cp/pull/458",
+      "workstreams": [
+        "DEV-11"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/dev11-privacy-safe-request-logging-20261102",
+      "source_sha": "ab61e35c35028bad1090232bcf2d7c67a84ef959",
+      "base_branch": "main",
+      "base_sha": "03e53eae95b6a277bd866a617653afb6634262bb",
+      "merged": true,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41454157763,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "ab61e35c35028bad1090232bcf2d7c67a84ef959"
+        },
+        {
+          "run_id": 41454156195,
+          "name": "Go CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "ab61e35c35028bad1090232bcf2d7c67a84ef959"
+        },
+        {
+          "run_id": 41454156883,
+          "name": "Security",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "ab61e35c35028bad1090232bcf2d7c67a84ef959"
+        },
+        {
+          "run_id": 41454156265,
+          "name": "Resolution Production Readiness",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "ab61e35c35028bad1090232bcf2d7c67a84ef959"
+        },
+        {
+          "run_id": 41454156141,
+          "name": "Codespaces Registry and Image Contract",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "ab61e35c35028bad1090232bcf2d7c67a84ef959"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Current-source qualification remains independently required"
+      ],
+      "merge_readiness": "NOT_APPLICABLE_ALREADY_MERGED",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 145,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/145",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n01-adr-contract-development-convergence",
+      "source_sha": "f05798a5c62a56c656143087a108090786095bc1",
+      "base_branch": "main",
+      "base_sha": "7958a93808bf23dca8752598ca97fb0292a7ac4d",
+      "merged": true,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41237133527,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f05798a5c62a56c656143087a108090786095bc1"
+        },
+        {
+          "run_id": 41237132897,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f05798a5c62a56c656143087a108090786095bc1"
+        },
+        {
+          "run_id": 41237132904,
+          "name": "Ory Foundation Live",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f05798a5c62a56c656143087a108090786095bc1"
+        },
+        {
+          "run_id": 41237133107,
+          "name": "Enforce Action Pinning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f05798a5c62a56c656143087a108090786095bc1"
+        },
+        {
+          "run_id": 41237133157,
+          "name": "Security — Secret Scanning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f05798a5c62a56c656143087a108090786095bc1"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Current-source qualification remains independently required"
+      ],
+      "merge_readiness": "NOT_APPLICABLE_ALREADY_MERGED",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 146,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/146",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n02-native-browser-bff",
+      "source_sha": "50a36529d2c04a2645f0041b77e99d2f89f22ebb",
+      "base_branch": "main",
+      "base_sha": "58e36dfaa38b80ed38d11951669d1bdc52faa356",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41274383688,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "50a36529d2c04a2645f0041b77e99d2f89f22ebb"
+        },
+        {
+          "run_id": 41274383205,
+          "name": "Security — Secret Scanning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "50a36529d2c04a2645f0041b77e99d2f89f22ebb"
+        },
+        {
+          "run_id": 41274383199,
+          "name": "Enforce Action Pinning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "50a36529d2c04a2645f0041b77e99d2f89f22ebb"
+        },
+        {
+          "run_id": 41274382984,
+          "name": "Ory Foundation Live",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "50a36529d2c04a2645f0041b77e99d2f89f22ebb"
+        },
+        {
+          "run_id": 41274382990,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "50a36529d2c04a2645f0041b77e99d2f89f22ebb"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 147,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/147",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n02-connected-browser-qualification",
+      "source_sha": "225ba193b4088960c5b64033bfce0f755ac347fb",
+      "base_branch": "feat/iam-n02-native-browser-bff",
+      "base_sha": "4a8304b8a237aced2dbdd4432f4b84fa5097b344",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41559630666,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "225ba193b4088960c5b64033bfce0f755ac347fb"
+        },
+        {
+          "run_id": 41559629210,
+          "name": "IAM-N02 temporary connected-source gofmt readback",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "225ba193b4088960c5b64033bfce0f755ac347fb"
+        },
+        {
+          "run_id": 41559629706,
+          "name": "Security — Secret Scanning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "225ba193b4088960c5b64033bfce0f755ac347fb"
+        },
+        {
+          "run_id": 41559629745,
+          "name": "Enforce Action Pinning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "225ba193b4088960c5b64033bfce0f755ac347fb"
+        },
+        {
+          "run_id": 41559629079,
+          "name": "Ory Foundation Live",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "225ba193b4088960c5b64033bfce0f755ac347fb"
+        },
+        {
+          "run_id": 41559629244,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "225ba193b4088960c5b64033bfce0f755ac347fb"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 148,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/148",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n03-workload-resource-acceptance",
+      "source_sha": "39ee45d3fe4a4ddcf45074add10f460451e23270",
+      "base_branch": "feat/iam-n02-connected-browser-qualification",
+      "base_sha": "c7efbbd5ef736d78952a478df33275b2f593bc09",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41559890429,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "39ee45d3fe4a4ddcf45074add10f460451e23270"
+        },
+        {
+          "run_id": 41559889338,
+          "name": "IAM-N03 temporary gofmt readback",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "39ee45d3fe4a4ddcf45074add10f460451e23270"
+        },
+        {
+          "run_id": 41559889353,
+          "name": "Ory Foundation Live",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "39ee45d3fe4a4ddcf45074add10f460451e23270"
+        },
+        {
+          "run_id": 41559889320,
+          "name": "IAM-N02 temporary connected-source gofmt readback",
+          "status": "completed",
+          "conclusion": "skipped",
+          "source_sha": "39ee45d3fe4a4ddcf45074add10f460451e23270"
+        },
+        {
+          "run_id": 41559889859,
+          "name": "Security — Secret Scanning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "39ee45d3fe4a4ddcf45074add10f460451e23270"
+        },
+        {
+          "run_id": 41559889672,
+          "name": "Enforce Action Pinning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "39ee45d3fe4a4ddcf45074add10f460451e23270"
+        },
+        {
+          "run_id": 41559889351,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "39ee45d3fe4a4ddcf45074add10f460451e23270"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 149,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/149",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n04-registration-development-qualification",
+      "source_sha": "c53fca9ebee02c821724e2c512c282deec74b9af",
+      "base_branch": "feat/iam-n03-workload-resource-acceptance",
+      "base_sha": "06732d2e42f3ac85dd516542d584459b9b92eb89",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "NOT_EXECUTED"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 150,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/150",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n05-durable-migration-lifecycle-20261031",
+      "source_sha": "6d56cb08d912796320c16612515644bfdbaddf8b",
+      "base_branch": "main",
+      "base_sha": "7958a93808bf23dca8752598ca97fb0292a7ac4d",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [
+        "Corrected unmatched PostgreSQL trigger dollar quotes",
+        "Local migration package tests pass; real PG17 rerun pending"
+      ],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "IMPLEMENTED",
+        "notes": [
+          "Corrected unmatched PostgreSQL trigger dollar quotes",
+          "Local migration package tests pass; real PG17 rerun pending"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41801943221,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "6d56cb08d912796320c16612515644bfdbaddf8b"
+        },
+        {
+          "run_id": 41801942236,
+          "name": "Security — Secret Scanning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "6d56cb08d912796320c16612515644bfdbaddf8b"
+        },
+        {
+          "run_id": 41801942317,
+          "name": "Enforce Action Pinning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "6d56cb08d912796320c16612515644bfdbaddf8b"
+        },
+        {
+          "run_id": 41801940690,
+          "name": "Ory Foundation Live",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "6d56cb08d912796320c16612515644bfdbaddf8b"
+        },
+        {
+          "run_id": 41801941225,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "6d56cb08d912796320c16612515644bfdbaddf8b"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 151,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/151",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n06-assurance-security-controls-20261031",
+      "source_sha": "57c1ba409340ea929422ba46e53be0b7c303234d",
+      "base_branch": "feat/iam-n02-connected-browser-qualification",
+      "base_sha": "1c1f836d91951784f70d5e7552da7c6da84a3f81",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "NOT_EXECUTED"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 152,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/152",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n07-connected-consumers-20261031",
+      "source_sha": "e991ee2d1a6d53e3db3d52f3739870c09d8364db",
+      "base_branch": "feat/iam-n06-assurance-security-controls-20261031",
+      "base_sha": "25fb30a3ab07e30c8881111055242094db36c3ee",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41559491380,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "e991ee2d1a6d53e3db3d52f3739870c09d8364db"
+        },
+        {
+          "run_id": 41559490519,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "e991ee2d1a6d53e3db3d52f3739870c09d8364db"
+        },
+        {
+          "run_id": 41559490318,
+          "name": "Ory Foundation Live",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "e991ee2d1a6d53e3db3d52f3739870c09d8364db"
+        },
+        {
+          "run_id": 41559490267,
+          "name": "IAM-N02 temporary connected-source gofmt readback",
+          "status": "completed",
+          "conclusion": "skipped",
+          "source_sha": "e991ee2d1a6d53e3db3d52f3739870c09d8364db"
+        },
+        {
+          "run_id": 41559490549,
+          "name": "IAM-N06 read-only gofmt source readback",
+          "status": "completed",
+          "conclusion": "skipped",
+          "source_sha": "e991ee2d1a6d53e3db3d52f3739870c09d8364db"
+        },
+        {
+          "run_id": 41559490826,
+          "name": "Enforce Action Pinning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "e991ee2d1a6d53e3db3d52f3739870c09d8364db"
+        },
+        {
+          "run_id": 41559490824,
+          "name": "Security — Secret Scanning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "e991ee2d1a6d53e3db3d52f3739870c09d8364db"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 153,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/153",
+      "workstreams": [
+        "DEV-03",
+        "DEV-04",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-IAM-0033"
+      ],
+      "source_branch": "feat/iam-n08-native-ops-20261031",
+      "source_sha": "fae32b20187b2201e6070c382f563e170773e692",
+      "base_branch": "feat/iam-n07-connected-consumers-20261031",
+      "base_sha": "24306a1fbf970e392649a8612681528bfe3e522f",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41521850724,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "fae32b20187b2201e6070c382f563e170773e692"
+        },
+        {
+          "run_id": 41521848466,
+          "name": "IAM-N02 temporary connected-source gofmt readback",
+          "status": "completed",
+          "conclusion": "skipped",
+          "source_sha": "fae32b20187b2201e6070c382f563e170773e692"
+        },
+        {
+          "run_id": 41521848515,
+          "name": "IAM-N06 read-only gofmt source readback",
+          "status": "completed",
+          "conclusion": "skipped",
+          "source_sha": "fae32b20187b2201e6070c382f563e170773e692"
+        },
+        {
+          "run_id": 41521848484,
+          "name": "Ory Foundation Live",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "fae32b20187b2201e6070c382f563e170773e692"
+        },
+        {
+          "run_id": 41521849306,
+          "name": "Enforce Action Pinning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "fae32b20187b2201e6070c382f563e170773e692"
+        },
+        {
+          "run_id": 41521849262,
+          "name": "Security — Secret Scanning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "fae32b20187b2201e6070c382f563e170773e692"
+        },
+        {
+          "run_id": 41521848457,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "fae32b20187b2201e6070c382f563e170773e692"
+        },
+        {
+          "run_id": 41521848443,
+          "name": "IAM-N08 Native Operational Hardening",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "fae32b20187b2201e6070c382f563e170773e692"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-trade",
+      "pull_request": 183,
+      "url": "https://github.com/baobab-platform/baobab-trade/pull/183",
+      "workstreams": [
+        "DEV-07"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/dev07-commercial-native-composition",
+      "source_sha": "492dfb791d63623396fc4ac12170059cefb6342e",
+      "base_branch": "main",
+      "base_sha": "435207d3729efb1be5162bee15034584348ecb8b",
+      "merged": false,
+      "inspection_scope": "CODE_AND_SOURCE_TESTS_OR_RUNTIME_DIAGNOSIS",
+      "implementation_obligations": [
+        "Native RFQ/quotation transactions and current authority",
+        "No binding quote acceptance without qualified native spend/commit fence"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [
+        "Formatting failure on postgres-commercial-lifecycle.ts identified",
+        "Quote acceptance/conversion and universal native commitment remain deliberately blocked"
+      ],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41803671778,
+          "name": "Enforce Action Pinning",
+          "status": "in_progress",
+          "conclusion": null,
+          "source_sha": "492dfb791d63623396fc4ac12170059cefb6342e"
+        },
+        {
+          "run_id": 41803672554,
+          "name": "Foundation Repository Gates",
+          "status": "queued",
+          "conclusion": null,
+          "source_sha": "492dfb791d63623396fc4ac12170059cefb6342e"
+        },
+        {
+          "run_id": 41803671383,
+          "name": "Format Medusa 2.21 compatibility source (temporary)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "source_sha": "492dfb791d63623396fc4ac12170059cefb6342e"
+        },
+        {
+          "run_id": 41803671525,
+          "name": "Release Readiness",
+          "status": "in_progress",
+          "conclusion": null,
+          "source_sha": "492dfb791d63623396fc4ac12170059cefb6342e"
+        },
+        {
+          "run_id": 41803671806,
+          "name": "Security",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "492dfb791d63623396fc4ac12170059cefb6342e"
+        },
+        {
+          "run_id": 41803671449,
+          "name": "CI",
+          "status": "in_progress",
+          "conclusion": null,
+          "source_sha": "492dfb791d63623396fc4ac12170059cefb6342e"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "IN_PROGRESS"
+    },
+    {
+      "repository": "baobab-platform/baobab-trade",
+      "pull_request": 188,
+      "url": "https://github.com/baobab-platform/baobab-trade/pull/188",
+      "workstreams": [
+        "DEV-07",
+        "DEV-11",
+        "DEV-12"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/dev11-native-otel-outbox-20261102",
+      "source_sha": "9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c",
+      "base_branch": "main",
+      "base_sha": "43461bef030d6e95f01ac9e10525e9b8156c3be3",
+      "merged": false,
+      "inspection_scope": "CODE_AND_SOURCE_TESTS_OR_RUNTIME_DIAGNOSIS",
+      "implementation_obligations": [
+        "Transactional native outbox and RabbitMQ confirms",
+        "Producer post-confirm/pre-settlement crash and fenced reclaim",
+        "Consumer post-commit/pre-ACK crash, poison/changed replay negatives",
+        "Genuine governed Medusa business origin remains required"
+      ],
+      "fulfilled_obligations": [
+        "Named-row lease observation correction and six focused source tests",
+        "Real component workflow 41801046628 succeeded at 9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c",
+        "Digest-verified original artifact 13307917569 includes actual broker/crash/replay/DLX and seven exported spans"
+      ],
+      "unresolved_defects": [
+        "Successful component artifact uses ERP 261d99ab and Infrastructure 8baeaf60, which are older than corrected candidate heads",
+        "Native Medusa source event is explicitly synthetic; no genuine buyer commitment",
+        "Real iDempiere consequence and full end-to-end trace remain unqualified"
+      ],
+      "source_test_results": {
+        "classification": "IMPLEMENTED",
+        "notes": [
+          "Named-row lease observation correction and six focused source tests",
+          "Real component workflow 41801046628 succeeded at 9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c",
+          "Digest-verified original artifact 13307917569 includes actual broker/crash/replay/DLX and seven exported spans"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "CONNECTED_QUALIFIED",
+        "scope": "BROKER_INBOX_EXPORTER_COMPONENT_ONLY; not current composite nor business acceptance"
+      },
+      "github_actions": [
+        {
+          "run_id": 41801048775,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c"
+        },
+        {
+          "run_id": 41801046628,
+          "name": "DEV-11 actual Medusa outbox -> RabbitMQ -> ERP PostgreSQL inbox",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c"
+        },
+        {
+          "run_id": 41801046607,
+          "name": "Release Readiness",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c"
+        },
+        {
+          "run_id": 41801047822,
+          "name": "Security",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c"
+        },
+        {
+          "run_id": 41801046621,
+          "name": "Format Medusa 2.21 compatibility source (temporary)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "source_sha": "9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c"
+        },
+        {
+          "run_id": 41801047600,
+          "name": "Enforce Action Pinning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c"
+        },
+        {
+          "run_id": 41801046713,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c"
+        }
+      ],
+      "independent_evidence": [
+        {
+          "run_id": 41801046628,
+          "artifact_id": 13307917569,
+          "digest": "sha256:cd937c2e2f7647ba717c11ec581a27cde116fa75b22f6d7e517459f8fea0dd4a",
+          "scope": "ORIGINAL_BROKER_INBOX_EXPORTER_COMPONENT; stale for corrected composite"
+        }
+      ],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-erp",
+      "pull_request": 125,
+      "url": "https://github.com/baobab-platform/baobab-erp/pull/125",
+      "workstreams": [
+        "DEV-09",
+        "DEV-11",
+        "DEV-12"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/dev11-native-amqp-inbox-otel-20261102",
+      "source_sha": "38dcfc0ac9a2cfe5f8aea471f8b937a3b546de5c",
+      "base_branch": "main",
+      "base_sha": "b7fcdd8caa562400042ed0c11827b914f969e002",
+      "merged": false,
+      "inspection_scope": "CODE_AND_SOURCE_TESTS_OR_RUNTIME_DIAGNOSIS",
+      "implementation_obligations": [
+        "Signed native inbox and current posting authority",
+        "Real protected iDempiere sales order and CP/JVM readbacks",
+        "Revocation, ambiguous outcome adoption, replay and teardown"
+      ],
+      "fulfilled_obligations": [
+        "377 local unit tests pass after dependency/bootstrap/poison corrections",
+        "Current CI/Foundation/Security pass at 519934dd; native engine workflow still fails",
+        "Restore drill moved after live JVM consumer tests; no accepted negative removed"
+      ],
+      "unresolved_defects": [
+        "Run 41801039665 now reaches live JVM but fails DEV11_REAL_GARDENWORLD_FIXTURE_MISSING",
+        "Engine-local synthetic Trade source and synthetic administrative fixtures cannot qualify genuine human-buyer origin",
+        "New source diagnostics distinguish customer/warehouse/pricelist/saleable-stock failures"
+      ],
+      "source_test_results": {
+        "classification": "IMPLEMENTED",
+        "notes": [
+          "377 local unit tests pass after dependency/bootstrap/poison corrections",
+          "Current CI/Foundation/Security pass at 519934dd; native engine workflow still fails",
+          "Restore drill moved after live JVM consumer tests; no accepted negative removed"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "FAILED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41803580724,
+          "name": "Foundation Repository Gates",
+          "status": "queued",
+          "conclusion": null,
+          "source_sha": "38dcfc0ac9a2cfe5f8aea471f8b937a3b546de5c"
+        },
+        {
+          "run_id": 41803579873,
+          "name": "Enforce Action Pinning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "38dcfc0ac9a2cfe5f8aea471f8b937a3b546de5c"
+        },
+        {
+          "run_id": 41803579450,
+          "name": "DEV-11 native ERP RabbitMQ signed inbox unit qualification",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "38dcfc0ac9a2cfe5f8aea471f8b937a3b546de5c"
+        },
+        {
+          "run_id": 41803579462,
+          "name": "CI",
+          "status": "queued",
+          "conclusion": null,
+          "source_sha": "38dcfc0ac9a2cfe5f8aea471f8b937a3b546de5c"
+        },
+        {
+          "run_id": 41803579510,
+          "name": "DEV-11 real Hydra CP RabbitMQ native iDempiere 13 qualification",
+          "status": "in_progress",
+          "conclusion": null,
+          "source_sha": "38dcfc0ac9a2cfe5f8aea471f8b937a3b546de5c"
+        },
+        {
+          "run_id": 41803579453,
+          "name": "LA-05D5 protected O2C unit suite",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "38dcfc0ac9a2cfe5f8aea471f8b937a3b546de5c"
+        },
+        {
+          "run_id": 41803579833,
+          "name": "Security",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "38dcfc0ac9a2cfe5f8aea471f8b937a3b546de5c"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "IN_PROGRESS"
+    },
+    {
+      "repository": "baobab-platform/baobab-tms",
+      "pull_request": 28,
+      "url": "https://github.com/baobab-platform/baobab-tms/pull/28",
+      "workstreams": [
+        "DEV-08",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/tms-iam-n07-real-issuer-cp-readback-20261031",
+      "source_sha": "32b443212fce671572544a31cb6c320269b3af12",
+      "base_branch": "main",
+      "base_sha": "aa0565a46b089d53ff6e9916df3ed0eec19dcf0d",
+      "merged": false,
+      "inspection_scope": "CODE_AND_SOURCE_TESTS_OR_RUNTIME_DIAGNOSIS",
+      "implementation_obligations": [
+        "Current issuer, context and legal-actor readbacks",
+        "No executable booking from diagnostic preflight",
+        "Native provider/binding/operation fence remains separate"
+      ],
+      "fulfilled_obligations": [
+        "95 local source tests pass; current published-head checks pass",
+        "Shared legal-actor reference bounds enforced without executable authority"
+      ],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "IMPLEMENTED",
+        "notes": [
+          "95 local source tests pass; current published-head checks pass",
+          "Shared legal-actor reference bounds enforced without executable authority"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41801059480,
+          "name": "Security — Secret Scanning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "32b443212fce671572544a31cb6c320269b3af12"
+        },
+        {
+          "run_id": 41801059060,
+          "name": "TMS Foundation",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "32b443212fce671572544a31cb6c320269b3af12"
+        },
+        {
+          "run_id": 41801058931,
+          "name": "TMS Native Enforcement Preflight",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "32b443212fce671572544a31cb6c320269b3af12"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/zuribeans",
+      "pull_request": 141,
+      "url": "https://github.com/baobab-platform/zuribeans/pull/141",
+      "workstreams": [
+        "DEV-04",
+        "DEV-05"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/iam-n02-native-qualification-estate-20261031",
+      "source_sha": "dcc076ab2a4436dac7adb64423694f2834ccf6a9",
+      "base_branch": "main",
+      "base_sha": "1d0481b092bbe871bf1fd0d589c61ff914d65104",
+      "merged": true,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41379085211,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "dcc076ab2a4436dac7adb64423694f2834ccf6a9"
+        },
+        {
+          "run_id": 41379084192,
+          "name": "Codespaces Registry and Image Contract",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "dcc076ab2a4436dac7adb64423694f2834ccf6a9"
+        },
+        {
+          "run_id": 41379084188,
+          "name": "ZuriBeans Store API 2.21.2 Static Compatibility",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "dcc076ab2a4436dac7adb64423694f2834ccf6a9"
+        },
+        {
+          "run_id": 41379084426,
+          "name": "Security",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "dcc076ab2a4436dac7adb64423694f2834ccf6a9"
+        },
+        {
+          "run_id": 41379084183,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "dcc076ab2a4436dac7adb64423694f2834ccf6a9"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Current-source qualification remains independently required"
+      ],
+      "merge_readiness": "NOT_APPLICABLE_ALREADY_MERGED",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/zuribeans",
+      "pull_request": 156,
+      "url": "https://github.com/baobab-platform/zuribeans/pull/156",
+      "workstreams": [
+        "DEV-05",
+        "DEV-07",
+        "DEV-11"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/dev11-native-bff-w3c-20261102",
+      "source_sha": "76fa3f20f9b613ebe34a01e163fd083ef2478177",
+      "base_branch": "main",
+      "base_sha": "e4bc3b9582919f004bd86dfc70351fdd0027b1a8",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [
+        "Actual two-run Playwright reporter-custody regression passes locally",
+        "Current source retains all approved budgets/baselines"
+      ],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "IMPLEMENTED",
+        "notes": [
+          "Actual two-run Playwright reporter-custody regression passes locally",
+          "Current source retains all approved budgets/baselines"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "NOT_EXECUTED"
+    },
+    {
+      "repository": "baobab-platform/thamani",
+      "pull_request": 44,
+      "url": "https://github.com/baobab-platform/thamani/pull/44",
+      "workstreams": [
+        "DEV-05",
+        "DEV-08",
+        "DEV-14"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/iam-n07-thamani-b2b-cp-20261031",
+      "source_sha": "4e65c6cdf3392460ed6b3d9cd3524a46a1093f87",
+      "base_branch": "main",
+      "base_sha": "8a18b0b1613b236f6107b3a6e2e76f9339184b46",
+      "merged": false,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [
+        "Current-head format check failed on 22 files; exact pinned formatter correction prepared",
+        "Actual N07 identity/CP/native-resource owner evidence remains absent"
+      ],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "NOT_EXECUTED"
+    },
+    {
+      "repository": "baobab-platform/thamani",
+      "pull_request": 50,
+      "url": "https://github.com/baobab-platform/thamani/pull/50",
+      "workstreams": [
+        "DEV-11"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/dev11-estate-evidence-custody-20261102",
+      "source_sha": "f7c027e95d04db626e5e5847c9caa1538630175d",
+      "base_branch": "main",
+      "base_sha": "52c309ad0cc23e47d02f6fc7589bb036a385cf85",
+      "merged": true,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41562208201,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f7c027e95d04db626e5e5847c9caa1538630175d"
+        },
+        {
+          "run_id": 41562207063,
+          "name": "Codespaces Registry and Image Contract",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f7c027e95d04db626e5e5847c9caa1538630175d"
+        },
+        {
+          "run_id": 41562207766,
+          "name": "Enforce Action Pinning",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f7c027e95d04db626e5e5847c9caa1538630175d"
+        },
+        {
+          "run_id": 41562207022,
+          "name": "Thamani Legacy Store API 2.21.2 Static Compatibility",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f7c027e95d04db626e5e5847c9caa1538630175d"
+        },
+        {
+          "run_id": 41562207423,
+          "name": "Security",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f7c027e95d04db626e5e5847c9caa1538630175d"
+        },
+        {
+          "run_id": 41562207072,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "f7c027e95d04db626e5e5847c9caa1538630175d"
+        }
+      ],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Current-source qualification remains independently required"
+      ],
+      "merge_readiness": "NOT_APPLICABLE_ALREADY_MERGED",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/nabhold",
+      "pull_request": 99,
+      "url": "https://github.com/baobab-platform/nabhold/pull/99",
+      "workstreams": [
+        "DEV-11"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "test/experience-quality-parity",
+      "source_sha": "b2a6e67c9534df0984eddc9974c372cd8602e8ce",
+      "base_branch": "main",
+      "base_sha": "a719f3b81314569cf0f7c56aaf9bb21a2388cbb9",
+      "merged": true,
+      "inspection_scope": "METADATA_CI_DISCUSSION_AND_DEPENDENCY_RECONCILIATION",
+      "implementation_obligations": [
+        "Preserve native-owner IAM/CP/consumer authority",
+        "Qualify current-source positive/negative cases and independent teardown"
+      ],
+      "fulfilled_obligations": [],
+      "unresolved_defects": [
+        "Merged implementation requires follow-up #103: original artifact lost per-gate HTML despite green quality job"
+      ],
+      "source_test_results": {
+        "classification": "NOT_EXECUTED",
+        "notes": [
+          "No new source-qualification claim from metadata inspection"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [
+        {
+          "run_id": 41572408874,
+          "name": "Security",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "b2a6e67c9534df0984eddc9974c372cd8602e8ce"
+        },
+        {
+          "run_id": 41572409761,
+          "name": "Foundation Repository Gates",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "b2a6e67c9534df0984eddc9974c372cd8602e8ce"
+        },
+        {
+          "run_id": 41572409276,
+          "name": "CI",
+          "status": "completed",
+          "conclusion": "success",
+          "source_sha": "b2a6e67c9534df0984eddc9974c372cd8602e8ce"
+        }
+      ],
+      "independent_evidence": [
+        {
+          "run_id": 41572409276,
+          "artifact_id": 13202032974,
+          "digest": "sha256:8d2cf185fcba3835600d013270a851b9dece6b0945d9d516d16176fb0ab62d26",
+          "scope": "ORIGINAL_INSPECTED_AND_REJECTED; per-gate HTML absent"
+        }
+      ],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Current-source qualification remains independently required"
+      ],
+      "merge_readiness": "NOT_APPLICABLE_ALREADY_MERGED",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "OBSERVED_SUCCESS_ONLY"
+    },
+    {
+      "repository": "baobab-platform/nabhold",
+      "pull_request": 103,
+      "url": "https://github.com/baobab-platform/nabhold/pull/103",
+      "workstreams": [
+        "DEV-11"
+      ],
+      "relevant_adrs": [
+        "ADR-SHARED-042",
+        "ADR-SHARED-043",
+        "ADR-Infra-0016",
+        "Applicable native-owner ADRs"
+      ],
+      "source_branch": "feat/dev11-preserve-original-quality-reports-20261104",
+      "source_sha": "fd4ddeda28cb7c6774002243dbe08c33b7e9059f",
+      "base_branch": "main",
+      "base_sha": "7f25aaea378d420e04c4f4f735b03613c518c419",
+      "merged": false,
+      "inspection_scope": "CODE_AND_SOURCE_TESTS_OR_RUNTIME_DIAGNOSIS",
+      "implementation_obligations": [
+        "Retain distinct original HTML/JSON/attachments across preview execution",
+        "Actual reporter regression and unchanged quality thresholds"
+      ],
+      "fulfilled_obligations": [
+        "Independent original-artifact inspection demonstrated prior report loss",
+        "Actual two-run Playwright reporter-custody regression passes locally"
+      ],
+      "unresolved_defects": [
+        "Fresh current-head full quality workflow pending; previous artifact cannot qualify this change"
+      ],
+      "source_test_results": {
+        "classification": "IMPLEMENTED",
+        "notes": [
+          "Independent original-artifact inspection demonstrated prior report loss",
+          "Actual two-run Playwright reporter-custody regression passes locally"
+        ]
+      },
+      "runtime_test_results": {
+        "classification": "NOT_EXECUTED",
+        "scope": "No broader connected qualification inferred"
+      },
+      "github_actions": [],
+      "independent_evidence": [],
+      "security_architecture_findings": [
+        "No runtime activation or protected approval from source metadata; retain native negative gates"
+      ],
+      "external_blockers": [
+        "Accepted dependency adoption and/or current-source runtime evidence remains required"
+      ],
+      "merge_readiness": "BLOCKED_BY_DEPENDENCY",
+      "acceptance_classification": "BLOCKED",
+      "ci_summary": "NOT_EXECUTED"
+    }
+  ]
+}
+

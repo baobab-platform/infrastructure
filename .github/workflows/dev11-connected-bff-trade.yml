@@ -40,8 +40,8 @@ jobs:
             --remote-env BAOBAB_ENVIRONMENT=development \
             --remote-env GITHUB_ACTIONS=true \
             --remote-env DEV11_CONNECTED_BFF_REQUIRED=true \
-            --remote-env DEV11_TRADE_SHA=8e491eaea5d5754dc9a5cbd3e576155e98d74ac9 \
-            --remote-env DEV11_ZURIBEANS_SHA=5fd6c942f6295cbaf59f8e525ea20b562e6e0633 \
+            --remote-env DEV11_TRADE_SHA=9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c \
+            --remote-env DEV11_ZURIBEANS_SHA=76fa3f20f9b613ebe34a01e163fd083ef2478177 \
             --remote-env "DEV05_NPM_TOKEN=$DEV05_NPM_TOKEN" \
             --remote-env "DEV05_REGISTRY_USERNAME=$DEV05_REGISTRY_USERNAME" \
             python3 -B tests/platform-integration/development/buyer_bff.py
