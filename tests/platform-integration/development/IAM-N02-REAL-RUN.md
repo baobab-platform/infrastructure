@@ -4,7 +4,7 @@
 This is a private **development** execution only under EA v2.3 / EA-DEV,
 ADR-SHARED-042/043 and current IAM ADRs. It does not activate staging,
 production, a canonical provider, legal mandate, customer or Trade buyer
-permission. Shared #430 is accepted; the CP, IAM and estate companion PRs are still review-held and unmerged.
+permission. Shared #430 and ZuriBeans' site changes are merged. The CP and IAM companion PRs remain review-held and unmerged.
 
 ## Exact source and ownership gate
 
@@ -13,7 +13,7 @@ The independent N02 **candidate** source lock is
 **four** exact independently reviewable owner commits:
 Shared #430 accepted merge `7f547ccdd759208355ef9224d2177929f4bf224e`,
 CP #455 source candidate `a5e5458ea6651657a66698b60b765eca5774daf4`,
-IAM #147 and ZuriBeans #141. Unlike the superseded Shared #421
+IAM #147 and accepted ZuriBeans main `d08643d5275dff8a25b60e0181dadec6c26ee840` (including merged #141/#147). Unlike the superseded Shared #421
 head, Shared #430 is accepted on `main`. CP #455's copied
 `workload-registry.yaml` matches that merge exactly. Its **unmerged** CP
 branch is a candidate development source, not approval of CP identity
