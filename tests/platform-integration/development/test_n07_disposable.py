@@ -98,6 +98,10 @@ class N07SourceTests(unittest.TestCase):
                             accepted["sources"]["baobab-iam"])
         self.assertTrue(candidate["synthetic_only"])
         self.assertFalse(candidate["protected_acceptance"])
+        self.assertEqual(candidate["sources"]["shared"],
+                         "7f547ccdd759208355ef9224d2177929f4bf224e")
+        self.assertEqual(candidate["sources"]["baobab-cp"],
+                         "a5e5458ea6651657a66698b60b765eca5774daf4")
 
     def test_native_redis_uses_pinned_image_and_private_network(self):
         # Optional N07 Redis must not mutate the existing DEV-04 service inventory.
