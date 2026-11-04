@@ -13,7 +13,7 @@ DEV-01/04 lock.json and N02 first-party candidate. Shared #430 is now accepted o
 The N07 source lock now pins CP #455's **unmerged** candidate head
 `a5e5458ea6651657a66698b60b765eca5774daf4`, whose embedded
 workload registry is byte-identical to this accepted Shared revision.
-It also pins the current review heads for Thamani #44 and TMS #28.
+It additionally pins accepted ZuriBeans main `d08643d5275dff8a25b60e0181dadec6c26ee840`, accepted Nabhold main `7f25aaea378d420e04c4f4f735b03613c518c419`, and current **unmerged review** heads for Thamani #44 and TMS #28. Current estate source pins establish provenance, not a customer mandate or live resource authority.
 This resolves the observed `EMBEDDED_CONTRACT_DRIFT` mismatch but
 does not activate a single proposed issuer client or CP Principal.
 The original DEV-01/04 accepted source lock remains unchanged.
