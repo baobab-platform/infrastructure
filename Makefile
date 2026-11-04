@@ -24,6 +24,7 @@ local-config:
 	$(COMPOSE) config --quiet
 
 local-up: local-config
+	./scripts/dev12-check-postgres-volume.sh
 	$(COMPOSE) up -d --wait etcd postgresql rabbitmq redis otel-collector apisix
 
 local-verify: local-config
