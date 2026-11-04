@@ -8,8 +8,11 @@ STATUS: REAL-COMPONENT ENGINEERING, CONNECTED N07/TMS ACCEPTANCE HELD.
 The dedicated n07-base-lock.json pins exact Shared, CP, IAM, Nabhold,
 ZuriBeans, Thamani and TMS revisions plus digest-specific PG17, Hydra,
 Kratos, NGINX, Python and Redis images. It is separate from the accepted
-DEV-01/04 lock.json and N02 first-party candidate. CP #455 embeds
-Shared #421, not the newer Shared #422 PROVISIONED-only TMS proposal.
+DEV-01/04 lock.json and N02 first-party candidate. CP #455 retains accepted
+Shared `2fde03e2f5f3a8a6cbc1e2081b4859fdccc1bb53`; its proposed identities
+are inert review data. Shared #430 supersedes the overlapping #420/#421/#422
+proposals and is still unmerged. The historical candidate lock is not current
+accepted-source adoption of that inventory.
 Therefore the candidate must never claim a registered ACTIVE TMS native
 resource or booking authorization from this source lock.
 
@@ -65,7 +68,7 @@ It DOES NOT prove:
 - Thamani's Next.js BFF real sign-in, browser/CP Principal membership,
   real AAL2 or post-recovery current issuer sessions;
 - N06 A3/A4 cryptographic passkey/risk, global sign-out or issuer rotation;
-- an ACTIVE registered Shared #422 TMS subject and validator, CP LA-05A
+- an ACTIVE registered, accepted Shared TMS subject and validator, CP LA-05A
   SERVICE_PROVIDER_OF_RECORD, provider-specific binding/lease or native
   booking/dispatch execution;
 - live Pulse/Payments, carrier, PSP, ERP or documentary consequences;
@@ -74,7 +77,7 @@ It DOES NOT prove:
 Thamani #44 separately adds real TLS Redis cross-worker session custody.
 IAM #152 has source-pinned Chromium estate and engine consumers.
 TMS #28 adds issuer/CP and LA-05A operation-specific, still
-non-executable, native resource preflights. Shared #422's identities
+non-executable, native resource preflights. Shared #430's identities
 are PROVISIONED, never self-activated. A complete same-run N07 will
 require the owner to provision actual first-party Thamani TLS ingress,
 registered Hydra client, CP human Principal and current market grants,
@@ -83,6 +86,6 @@ witness, and then obtain separately registered ACTIVE native TMS
 binding/operation proof with original revocation and teardown.
 A passing unit suite or this component receipt cannot substitute.
 
-When Shared #422 becomes accepted, CP must independently adopt its
+When consolidated Shared #430 becomes accepted and reachable from Shared main, CP must independently adopt its
 exact registry; update its embedded contracts and the N07 lock together.
 No late CI convenience override may turn PROVISIONED into ACTIVE.
