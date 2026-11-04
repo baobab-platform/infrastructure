@@ -1,6 +1,6 @@
 # IAM-N02 — Disposable first-party browser/CP execution runbook
 
-**Status (2026-10-31): IMPLEMENTATION IN PROGRESS — NOT ACCEPTED.**
+**Status (2026-11-04): SOURCE LOCK RECONCILED — CONNECTED ACCEPTANCE HELD.**
 This is a private **development** execution only under EA v2.3 / EA-DEV,
 ADR-SHARED-042/043 and current IAM ADRs. It does not activate staging,
 production, a canonical provider, legal mandate, customer or Trade buyer
@@ -11,13 +11,24 @@ permission. All named PRs remain review-held and unmerged.
 The independent N02 **candidate** source lock is
 `tests/platform-integration/development/n02-base-lock.json`. It pins
 **four** exact independently reviewable owner commits:
-Shared #421, CP #455, IAM #147 and ZuriBeans #141. This is distinct
-from the accepted three-source DEV-04 `lock.json`. These are historical
-candidate pins, not an accepted authority foundation. CP #455 restored both
-accepted Shared pins to `2fde03e2f5f3a8a6cbc1e2081b4859fdccc1bb53` and
-keeps proposed identities inert. Shared #430 now consolidates #420/#421/#422;
-its accepted-source adoption is unavailable while that proposal is unmerged.
-The candidate must remain BLOCKED, rather than activate a PROVISIONED reader.
+Shared #430 accepted merge `7f547ccdd759208355ef9224d2177929f4bf224e`,
+CP #455 source candidate `a5e5458ea6651657a66698b60b765eca5774daf4`,
+IAM #147 and ZuriBeans #141. Unlike the superseded Shared #421
+head, Shared #430 is accepted on `main`. CP #455's copied
+`workload-registry.yaml` matches that merge exactly. Its **unmerged** CP
+branch is a candidate development source, not approval of CP identity
+activation; both N02 principal-validator and native OAuth browser client
+remain `PROVISIONED`. The previous mismatch triggered
+`EMBEDDED_CONTRACT_DRIFT` before any real runtime qualification.
+This update repairs provenance only and does not turn that failure into
+a positive session/Principal/market authority result.
+
+IAM #146 has since reconciled current `main` at
+`4958f79ba6f877d341bb9a98349ce8c30a29e283`, but IAM #147's
+separately pinned current head still requires review/reconciliation against
+that parent before connected acceptance. Do not retroactively relabel
+original private N02 browser evidence or copy a mainline SHA onto an
+unmerged IAM browser actor.
 A Shared or CP PR change invalidates this candidate lock until updated
 and reviewed. The current browser producer, attached original and
 pre-deactivation checkpoint must each bind the **same** first-party
