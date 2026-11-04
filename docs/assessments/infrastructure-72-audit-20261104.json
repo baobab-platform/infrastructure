@@ -1,0 +1,714 @@
+{
+  "schema": "infrastructure.dev11.readiness-audit.v1",
+  "audit_date": "2026-11-04",
+  "timezone": "Africa/Johannesburg",
+  "audited_repository": "baobab-platform/infrastructure",
+  "pull_request": 72,
+  "audited_source_sha": "dd755992a98443f815a54121525be44a8a93bde2",
+  "accepted_base_sha": "a3e85794ee58266088efa846b34f58a92b996e45",
+  "audit_scope": "Current primary source, changed-file inventory, accepted ADR clauses, review findings, exact-head source tests, current CI/runtime diagnostics and selected companion original evidence. Other dependency rows are explicitly metadata-only.",
+  "merge_authority": "Latest owner direction permits merging PRs whose own requirements are satisfied; protected activation remains separately gated.",
+  "governing_sources": [
+    "EA v2.3",
+    "EA-DEV DEV-04/07/09/11/12/14",
+    "EA-XB v1.1",
+    "ADR-SHARED-042/043",
+    "ADR-Infra-0016/0017/0020/0023"
+  ],
+  "source_tests": {
+    "development": {
+      "count": 205,
+      "result": "PASS"
+    },
+    "int02": {
+      "count": 93,
+      "result": "PASS"
+    },
+    "runtime_qualification_implied": false
+  },
+  "primary_ci": {
+    "run_source": "dd755992a98443f815a54121525be44a8a93bde2",
+    "workflows": [
+      {
+        "id": 41819306916,
+        "name": "INT-02 real IAM and CP integration",
+        "status": "completed",
+        "conclusion": "failure"
+      },
+      {
+        "id": 41819307728,
+        "name": "Foundation Repository Gates",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41819306905,
+        "name": "Platform L3 harness",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41819307228,
+        "name": "Infrastructure CI",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41819306521,
+        "name": "DEV-11 independent L4-OPS-01 and estate evidence custody",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41819306639,
+        "name": "DEV-11 actual OTLP exported trace smoke",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41819306223,
+        "name": "DEV-11 source routing and privacy assurance",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41819306528,
+        "name": "INT-03 identity smoke and CMS component preparation",
+        "status": "completed",
+        "conclusion": "failure"
+      },
+      {
+        "id": 41819306349,
+        "name": "DEV-01 to DEV-07 development qualification",
+        "status": "completed",
+        "conclusion": "failure"
+      },
+      {
+        "id": 41819306425,
+        "name": "DEV-11 connected Keycloak / CP W3C candidate qualification",
+        "status": "completed",
+        "conclusion": "failure"
+      },
+      {
+        "id": 41819306276,
+        "name": "Subscriptions native development onboarding",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41819306243,
+        "name": "DEV-15 native components on disposable IAM CP",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41819306242,
+        "name": "Platform L4 INT-01 Codespaces/Actions parity",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41819306499,
+        "name": "DEV-15 connected authority and native evidence",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41819306245,
+        "name": "DEV-11 connected confidential BFF IAM CP Trade candidate",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "independent_eight_owner_join": "NOT_EXECUTED_ON_THIS_PR_RUN; workflow_dispatch-only job skipped"
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "P1",
+      "area": "Infrastructure N02/N07 source adoption",
+      "status": "NEEDS_CORRECTION",
+      "finding": "#72 retains superseded Shared/CP/estate candidate pins while #69 already contains accepted Shared #430 and reviewed CP #455 alignment.",
+      "evidence": {
+        "file": "tests/platform-integration/development/n07-base-lock.json",
+        "source": "dd755992a98443f815a54121525be44a8a93bde2",
+        "run_id": 41819306349,
+        "job_id": 126538381333,
+        "reason": "EMBEDDED_CONTRACT_DRIFT",
+        "reuse_pr": 69,
+        "reuse_sha": "45a71c0177ca6122ff2b3a4911d3c66bdca85548"
+      },
+      "requirement": "ADR-SHARED-043 exact merged contracts and source-pinned real component lifecycle"
+    },
+    {
+      "id": "F02",
+      "severity": "P1",
+      "area": "L4-CP-03 own-record and isolation proof",
+      "status": "NEEDS_CORRECTION",
+      "finding": "All four own Organisation overview requests return 404 while their directory requests return 200; the own-positive prerequisite fails, so neighbour 404s cannot prove isolation.",
+      "evidence": {
+        "run_id": 41819306916,
+        "job_id": 126538587871,
+        "source": "dd755992a98443f815a54121525be44a8a93bde2",
+        "scenario": "L4-CP-03=FAIL",
+        "other_scenarios": [
+          "L4-CP-01=PASS",
+          "L4-CP-02=PASS",
+          "L4-IAM-01=PASS",
+          "L4-IAM-02=PASS"
+        ]
+      },
+      "requirement": "EA-DEV DEV-04/11 genuine positive plus unchanged sibling/external negative cases"
+    },
+    {
+      "id": "F03",
+      "severity": "P1",
+      "area": "Merged dependency eligibility",
+      "status": "NEEDS_CORRECTION",
+      "finding": "The native ERP verifier requires CP #458 to remain open, permanently excluding its already merged accepted source.",
+      "evidence": {
+        "file": "tests/platform-integration/development/dev11_evidence_join.py",
+        "line": 569,
+        "source": "dd755992a98443f815a54121525be44a8a93bde2",
+        "merged_dependency": 458
+      },
+      "requirement": "Current eligible PR or merged source; retain exact source and independently checked ancestry"
+    },
+    {
+      "id": "F04",
+      "severity": "P1",
+      "area": "Workflow checkout and original-source binding",
+      "status": "NEEDS_CORRECTION",
+      "finding": "Several Infrastructure workflows use the default PR merge checkout while verification binds run.head_sha. The current estate verifier does not demand the original git readback now emitted by qualified owners.",
+      "evidence": {
+        "workflow": ".github/workflows/dev11-connected-bff-trade.yml",
+        "line": 25,
+        "verifier": "tests/platform-integration/development/dev11_evidence_join.py",
+        "run_id": 41819306521,
+        "independent_join_job": "skipped; only source verifier tests executed"
+      },
+      "requirement": "ADR-Infra-0020 immutable reviewed source and directive current original artifact provenance"
+    },
+    {
+      "id": "F05",
+      "severity": "P1",
+      "area": "Coherent source tuple and genuine native business vertical",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "finding": "Reciprocal complete-repository head pins form a moving-head cycle. Current Trade also fails native-origin database readback, and native ERP still refuses at the first worker CP assessment stage.",
+      "evidence": {
+        "trade_sha": "007eab655adf102c8dc3ee063d86431fc53efe85",
+        "trade_run": 41841700520,
+        "trade_job": 126614679256,
+        "trade_reason": "NATIVE_ORIGIN_DATABASE_UNAVAILABLE",
+        "erp_sha": "73788646f429e722ddc4941a27599ed745430c8d",
+        "erp_run": 41840786923,
+        "erp_job": 126611505315,
+        "erp_reason": "LEGAL_ACTOR_DENIED",
+        "erp_worker_stages": [
+          "CP_REQUEST"
+        ],
+        "erp_cp_sales_preflight": "AUTHORIZED",
+        "erp_documentary_preflight": "negative-only and unblocked",
+        "imported_erp_sha": "88c2cdcac6a3a2f2eaf0165e1bb5e284dbde6a0e",
+        "imported_infrastructure_sha": "a4cc31b1806fce3d80814b82af4a1652aa11964d"
+      },
+      "requirement": "ADR-SHARED-042 CAA-06/06b/08 and DEV-07/09/11/12; same event, governed commitment, actual native effect and recovery"
+    },
+    {
+      "id": "F06",
+      "severity": "P2",
+      "area": "Native ERP numeric ID compatibility",
+      "status": "CONFIRMED_SOURCE_DEFECT",
+      "finding": "The dev-only JVM adapter returns raw PostgreSQL NUMERIC IDs, while provider _native_id accepts only int or digit string. Decimal('11') is rejected despite being an exact valid native ID.",
+      "evidence": {
+        "repository": "baobab-platform/baobab-erp",
+        "source": "73788646f429e722ddc4941a27599ed745430c8d",
+        "file": "modules/application/inbox_authority.py",
+        "line": 165,
+        "reproduction": "Exact function extracted from the recorded remote source: int 11 and string '11' accepted; Decimal('11') rejected.",
+        "runtime_causality": "Not established: the current worker trace stops at CP_REQUEST before native provider readiness."
+      },
+      "requirement": "Exact native company/organisation readbacks without lossy coercion or policy bypass"
+    },
+    {
+      "id": "F07",
+      "severity": "P2",
+      "area": "Operational documentation and current register",
+      "status": "NEEDS_CORRECTION",
+      "finding": "The prior report says Shared #430 is unmerged and merge is prohibited; the runbook advertises eight owners but its example omits native ERP and the IAM source pin.",
+      "evidence": {
+        "report": "docs/assessments/infrastructure-69-72-engineering-20261104.md",
+        "runbook": "docs/runbooks/dev11-l4-ops-01-independent-evidence-join.md",
+        "example_lines": "55–79"
+      },
+      "requirement": "Maintain current, executable source/evidence instructions and distinguish historical observations"
+    }
+  ],
+  "dependency_inventory": [
+    {
+      "repository": "baobab-platform/infrastructure",
+      "pull_request": 69,
+      "url": "https://github.com/baobab-platform/infrastructure/pull/69",
+      "source_branch": "feat/iam-n02-connected-dev04-join-20261031",
+      "source_sha": "45a71c0177ca6122ff2b3a4911d3c66bdca85548",
+      "base_branch": "main",
+      "base_sha": "a3e85794ee58266088efa846b34f58a92b996e45",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "CURRENT_SOURCE_OR_RUNTIME_REVIEW"
+    },
+    {
+      "repository": "baobab-platform/infrastructure",
+      "pull_request": 72,
+      "url": "https://github.com/baobab-platform/infrastructure/pull/72",
+      "source_branch": "feat/dev11-assurance-routing-20261102",
+      "source_sha": "dd755992a98443f815a54121525be44a8a93bde2",
+      "base_branch": "main",
+      "base_sha": "a3e85794ee58266088efa846b34f58a92b996e45",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "CURRENT_SOURCE_OR_RUNTIME_REVIEW"
+    },
+    {
+      "repository": "baobab-platform/shared",
+      "pull_request": 420,
+      "url": "https://github.com/baobab-platform/shared/pull/420",
+      "source_branch": "feat/iam-n04-development-runtime-reader-ceiling",
+      "source_sha": "750ab553402c7b7485a8c74fe0e1a167eed1a6a7",
+      "base_branch": "main",
+      "base_sha": "c97387ed8e27eeffb0c0382e043db98cb450b900",
+      "state": "closed",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/shared",
+      "pull_request": 421,
+      "url": "https://github.com/baobab-platform/shared/pull/421",
+      "source_branch": "feat/iam-n02-zuribeans-cp-reader-ceiling-20261031",
+      "source_sha": "38704895c3b0c2897d4c72d4b1353945d2bbb2ff",
+      "base_branch": "main",
+      "base_sha": "c97387ed8e27eeffb0c0382e043db98cb450b900",
+      "state": "closed",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/shared",
+      "pull_request": 422,
+      "url": "https://github.com/baobab-platform/shared/pull/422",
+      "source_branch": "feat/tms-n07-development-workload-ceiling-20261031",
+      "source_sha": "3b24291f2c164ecdbadc7e3a4c190790b86b73d2",
+      "base_branch": "main",
+      "base_sha": "c97387ed8e27eeffb0c0382e043db98cb450b900",
+      "state": "closed",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/shared",
+      "pull_request": 429,
+      "url": "https://github.com/baobab-platform/shared/pull/429",
+      "source_branch": "feat/dev11-observability-source-contract-20261102",
+      "source_sha": "f56cf41d8572ec67ca52dd4172d2f1fa08a58dea",
+      "base_branch": "main",
+      "base_sha": "35505365765073e9b7261a3f6f61a3d002de3538",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/shared",
+      "pull_request": 430,
+      "url": "https://github.com/baobab-platform/shared/pull/430",
+      "source_branch": "feat/iam-closed-n02-n04-n07-reconciliation-20261103",
+      "source_sha": "1dc7a7eba0c197159473864c5cd8bea7637e4a8c",
+      "base_branch": "main",
+      "base_sha": "cf506e9f651f1157880d57d4f5f792ec1263a7ac",
+      "state": "closed",
+      "merged": true,
+      "merge_sha": "7f547ccdd759208355ef9224d2177929f4bf224e",
+      "inspection_scope": "CURRENT_SOURCE_OR_RUNTIME_REVIEW"
+    },
+    {
+      "repository": "baobab-platform/baobab-cp",
+      "pull_request": 454,
+      "url": "https://github.com/baobab-platform/baobab-cp/pull/454",
+      "source_branch": "feat/iam-n04-current-binding-response-validation",
+      "source_sha": "efa4418e41a5be5b75f37f2de9adfed9aaa45d57",
+      "base_branch": "main",
+      "base_sha": "03e53eae95b6a277bd866a617653afb6634262bb",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-cp",
+      "pull_request": 455,
+      "url": "https://github.com/baobab-platform/baobab-cp/pull/455",
+      "source_branch": "feat/iam-n02-cp-governed-registry-20261031",
+      "source_sha": "a5e5458ea6651657a66698b60b765eca5774daf4",
+      "base_branch": "main",
+      "base_sha": "03e53eae95b6a277bd866a617653afb6634262bb",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "CURRENT_SOURCE_OR_RUNTIME_REVIEW"
+    },
+    {
+      "repository": "baobab-platform/baobab-cp",
+      "pull_request": 458,
+      "url": "https://github.com/baobab-platform/baobab-cp/pull/458",
+      "source_branch": "feat/dev11-privacy-safe-request-logging-20261102",
+      "source_sha": "ab61e35c35028bad1090232bcf2d7c67a84ef959",
+      "base_branch": "main",
+      "base_sha": "03e53eae95b6a277bd866a617653afb6634262bb",
+      "state": "closed",
+      "merged": true,
+      "merge_sha": "9c766b44b39f418ac425db0ddc49b31c58737a8d",
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 145,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/145",
+      "source_branch": "feat/iam-n01-adr-contract-development-convergence",
+      "source_sha": "f05798a5c62a56c656143087a108090786095bc1",
+      "base_branch": "main",
+      "base_sha": "7958a93808bf23dca8752598ca97fb0292a7ac4d",
+      "state": "closed",
+      "merged": true,
+      "merge_sha": "58e36dfaa38b80ed38d11951669d1bdc52faa356",
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 146,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/146",
+      "source_branch": "feat/iam-n02-native-browser-bff",
+      "source_sha": "4958f79ba6f877d341bb9a98349ce8c30a29e283",
+      "base_branch": "main",
+      "base_sha": "8698c819bdf770f755ea17e64b1d4105dc609dd8",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 147,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/147",
+      "source_branch": "feat/iam-n02-connected-browser-qualification",
+      "source_sha": "225ba193b4088960c5b64033bfce0f755ac347fb",
+      "base_branch": "feat/iam-n02-native-browser-bff",
+      "base_sha": "4a8304b8a237aced2dbdd4432f4b84fa5097b344",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 148,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/148",
+      "source_branch": "feat/iam-n03-workload-resource-acceptance",
+      "source_sha": "39ee45d3fe4a4ddcf45074add10f460451e23270",
+      "base_branch": "feat/iam-n02-connected-browser-qualification",
+      "base_sha": "c7efbbd5ef736d78952a478df33275b2f593bc09",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 149,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/149",
+      "source_branch": "feat/iam-n04-registration-development-qualification",
+      "source_sha": "c53fca9ebee02c821724e2c512c282deec74b9af",
+      "base_branch": "feat/iam-n03-workload-resource-acceptance",
+      "base_sha": "06732d2e42f3ac85dd516542d584459b9b92eb89",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 150,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/150",
+      "source_branch": "feat/iam-n05-durable-migration-lifecycle-20261031",
+      "source_sha": "6d56cb08d912796320c16612515644bfdbaddf8b",
+      "base_branch": "main",
+      "base_sha": "7958a93808bf23dca8752598ca97fb0292a7ac4d",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 151,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/151",
+      "source_branch": "feat/iam-n06-assurance-security-controls-20261031",
+      "source_sha": "09a47b59b5d8030e06c3ec07829a87604e700dc9",
+      "base_branch": "feat/iam-n02-connected-browser-qualification",
+      "base_sha": "1c1f836d91951784f70d5e7552da7c6da84a3f81",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 152,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/152",
+      "source_branch": "feat/iam-n07-connected-consumers-20261031",
+      "source_sha": "e991ee2d1a6d53e3db3d52f3739870c09d8364db",
+      "base_branch": "feat/iam-n06-assurance-security-controls-20261031",
+      "base_sha": "25fb30a3ab07e30c8881111055242094db36c3ee",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-iam",
+      "pull_request": 153,
+      "url": "https://github.com/baobab-platform/baobab-iam/pull/153",
+      "source_branch": "feat/iam-n08-native-ops-20261031",
+      "source_sha": "fae32b20187b2201e6070c382f563e170773e692",
+      "base_branch": "feat/iam-n07-connected-consumers-20261031",
+      "base_sha": "24306a1fbf970e392649a8612681528bfe3e522f",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-trade",
+      "pull_request": 183,
+      "url": "https://github.com/baobab-platform/baobab-trade/pull/183",
+      "source_branch": "feat/dev07-commercial-native-composition",
+      "source_sha": "492dfb791d63623396fc4ac12170059cefb6342e",
+      "base_branch": "main",
+      "base_sha": "435207d3729efb1be5162bee15034584348ecb8b",
+      "state": "closed",
+      "merged": true,
+      "merge_sha": "e8b88d1b427423fa71cff042d7e97c6d32b7517a",
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/baobab-trade",
+      "pull_request": 188,
+      "url": "https://github.com/baobab-platform/baobab-trade/pull/188",
+      "source_branch": "feat/dev11-native-otel-outbox-20261102",
+      "source_sha": "007eab655adf102c8dc3ee063d86431fc53efe85",
+      "base_branch": "main",
+      "base_sha": "8744439e46fe21df3440681f2b016a21f0496bdc",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "CURRENT_SOURCE_OR_RUNTIME_REVIEW"
+    },
+    {
+      "repository": "baobab-platform/baobab-erp",
+      "pull_request": 125,
+      "url": "https://github.com/baobab-platform/baobab-erp/pull/125",
+      "source_branch": "feat/dev11-native-amqp-inbox-otel-20261102",
+      "source_sha": "73788646f429e722ddc4941a27599ed745430c8d",
+      "base_branch": "main",
+      "base_sha": "b7fcdd8caa562400042ed0c11827b914f969e002",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "CURRENT_SOURCE_OR_RUNTIME_REVIEW"
+    },
+    {
+      "repository": "baobab-platform/baobab-tms",
+      "pull_request": 28,
+      "url": "https://github.com/baobab-platform/baobab-tms/pull/28",
+      "source_branch": "feat/tms-iam-n07-real-issuer-cp-readback-20261031",
+      "source_sha": "32b443212fce671572544a31cb6c320269b3af12",
+      "base_branch": "main",
+      "base_sha": "aa0565a46b089d53ff6e9916df3ed0eec19dcf0d",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/zuribeans",
+      "pull_request": 141,
+      "url": "https://github.com/baobab-platform/zuribeans/pull/141",
+      "source_branch": "feat/iam-n02-native-qualification-estate-20261031",
+      "source_sha": "dcc076ab2a4436dac7adb64423694f2834ccf6a9",
+      "base_branch": "main",
+      "base_sha": "1d0481b092bbe871bf1fd0d589c61ff914d65104",
+      "state": "closed",
+      "merged": true,
+      "merge_sha": "e4bc3b9582919f004bd86dfc70351fdd0027b1a8",
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/zuribeans",
+      "pull_request": 156,
+      "url": "https://github.com/baobab-platform/zuribeans/pull/156",
+      "source_branch": "feat/dev11-native-bff-w3c-20261102",
+      "source_sha": "1df43b033738a530a821c2ef5cbe84ad3d197275",
+      "base_branch": "main",
+      "base_sha": "d08643d5275dff8a25b60e0181dadec6c26ee840",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "CURRENT_SOURCE_OR_RUNTIME_REVIEW"
+    },
+    {
+      "repository": "baobab-platform/thamani",
+      "pull_request": 44,
+      "url": "https://github.com/baobab-platform/thamani/pull/44",
+      "source_branch": "feat/iam-n07-thamani-b2b-cp-20261031",
+      "source_sha": "4e65c6cdf3392460ed6b3d9cd3524a46a1093f87",
+      "base_branch": "main",
+      "base_sha": "8a18b0b1613b236f6107b3a6e2e76f9339184b46",
+      "state": "open",
+      "merged": false,
+      "merge_sha": null,
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/thamani",
+      "pull_request": 50,
+      "url": "https://github.com/baobab-platform/thamani/pull/50",
+      "source_branch": "feat/dev11-estate-evidence-custody-20261102",
+      "source_sha": "f7c027e95d04db626e5e5847c9caa1538630175d",
+      "base_branch": "main",
+      "base_sha": "52c309ad0cc23e47d02f6fc7589bb036a385cf85",
+      "state": "closed",
+      "merged": true,
+      "merge_sha": "fd2292bc0b7a7e332aa51a12eb797da0ab4da1af",
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/thamani",
+      "pull_request": 51,
+      "url": "https://github.com/baobab-platform/thamani/pull/51",
+      "source_branch": "feat/dev11-explicit-browser-scheduling-20261104",
+      "source_sha": "f7936c051659d555fd5890f4f57a9704dcebe4c8",
+      "base_branch": "main",
+      "base_sha": "fd2292bc0b7a7e332aa51a12eb797da0ab4da1af",
+      "state": "closed",
+      "merged": true,
+      "merge_sha": "542aa01ad09de95d67a27d15bdd4ab6b9eb9575a",
+      "inspection_scope": "CURRENT_SOURCE_OR_RUNTIME_REVIEW"
+    },
+    {
+      "repository": "baobab-platform/nabhold",
+      "pull_request": 99,
+      "url": "https://github.com/baobab-platform/nabhold/pull/99",
+      "source_branch": "test/experience-quality-parity",
+      "source_sha": "b2a6e67c9534df0984eddc9974c372cd8602e8ce",
+      "base_branch": "main",
+      "base_sha": "a719f3b81314569cf0f7c56aaf9bb21a2388cbb9",
+      "state": "closed",
+      "merged": true,
+      "merge_sha": "7f25aaea378d420e04c4f4f735b03613c518c419",
+      "inspection_scope": "DEPENDENCY_METADATA_ONLY"
+    },
+    {
+      "repository": "baobab-platform/nabhold",
+      "pull_request": 103,
+      "url": "https://github.com/baobab-platform/nabhold/pull/103",
+      "source_branch": "feat/dev11-preserve-original-quality-reports-20261104",
+      "source_sha": "c37ffd83bd0eaba4ad0b702f3ed96347ef7b37bb",
+      "base_branch": "main",
+      "base_sha": "7f25aaea378d420e04c4f4f735b03613c518c419",
+      "state": "closed",
+      "merged": true,
+      "merge_sha": "c2f11f33138649d819c10f8876f785f8ae2e6d9d",
+      "inspection_scope": "CURRENT_SOURCE_OR_RUNTIME_REVIEW"
+    }
+  ],
+  "merge_actions": [
+    {
+      "repository": "baobab-platform/nabhold",
+      "pull_request": 103,
+      "reviewed_source_sha": "c37ffd83bd0eaba4ad0b702f3ed96347ef7b37bb",
+      "result": "MERGED",
+      "merge_sha": "c2f11f33138649d819c10f8876f785f8ae2e6d9d",
+      "method": "merge",
+      "head_lease_enforced": true,
+      "scope": "Original estate report retention and exact source custody",
+      "premerge_run": 41810058070,
+      "premerge_artifact": 13311738212,
+      "premerge_zip_sha256": "85301e67647aa0eee79b80d305ca9928cffe1b980014690cbe93353cf66fc21e",
+      "postmerge_current_main_evidence": {
+        "result": "PASS",
+        "run_id": 41844724077,
+        "source_sha": "c2f11f33138649d819c10f8876f785f8ae2e6d9d",
+        "job_id": 126625143173,
+        "artifact_id": 13331007073,
+        "run_url": "https://github.com/baobab-platform/nabhold/actions/runs/41844724077",
+        "artifact_zip_sha256": "sha256:be12769dd8e42ff24cfa72c3af4b2904a2b70232ca5465e926e9fcdb6d789d32",
+        "checks": {
+          "playwright": "PASS",
+          "accessibility": "PASS",
+          "visual": "PASS",
+          "lighthouse": "PASS",
+          "static_budget": "PASS",
+          "source": "PASS"
+        },
+        "measured_results": {
+          "playwright_passed_tests": {
+            "functional": 135,
+            "accessibility": 3,
+            "visual": 5,
+            "lighthouse": 1
+          },
+          "owner_source_sha": "c2f11f33138649d819c10f8876f785f8ae2e6d9d",
+          "measured_static_bytes": {
+            "javascript_total": 776695,
+            "javascript_largest": 229596,
+            "css_total": 60258,
+            "image_largest": 0
+          },
+          "lighthouse_labs": {
+            "home": {
+              "performance_score": 96,
+              "accessibility_score": 100,
+              "best_practices_score": 96,
+              "seo_score": 100,
+              "cls": 0,
+              "lcp_lab_ms": 2646,
+              "transferred_script_bytes": 173432
+            },
+            "markets": {
+              "performance_score": 98,
+              "accessibility_score": 100,
+              "best_practices_score": 96,
+              "seo_score": 100,
+              "cls": 0,
+              "lcp_lab_ms": 2367,
+              "transferred_script_bytes": 167066
+            }
+          }
+        }
+      }
+    }
+  ],
+  "acceptance": {
+    "dev04": "BLOCKED",
+    "dev11": "BLOCKED",
+    "l4_ops_01": "BLOCKED",
+    "protected_acceptance": false,
+    "production_authorized": false
+  },
+  "implementation_change_policy": "Audit/documentation only in this increment; findings are not silently marked resolved by adding the audit."
+}

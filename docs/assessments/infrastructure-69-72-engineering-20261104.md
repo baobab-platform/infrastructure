@@ -1,3 +1,5 @@
+> Historical observation: the current [4 November readiness audit](infrastructure-72-audit-20261104.md) supersedes this earlier status snapshot. Shared #430 has since merged; current merge authority permits individually qualified PRs. Retain the source/run classifications below as historical evidence.
+
 # Infrastructure #69/#72 engineering reconciliation — 4 November 2026
 
 **Status: implementation in progress; DEV-04, DEV-11 and L4-OPS-01 BLOCKED.**
