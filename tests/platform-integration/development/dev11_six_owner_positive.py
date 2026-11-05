@@ -112,7 +112,7 @@ def private_original(path: Path, maximum: int, reason: str) -> bytes:
     Caller supplies private run-local resource; no path/content leaves CI.
     """
     insist(isinstance(path, Path) and path.is_absolute() and
-           path.is_relative_to(Path("/run/private")) and
+           path.parent == Path("/run/private") and
            not path.is_symlink(), reason)
     folder = Path("/run/private")
     info = folder.lstat()
