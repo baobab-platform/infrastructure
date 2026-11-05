@@ -104,3 +104,91 @@ The baseline buyer-context profile leaves checkout disabled. The operator
 must provision the isolated Trade and BFF checkout settings, registered
 workloads, approved price signer, buyer-owned bound cart, registered sites
 and active spend budget before this entry point.
+
+### Executable checkout-candidate lifecycle and independent native witness
+
+**Status: implementation path available; no successful provisioned checkout is
+asserted by this document.** The ordinary buyer-context suite is unchanged
+and intentionally disposes its run. It cannot be promoted to checkout by
+switching environment variables after the fact.
+
+In a development integration devcontainer with the independently reviewed
+four-owner candidate installed, select the immutable source tuple explicitly:
+
+```sh
+export BAOBAB_ENVIRONMENT=development
+export DEV07_GENUINE_CHECKOUT_REQUIRED=true
+export DEV07_CHECKOUT_TRADE_SHA=79dc564a5d94d41eb4cd88d5476cc391b2a24b9e
+export DEV07_CHECKOUT_ZURIBEANS_SHA=e171ede6cbb9512359266e85870e297c5a1e4361
+python3 -B tests/platform-integration/development/buyer_bff.py start-checkout
+# Record the printed disposable RUN_ID inside the private operator workspace.
+```
+
+The candidate uses
+`dev07-checkout-source-lock.json` and
+`dev07-checkout-base-lock.json` rather than modifying historical BFF,
+INT-03C or DEV-11 accepted-source locks. It pins CP #465, the already
+merged ZuriBeans BFF source and Trade #189 (including the read-only
+PostgreSQL origin observer packaged in the existing DEV-11 Python image).
+Its IAM, CP, Trade and estate source commits are immutable for the
+duration of this leased run. Private source, image, configuration and host
+identity are rechecked at each stage.
+
+**Before checkout**, the owner must provide the genuine approved development
+issuer (CP-approved signer and independent maker/checker mandate), the
+corresponding private HTTPS charge provider and workload credentials, a
+native active Medusa cart with final charges, current seller binding,
+registered buyer site and IAM Principal, current buyer membership,
+consequential buyer role/approver with no self-approval, and an active
+budget able to reserve the *complete* final valuation. This source change
+does not mint those grants, issue fabricated prices, or install an
+allow-by-default approval. In the private run the operator must configure
+the Trade and ZuriBeans commit toggles and the actual IAM/CP/provider
+settings under the run-owned configuration hash and recreate the affected
+containers. Missing settings/refused authority block the purchase.
+The operator must prepare
+`bff-checkout-selection.json` with an existing cart, the two-letter
+country and a run-unique idempotency key. No payment or carrier outcome
+may be simulated as a successful native commerce order.
+
+For an existing live, correctly provisioned candidate:
+
+```sh
+python3 -B tests/platform-integration/development/buyer_bff.py checkout RUN_ID DEV07-REVIEW-CHANGE-001
+python3 -B tests/platform-integration/development/buyer_bff.py finish-checkout RUN_ID
+```
+
+The checkout command first applies the **run-specific** development-only
+SHADOW-to-ENFORCED transition through the reviewed Trade native fixture,
+never production or staging; it then issues actual signed cart charge
+evidence through the provider and CP, reserves the current valuation, and
+invokes the confidential ZuriBeans HTTP route. The HTTP probe observes
+wrong-CSRF refusal, a `COMMITTED` non-draft Medusa order response and the
+same order on replay with its original idempotency key.
+
+It **then** builds the existing Trade DEV-11 Python owner image from that
+exact pinned Trade SHA and starts it only as a short-lived independent
+read-only witness. It selects the original canonical event by
+`order_id + idempotency_key` and runs
+`dev11_native_business_origin.py` on a **separate PostgreSQL connection**.
+That unchanged verifier refuses absent/duplicate outbox, missing native
+order or lines, SHADOW classification, buyer/seller receipt inconsistency,
+wrong/duplicate consumption, wrong reservation, or ledger/outbox/order
+XID mismatch. Infrastructure additionally requires BFF-to-event trace
+identity, original event UUID, immutable digest, exact reviewed source/image
+identity and the observed HTTP replay; the private
+`dev07-checkout-native-origin.json` and `dev07-checkout-witness.json`
+remain in the run-owned directory. The witness retains
+`dev07_accepted=false`, `l4_ops_01=BLOCKED`,
+`current_iam_cp_authority_independently_qualified=false` and
+`production_authorized=false`. Only the genuine original event may
+subsequently be passed to the confirmed publisher/ERP/JVM/OTLP gates.
+
+**Execution constraints:** This repository connection cannot itself open a
+Codespace, reach the user's private Docker lab, register actual CP
+approval mandates or prove a live PostgreSQL readback. Until those
+operator-owned prerequisites exist and the command actually succeeds,
+the independent runtime transaction remains **NOT OBSERVED**, not PASS.
+Leases and host recovery remain mandatory. Always run
+`finish-checkout` to attempt issuer/native cleanup and confirm disposal;
+the separate watchdog handles an interrupted owner.
