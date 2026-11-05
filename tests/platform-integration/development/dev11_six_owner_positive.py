@@ -141,7 +141,9 @@ def containers(project, lock):
         insist(detail.returncode == 0, "SIX_OWNER_RUNTIME_NOT_RUNNING")
         record = json.loads(detail.stdout)[0]
         insist(record["State"]["Running"] is True and
-               record["HostConfig"]["Privileged"] is False,
+               record["HostConfig"]["Privileged"] is False and
+               not record["HostConfig"].get("PortBindings") and
+               record["HostConfig"].get("NetworkMode") != "host",
                "SIX_OWNER_RUNTIME_NOT_RUNNING")
         labels = record["Config"]["Labels"] or {}
         expected = os.environ["DEV11_INFRA_HEAD"] if owner == "infrastructure" else lock["sources"][owner]
@@ -153,9 +155,20 @@ def containers(project, lock):
                record["Image"] == original["image_id"],
                "SIX_OWNER_IMAGE_PROVENANCE_MISSING")
         ids[owner] = set(record["NetworkSettings"]["Networks"])
-    # Every real owner must be attached to a single, private, run-owned network.
-    common = set.intersection(*ids.values())
-    insist(len(common) == 1 and common.pop() == project + "_private",
+    # A common network alone is insufficient: an additional default bridge
+    # would still expose a supposedly private issuer/CP/Trade service.
+    network_name = project + "_private"
+    insist(all(networks == {network_name} for networks in ids.values()),
+           "SIX_OWNER_NETWORK_NOT_SHARED")
+    inspected = subprocess.run(
+        ["docker", "network", "inspect", network_name], capture_output=True,
+        text=True, timeout=10, check=False)
+    insist(inspected.returncode == 0, "SIX_OWNER_NETWORK_NOT_SHARED")
+    networks = json.loads(inspected.stdout)
+    insist(type(networks) is list and len(networks) == 1 and
+           networks[0].get("Internal") is True and
+           (networks[0].get("Labels") or {}).get("com.docker.compose.project") == project and
+           (networks[0].get("Labels") or {}).get("com.docker.compose.network") == "private",
            "SIX_OWNER_NETWORK_NOT_SHARED")
     return True
 
