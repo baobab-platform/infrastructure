@@ -411,6 +411,15 @@ def up(run):
         'BAOBAB_IAM_WORKLOAD_CLIENT_ID': buyer_identity.VALIDATOR,
         'BAOBAB_IAM_WORKLOAD_CLIENT_SECRET': specs[buyer_identity.VALIDATOR]['client_secret'],
         'NODE_EXTRA_CA_CERTS': '/tls/ca.pem', 'JWT_SECRET': secrets.token_hex(32), 'COOKIE_SECRET': secrets.token_hex(32), 'PORT': '9000'}
+    if os.environ.get('DEV07_GENUINE_CHECKOUT_REQUIRED') == 'true':
+        # Enable only this leased/disposable candidate's route. The native
+        # SHADOW fence and absent approved external mandates still deny any
+        # actual commitment. No IAM/CP role, price or budget is minted here.
+        env.update({
+            'BAOBAB_NATIVE_BUYER_COMMIT_ENABLED': 'true',
+            'BAOBAB_TRADE_A_ORDER_AUTHORITY_ENABLED': 'true',
+            'BAOBAB_NATIVE_ORDER_ID_HMAC_KEY': secrets.token_hex(32),
+        })
     services['trade-bff-db'] = {'image': dev.load_lock('buyer-bff-base-lock.json')['images']['postgres'],
         'environment': {'POSTGRES_DB': db, 'POSTGRES_USER': 'dev07_bff', 'POSTGRES_PASSWORD': secret['dev07_trade_db']},
         'volumes': ['trade-bff-data:/var/lib/postgresql/data'],
@@ -459,6 +468,8 @@ def up(run):
             'NEXT_PUBLIC_SITE_URL': contract.ORIGIN,
             'NEXT_PUBLIC_ENABLED_MARKETS': 'zuribeans_ug,zuribeans_za',
             'NEXT_PUBLIC_DEFAULT_MARKET': 'zuribeans_za'}}
+    if os.environ.get('DEV07_GENUINE_CHECKOUT_REQUIRED') == 'true':
+        services['zuribeans-bff']['environment']['ZURIBEANS_BUYER_COMMIT_ENABLED'] = 'true'
     for name in ('bff-redis', 'zuribeans-bff'):
         services[name].update(labels=labels, restart='no'); services[name].setdefault('networks', ['lab'])
     services['edge']['networks']['lab']['aliases'].append('engine.baobab-dev.test')
