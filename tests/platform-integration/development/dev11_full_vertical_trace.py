@@ -252,8 +252,9 @@ def main():
         result["independent_original_trade_erp_cp_native_join"] = True
         result["l4_ops_01"] = "BLOCKED"  # Full owner/estate custody stays separate.
         good = True
-    except (Blocked, KeyError, ValueError, TypeError, OSError, ImportError,
-            TimeoutError) as error:
+    except Exception as error:
+        # psycopg driver failures and transport exceptions are closed too;
+        # never publish private DB endpoint, SQL or provider exception text.
         code = str(error) if isinstance(error, Blocked) else "SOURCE_OR_EXPORT_UNAVAILABLE"
         result = {"schema":"infrastructure.dev11.full-operation-otel.v1",
                   "run_class":"INDEPENDENT_JAEGER_AND_POSTGRESQL_READBACK",
