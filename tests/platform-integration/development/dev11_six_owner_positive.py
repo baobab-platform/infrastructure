@@ -179,6 +179,9 @@ def independent_graph(root, event_id):
     from dev11_full_vertical_trace import (
         read_native_sources, project_original_export)
     from dev11_exported_trace import query
+    # The observer loads the canonical immutable CP/JVM verifier from the
+    # already pinned ERP source checkout, never a system-installed substitute.
+    os.environ["DEV11_ERP_SOURCE"] = str((root / "baobab-erp").resolve())
     with psycopg.connect(os.environ["DEV11_TRADE_READONLY_URL"], row_factory=dict_row) as trade, \
          psycopg.connect(os.environ["DEV11_ERP_READONLY_URL"], row_factory=dict_row) as erp, \
          psycopg.connect(os.environ["DEV11_CP_READONLY_URL"], row_factory=dict_row) as cp:
