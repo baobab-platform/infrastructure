@@ -72,6 +72,48 @@ def buyer(organisation=None, csrf=None):
         'csrfToken': csrf or browser['csrf']}, headers={'Cookie': browser['cookie']})
 
 
+def checkout():
+    """Submit the already provisioned, priced cart through confidential custody."""
+    selection = p.read('bff-checkout-selection.json')
+    p.require(set(selection) == {'cart_id', 'country_code', 'idempotency_key'}
+              and re.fullmatch(r'cart_[A-Za-z0-9_-]{6,128}', selection['cart_id'])
+              and re.fullmatch(r'[A-Z]{2}', selection['country_code'])
+              and re.fullmatch(r'[A-Za-z0-9._:-]{16,128}', selection['idempotency_key']),
+              'DEV07_CHECKOUT_SELECTION_REFUSED')
+    browser = p.read('bff-browser.json')
+    fixture = p.read('buyer-fixture.json')
+    request = {
+        'cartId': selection['cart_id'], 'countryCode': selection['country_code'],
+        'idempotencyKey': selection['idempotency_key'],
+        'organisationId': fixture['organisation_id'], 'csrfToken': browser['csrf'],
+    }
+    headers = {'Cookie': browser['cookie']}
+    denied, _, _ = http('POST', '/api/buyer/commit',
+                        {**request, 'csrfToken': secrets.token_urlsafe(32),
+                         'idempotencyKey': secrets.token_hex(20)}, headers=headers)
+    p.require(denied == 401, 'DEV07_CHECKOUT_CSRF_REFUSAL_NOT_OBSERVED')
+    status, raw, first_headers = http('POST', '/api/buyer/commit', request, headers=headers)
+    p.require(status == 200, 'DEV07_CHECKOUT_COMMIT_NOT_OBSERVED')
+    purchase = json.loads(raw)['purchase']
+    order = purchase['orderId']
+    trace = first_headers.get('traceparent', '')
+    p.require(purchase == {'outcome': 'COMMITTED', 'orderId': order}
+              and re.fullmatch(r'order_[A-Za-z0-9_-]{6,128}', order)
+              and re.fullmatch(r'00-(?!0{32})[0-9a-f]{32}-(?!0{16})[0-9a-f]{16}-01', trace),
+              'DEV07_CHECKOUT_COMMIT_RESPONSE_REFUSED')
+    status, raw, _ = http('POST', '/api/buyer/commit', request, headers=headers)
+    p.require(status == 200 and json.loads(raw) == {
+        'purchase': {'outcome': 'REPLAYED', 'orderId': order}},
+        'DEV07_CHECKOUT_REPLAY_NOT_OBSERVED')
+    # This is private request/response evidence. The Trade database observer
+    # must still prove the original event and all same-transaction effects.
+    p.write('bff-checkout-observation.json', {
+        'order_id': order, 'idempotency_key': selection['idempotency_key'],
+        'traceparent': trace, 'csrf_refused': True, 'same_order_replayed': True,
+        'native_sql_readback_observed': False,
+    })
+
+
 def positive():
     stage('CONTEXT')
     native = p.read('native.json'); fixture = p.read('buyer-fixture.json')
@@ -218,6 +260,9 @@ def main(action):
     p.require(p.read('state.json').get('buyer_bff_http_profile') is True)
     if action == 'dev11-trace':
         dev11_connected_trace()
+        return
+    if action == 'checkout':
+        checkout()
         return
     if action == 'health':
         result = {'trade': p.request('GET', 'https://engine.baobab-dev.test/health', timeout=3)[0],

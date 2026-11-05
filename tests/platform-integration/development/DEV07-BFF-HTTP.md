@@ -72,3 +72,23 @@ BFF root, CP decisions, IAM introspection edge, confirmed publication, ERP
 admission, worker and its native engine call. Retain the independent iDempiere
 and CP database readbacks alongside the export. The exported graph alone
 grants neither business-effect qualification nor L4-OPS-01 acceptance.
+
+### Submit the disposable checkout through the existing probe
+
+In the active private buyer BFF run, after login and after Trade records the
+approved fixture price and spend hold, write `bff-checkout-selection.json` in
+the private probe directory with the exact `cart_id`, `country_code` and a
+fresh `idempotency_key`. Invoke the existing probe with the `checkout` action
+(`python /buyer_bff_probe.py checkout` in the probe container). It sends a
+wrong-CSRF request before the first commit, then requires the same order on
+an authorised retry with the original key. The resulting
+`bff-checkout-observation.json` contains private correlation material and
+stays inside the run.
+
+On a separate read-only connection to the run's Trade PostgreSQL database,
+pass the observed `order_id` and `idempotency_key` to Trade's
+`dev11_native_business_origin.py --order-id ... --idempotency-key ... --output ...`.
+The observer requires exactly one matching canonical event and proves the
+same transaction through the existing native readback. Retain the original
+event ID from that receipt for the publisher. The checkout action is
+operator-invoked on a provisioned fixture.
