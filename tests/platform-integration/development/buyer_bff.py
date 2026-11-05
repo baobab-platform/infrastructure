@@ -72,13 +72,34 @@ def lock():
                         for owner in ('baobab-cp', 'baobab-iam')),
                     'DEV11_BFF_ISSUER_CP_SOURCE_DRIFT')
         value['sources'] = candidate
+    if os.environ.get('DEV07_GENUINE_CHECKOUT_REQUIRED') == 'true':
+        dev.require(os.environ.get('BAOBAB_ENVIRONMENT') == 'development'
+                    and os.environ.get('DEV11_CONNECTED_BFF_REQUIRED') != 'true',
+                    'DEV07_GENUINE_CHECKOUT_PROFILE_MUST_BE_ISOLATED')
+        candidate = dev.load_lock('dev07-checkout-source-lock.json')
+        sources = candidate.get('sources', {})
+        dev.require(candidate.get('schema') == 'infrastructure.dev07.checkout-source-lock.v1'
+                    and candidate.get('scope') == 'DEVELOPMENT_DISPOSABLE_ONLY'
+                    and candidate.get('protected_acceptance') is False
+                    and set(sources) == {'baobab-trade', 'zuribeans', 'baobab-cp', 'baobab-iam'}
+                    and all(dev.SHA.fullmatch(x) for x in sources.values()),
+                    'DEV07_CHECKOUT_SOURCE_TUPLE_INVALID')
+        runtime = dev.load_lock('dev07-checkout-base-lock.json')
+        dev.require(all(runtime['sources'].get(owner) == sources[owner]
+                        for owner in ('baobab-cp', 'baobab-iam'))
+                    and os.environ.get('DEV07_CHECKOUT_TRADE_SHA') == sources['baobab-trade']
+                    and os.environ.get('DEV07_CHECKOUT_ZURIBEANS_SHA') == sources['zuribeans'],
+                    'DEV07_CHECKOUT_CURRENT_SOURCE_PINS_NOT_APPROVED')
+        value['sources'] = {name: sources[name] for name in ('baobab-trade', 'zuribeans')}
     return value
 
 
 def prepare():
     candidate = os.environ.get('DEV11_CONNECTED_BFF_REQUIRED') == 'true'
-    run = dev.prepare(lock_name='dev11-buyer-bff-base-lock.json'
-                      if candidate else 'buyer-bff-base-lock.json')
+    checkout_candidate = os.environ.get('DEV07_GENUINE_CHECKOUT_REQUIRED') == 'true'
+    run = dev.prepare(lock_name=('dev11-buyer-bff-base-lock.json' if candidate
+                                 else 'dev07-checkout-base-lock.json' if checkout_candidate
+                                 else 'buyer-bff-base-lock.json'))
     try:
         directory, state = dev.current(run)
         state.update(buyer_identity_profile=True, buyer_bff_http_profile=True)
@@ -242,6 +263,12 @@ def checkout(run, reference):
     with dev.guarded(run):
         directory, state = dev.current(run)
         dev.require(state.get('buyer_bff_http_profile') is True, 'DEV07_CHECKOUT_WRONG_PROFILE')
+        # A baseline buyer-context run cannot become an executable checkout by
+        # changing environment variables after provisioning. All four owners
+        # must be the immutable disposable candidate tuple.
+        source_lock = dev.load_lock('dev07-checkout-source-lock.json')['sources']
+        dev.require(all(state['sources'].get(owner) == sha for owner, sha in source_lock.items()),
+                    'DEV07_CHECKOUT_REQUIRES_EXACT_FOUR_OWNER_CANDIDATE')
         verify_profile(directory, state)
         runtime_identity(directory, state)
         config = dev.read(directory / 'compose.json')['services']
