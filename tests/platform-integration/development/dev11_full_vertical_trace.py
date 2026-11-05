@@ -165,6 +165,17 @@ def read_native_sources(trade, erp, cp, event_id):
             "SELECT envelope,tenant_id,event_type,idempotency_key,status "
             "FROM event_outbox WHERE event_id=%s AND deleted_at IS NULL",
             (event_id,)).fetchall()
+        # The seller PEP must have produced an original immutable authority
+        # receipt for THIS native commerce order, not a later CP assertion.
+        seller = trade.execute(
+            "SELECT r.decision_id::text AS seller_decision_id,"
+            "r.context_id::text AS seller_context_id,r.market AS market,"
+            "r.currency,r.tenant_id,r.responsible_legal_entity_id,"
+            "r.operation_class,r.consumed_at "
+            "FROM trade_order_commitment k "
+            "JOIN trade_order_authority_receipt r ON r.receipt_id=k.receipt_id "
+            "JOIN event_outbox o ON o.envelope->'data'->>'commerce_order_id'=k.order_id "
+            "WHERE o.event_id=%s", (event_id,)).fetchall()
     require(len(source) == 1 and source[0]["status"] == "PUBLISHED" and
             source[0]["event_type"] == ALLOWED_EVENT_TYPE,
             "TRADE_ORIGINAL_EVENT_NOT_PUBLISHED")
@@ -178,6 +189,11 @@ def read_native_sources(trade, erp, cp, event_id):
     require(matched is not None, "TRADE_PERSISTED_TRACEPARENT_UNAVAILABLE")
     order_id = envelope.get("data", {}).get("commerce_order_id")
     require(type(order_id) is str and len(order_id) > 8, "NATIVE_ORDER_ID_UNAVAILABLE")
+    require(len(seller) == 1 and seller[0]["operation_class"] == "trade.order.commit" and
+            seller[0]["tenant_id"] == source[0]["tenant_id"] and
+            seller[0]["responsible_legal_entity_id"] == envelope["data"].get("legal_entity_id") and
+            seller[0]["currency"] == envelope["data"].get("currency") and
+            seller[0]["consumed_at"] is not None, "TRADE_SELLER_AUTHORITY_NOT_NATIVE")
     with erp.transaction():
         erp.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         inbox = erp.execute(
@@ -188,6 +204,8 @@ def read_native_sources(trade, erp, cp, event_id):
             "SELECT e.source_event_id::text AS source_event_id,"
             "e.native_id AS executed_native_id,r.native_id AS mapped_native_id,"
             "o.c_order_id AS actual_native_id,"
+            "o.ad_client_id AS actual_ad_client_id,"
+            "o.ad_org_id AS actual_ad_org_id,"
             "r.native_uuid::text AS mapped_native_uuid,"
             "o.c_order_uu::text AS actual_native_uuid "
             "FROM baobab.order_execution e "
@@ -220,13 +238,53 @@ def read_native_sources(trade, erp, cp, event_id):
     require(bool(audit), "ERP_NATIVE_JVM_ATTRIBUTION_ABSENT")
     with cp.transaction():
         cp.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        decisions = cp.execute(
+            "SELECT decision_id::text,context_id::text,outcome,operation_class,"
+            "tenant_id,market,currency,responsible_legal_entity_id,expires_at "
+            "FROM registry.trade_order_authority_decision "
+            "WHERE decision_id=%s::uuid", (seller[0]["seller_decision_id"],)).fetchall()
+        require(len(decisions) == 1 and
+                decisions[0]["outcome"] == "AUTHORIZED" and
+                decisions[0]["operation_class"] == "trade.order.commit" and
+                decisions[0]["context_id"] == seller[0]["seller_context_id"] and
+                decisions[0]["tenant_id"] == source[0]["tenant_id"] and
+                decisions[0]["market"] == seller[0]["market"] and
+                decisions[0]["currency"] == seller[0]["currency"] and
+                decisions[0]["responsible_legal_entity_id"] ==
+                seller[0]["responsible_legal_entity_id"],
+                "CP_NATIVE_SELLER_OPERATION_NOT_PROVEN")
         for row in audit:
-            decisions = cp.execute(
+            finance = cp.execute(
                 "SELECT outcome,tenant_id FROM registry.erp_posting_authority_decision "
                 "WHERE decision_id=%s::uuid", (row["decision_id"],)).fetchall()
-            require(len(decisions) == 1 and decisions[0]["outcome"] == "AUTHORIZED" and
-                    decisions[0]["tenant_id"] == source[0]["tenant_id"],
+            require(len(finance) == 1 and finance[0]["outcome"] == "AUTHORIZED" and
+                    finance[0]["tenant_id"] == source[0]["tenant_id"],
                     "CP_IMMUTABLE_NATIVE_AUTHORITY_NOT_JOINED")
+
+    # Use ERP's canonical two-database read-only verifier, rather than a
+    # weaker local copy that accepts a matching decision ID without verifying
+    # context lifetime, maker/checker, legal mandate or native order company.
+    import importlib.util
+    erp_source = Path(os.environ.get("DEV11_ERP_SOURCE", ""))
+    verifier = erp_source / "scripts/dev11_verify_cp_native_lineage.py"
+    require(verifier.is_file(), "ERP_NATIVE_AUTHORITY_VERIFIER_ABSENT")
+    spec = importlib.util.spec_from_file_location("dev11_erp_authority_observer", verifier)
+    require(spec is not None and spec.loader is not None,
+            "ERP_NATIVE_AUTHORITY_VERIFIER_ABSENT")
+    owner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(owner)
+    with erp.transaction(), cp.transaction():
+        erp.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        cp.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        joined = owner.verify(
+            erp, cp, tenant=source[0]["tenant_id"], order=order_id,
+            entity=seller[0]["responsible_legal_entity_id"],
+            market=seller[0]["market"],
+            client=effect[0]["actual_ad_client_id"],
+            org=effect[0]["actual_ad_org_id"],
+            mapped_reference=True)
+        require(joined["native_cp_lineage_qualified"],
+                "CP_NATIVE_ERP_MANDATE_HISTORY_NOT_PROVEN")
     return matched.group(1)
 
 def main():
