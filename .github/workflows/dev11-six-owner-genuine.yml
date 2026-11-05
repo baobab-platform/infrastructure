@@ -1,0 +1,123 @@
+name: DEV-11 exact six-source genuine buyer to JVM qualification
+
+# Refuses synthetic events, unpinned sources or separately executed labs.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/dev11-six-owner-genuine.yml
+      - tests/platform-integration/development/dev11-six-owner-lock.json
+      - tests/platform-integration/development/dev11_six_owner_positive.py
+      - tests/platform-integration/development/test_dev11_six_owner_positive.py
+      - tests/platform-integration/development/dev11_full_vertical_trace.py
+      - tests/platform-integration/development/test_dev11_full_vertical_trace.py
+      - tests/platform-integration/development/dev11-buyer-bff-base-lock.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: dev11-six-owner-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  six-source-genuine-positive:
+    name: Exact source custody then real buyer commitment — refuse synthetic
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    env:
+      DEV11_INFRA_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      BAOBAB_ENVIRONMENT: integration
+    steps:
+      - name: Check out exact running Infrastructure owner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/infrastructure
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: sources/infrastructure
+          persist-credentials: false
+      - name: Check out exact ZuriBeans BFF owner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/zuribeans
+          ref: 74206c27320ecde54d4b4bf55225849007d9469e
+          path: sources/zuribeans
+          token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - name: Check out exact IAM issuer owner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-iam
+          ref: ba2100304f9fdabee5308b72d6ff5cbbd3d30ce8
+          path: sources/baobab-iam
+          token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - name: Check out exact CP authority owner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-cp
+          ref: 91a3a6abaa69d658c4f928d1b3565990e7a90952
+          path: sources/baobab-cp
+          token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - name: Check out exact composed Trade native owner/publisher
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-trade
+          ref: 0b79f45abc7c9b328550a8816948b30eac03b74e
+          path: sources/baobab-trade
+          token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check out exact ERP JVM worker owner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-erp
+          ref: e7376f5a77b8be307a948cede8e682f43bab0455
+          path: sources/baobab-erp
+          token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - name: Exact six Git heads and immutable source lock
+        run: |
+          set -euo pipefail
+          python3 -B sources/infrastructure/tests/platform-integration/development/dev11_six_owner_positive.py \
+            sources --root sources
+          git -C sources/baobab-trade merge-base --is-ancestor \
+            2b4c7c929801d47d1215771f6071c2704ddd38ec HEAD
+          git -C sources/baobab-trade merge-base --is-ancestor \
+            55659409a7e4787c0d70a69d4c1301f13d7fc219 HEAD
+      - name: Independent genuine-buyer and exported-lineage negative regressions
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover \
+            -s sources/infrastructure/tests/platform-integration/development \
+            -p 'test_dev11_six_owner_positive.py' -v
+          python3 -B -m unittest discover \
+            -s sources/infrastructure/tests/platform-integration/development \
+            -p 'test_dev11_full_vertical_trace.py' -v
+      - name: Require executable authenticated buyer commitment, not context-only source
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/dev11-six-owner
+          python3 -B sources/infrastructure/tests/platform-integration/development/dev11_six_owner_positive.py \
+            entrypoint --root sources \
+            --output artifacts/dev11-six-owner/independent-refusal.json
+      # No success path invokes a synthetic JVM fixture. Until a genuine
+      # BFF->Medusa commit is available, this MUST remain a red workflow.
+      - name: Refuse absent single run-owned network, buyer event or independent readback
+        run: |
+          set -euo pipefail
+          python3 -B sources/infrastructure/tests/platform-integration/development/dev11_six_owner_positive.py \
+            qualify --root sources \
+            --project "dev11-six-$GITHUB_RUN_ID" \
+            --private-event-id-file /run/private/dev11-original-event-id \
+            --output artifacts/dev11-six-owner/independent-refusal.json
+      - name: Preserve only bounded refusal evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev11-six-owner-genuine-independent-refusal
+          path: artifacts/dev11-six-owner/independent-refusal.json
+          if-no-files-found: warn
+          retention-days: 14
