@@ -201,8 +201,8 @@ class N07SourceTests(unittest.TestCase):
         }
         file = self.path / "state.json"
         dev.write(file, state)
-        with patch.object(n07_redis_probe, "RUN", str(self.path)), \\
-             patch.dict("os.environ", {"DEV01_RUN_ID": "a" * 32}):
+        with (patch.object(n07_redis_probe, "RUN", str(self.path)),
+              patch.dict("os.environ", {"DEV01_RUN_ID": "a" * 32})):
             self.assertEqual(n07_redis_probe.read_state(), state)
             file.unlink()
             target = self.path / "state-other.json"
