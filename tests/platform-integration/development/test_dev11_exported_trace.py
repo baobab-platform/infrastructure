@@ -107,9 +107,12 @@ class NativeBuyerLineageTests(unittest.TestCase):
         message = {"messaging.message.id": event_id}
         emit("zuribeans-bff", "1", "baobab.zuribeans.bff.request",
              **{"baobab.route": "buyer-commit", "http.response.status_class": "2xx"})
-        emit("baobab-iam", "2", "iam", "1")
         emit("baobab-trade", "3", "baobab.trade.http", "1")
-        emit("baobab-cp", "4", "cp", "3")
+        emit("baobab-cp", "4", "baobab.cp.buyer.principal.resolve", "3")
+        emit("baobab-cp", "a", "baobab.cp.iam.introspect", "4")
+        emit("baobab-iam", "2", "iam", "a")
+        emit("baobab-cp", "b", "baobab.cp.trade.price-issuer.resolve", "3")
+        emit("baobab-cp", "c", "baobab.cp.trade.order-authority.resolve", "3")
         emit("baobab-trade", "5", "baobab.trade.outbox.insert", "3", **message)
         emit("baobab-trade-rabbit-publisher", "6", "baobab.trade.rabbit.publish", "5",
              link=True, **message, **{"baobab.outbox.result": "PUBLISHED"})

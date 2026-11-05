@@ -178,12 +178,21 @@ def verify_native_buyer(observed, trace_id, receipt):
     trade_http = select("baobab-trade", "baobab.trade.http")
     insist(any(sid in ancestors(anchor[2]) and root[0] in ancestors(sid)
                for sid in trade_http), "NATIVE_BUYER_TRADE_HTTP_NOT_OBSERVED")
-    for service in ("baobab-iam", "baobab-cp"):
-        insist(any(row["service"] == service and root[0] in ancestors(sid)
-                   and row["span"].get("kind") in (2, "SPAN_KIND_SERVER")
-                   and row["span"].get("status", {}).get("code") not in (2, "STATUS_CODE_ERROR")
-                   for sid, row in observed.items()),
-               "NATIVE_BUYER_AUTHORITY_SERVER_NOT_OBSERVED")
+    principal = select("baobab-cp", "baobab.cp.buyer.principal.resolve")
+    issuer = select("baobab-cp", "baobab.cp.trade.price-issuer.resolve")
+    seller = select("baobab-cp", "baobab.cp.trade.order-authority.resolve")
+    introspection = select("baobab-cp", "baobab.cp.iam.introspect")
+    insist(all(any(root[0] in ancestors(sid) for sid in stage)
+               for stage in (principal, issuer, seller)),
+           "NATIVE_BUYER_CP_AUTHORITY_NOT_OBSERVED")
+    insist(any(row["service"] == "baobab-iam"
+               and row["span"].get("kind") in (2, "SPAN_KIND_SERVER")
+               and row["span"].get("status", {}).get("code") not in (2, "STATUS_CODE_ERROR")
+               and row["parent"] in introspection
+               and any(cp in ancestors(row["parent"]) for cp in principal)
+               and root[0] in ancestors(sid)
+               for sid, row in observed.items()),
+           "NATIVE_BUYER_IAM_INTROSPECTION_NOT_OBSERVED")
 
     publisher = select("baobab-trade-rabbit-publisher", "baobab.trade.rabbit.publish",
                        "messaging.message.id", event)
