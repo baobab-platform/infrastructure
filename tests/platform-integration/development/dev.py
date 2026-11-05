@@ -796,6 +796,40 @@ def down(run_id):
             report.update(dev07_bff_http=component,
                 dev07_bff_runtime_identity_verified=state.get('dev07_bff_runtime_identity_verified', False),
                 dev07_bff_config_hashes=state.get('dev07_bff_config_hashes', {}))
+        if state.get('dev07_checkout_sql_witnessed') is True:
+            # The runtime-owned private originals cannot silently disappear
+            # during host teardown without a durable integrity checkpoint.
+            # Do not export cart, Principal, order, event or trace identifiers.
+            from dev07_checkout_witness import verify_checkout
+            witness_path = directory / 'dev07-checkout-witness.json'
+            origin_path = directory / 'dev07-checkout-native-origin.json'
+            bff_path = directory / 'bff-checkout-observation.json'
+            witness = read(witness_path)
+            expected = verify_checkout(
+                read(bff_path), read(origin_path),
+                trade_sha=state['sources']['baobab-trade'],
+                image_id=state['image_ids']['trade-native-witness'],
+                run_id=run_id,
+            )
+            require(witness == expected
+                    and state['sources'].get('baobab-trade') == witness['trade_source_sha']
+                    and witness['native_order_seller_buyer_spend_outbox_same_xid'] is True
+                    and witness['dev07_accepted'] is False
+                    and witness['l4_ops_01'] == 'BLOCKED',
+                    'DEV07_CHECKOUT_WITNESS_CUSTODY_CHANGED')
+            report['dev07_checkout_witness'] = {
+                'schema': 'infrastructure.dev07.checkout-witness-custody.v1',
+                'origin_sha256': hashlib.sha256(origin_path.read_bytes()).hexdigest(),
+                'witness_sha256': hashlib.sha256(witness_path.read_bytes()).hexdigest(),
+                'bff_observation_sha256': hashlib.sha256(bff_path.read_bytes()).hexdigest(),
+                'trade_source_sha': witness['trade_source_sha'],
+                'witness_image_id': witness['observer_image_id'],
+                'native_same_transaction_observed': True,
+                'independent_iam_cp_qualified': False,
+                'dev07_accepted': False,
+                'l4_ops_01': 'BLOCKED',
+                'production_authorized': False,
+            }
         if state.get('dev11_bff_connected'):
             candidate = state['dev11_bff_connected']
             require(set(candidate) == {'scope', 'source_pins', 'checks',
@@ -846,6 +880,24 @@ def publish_receipt(folder, run_id):
     require(report.get('run_id') == run_id and report.get('schema') ==
             'infrastructure.dev01.lifecycle.observed.v1', 'PENDING_RECEIPT_IDENTITY_INVALID')
     require(not run_dir(run_id).exists() and not resources(run_id), 'TEARDOWN_SURVIVORS')
+    if report.get('dev07_checkout_witness'):
+        proof = report['dev07_checkout_witness']
+        require(set(proof) == {
+            'schema', 'origin_sha256', 'witness_sha256',
+            'bff_observation_sha256', 'trade_source_sha', 'witness_image_id',
+            'native_same_transaction_observed', 'independent_iam_cp_qualified',
+            'dev07_accepted', 'l4_ops_01', 'production_authorized',
+        } and proof['schema'] == 'infrastructure.dev07.checkout-witness-custody.v1'
+            and all(isinstance(proof[name], str) and re.fullmatch(r'[0-9a-f]{64}', proof[name])
+                    for name in ('origin_sha256', 'witness_sha256', 'bff_observation_sha256'))
+            and proof['trade_source_sha'] == report['source_pins']['baobab-trade']
+            and proof['witness_image_id'] == report['image_ids']['trade-native-witness']
+            and proof['native_same_transaction_observed'] is True
+            and proof['independent_iam_cp_qualified'] is False
+            and proof['dev07_accepted'] is False
+            and proof['l4_ops_01'] == 'BLOCKED'
+            and proof['production_authorized'] is False,
+            'DEV07_CHECKOUT_SANITIZED_CUSTODY_INVALID')
     if report.get('dev07_bff_http'):
         import buyer_bff_contract
         buyer_bff_contract.validate(report['dev07_bff_http'], run_id, report['source_pins'])
