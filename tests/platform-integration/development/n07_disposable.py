@@ -9,7 +9,9 @@ The original DEV-04 and IAM-N02 runs are unaffected.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import stat
 import sys
 
 sys.dont_write_bytecode = True
@@ -28,8 +30,23 @@ REQUIRED_REDIS_KEYS = frozenset({
 def inspect_redis(directory, state):
     """Reconcile original run-owned Redis observations, never promote to IAM."""
     path = directory / "n07-redis-observation.json"
-    observation = dev.read(path)
-    dev.require(set(observation) == REQUIRED_REDIS_KEYS
+    # Read and hash the SAME private, run-owned inode. A later path.read_bytes
+    # could digest a different replacement file after JSON validation.
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        dev.require(stat.S_ISREG(info.st_mode) and
+                    info.st_uid == os.getuid() and info.st_nlink == 1 and
+                    not info.st_mode & 0o077 and 1 <= info.st_size <= 16384,
+                    "N07_PRIVATE_ORIGINAL_REQUIRED")
+        original_bytes = stream.read(16385)
+    dev.require(len(original_bytes) <= 16384, "N07_PRIVATE_ORIGINAL_TOO_LARGE")
+    try:
+        observation = json.loads(original_bytes, object_pairs_hook=dev.unique)
+    except (ValueError, TypeError, UnicodeDecodeError):
+        raise dev.Refused("N07_ORIGINAL_MALFORMED") from None
+    dev.require(isinstance(observation, dict) and
+                set(observation) == REQUIRED_REDIS_KEYS
                 and observation["schema"] == "infrastructure.n07.redis-original.v1"
                 and observation["classification"] ==
                     "REAL_REDIS_TLS_ACL_GETDEL_OBSERVED_UNATTESTED"
@@ -54,7 +71,7 @@ def inspect_redis(directory, state):
         "schema": "infrastructure.n07.redis-checkpoint.v1",
         "run_id": state["run_id"],
         "classification": "REAL_TLS_REDIS_COMPONENT_UNATTESTED",
-        "original_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "original_sha256": hashlib.sha256(original_bytes).hexdigest(),
         "run_source_pins": state["sources"],
         "tms_native_booking_accepted": False,
         "protected_accepted": False,
