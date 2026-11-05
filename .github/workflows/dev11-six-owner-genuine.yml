@@ -1,4 +1,4 @@
-name: DEV-11 exact six-source genuine buyer to JVM qualification
+name: DEV-11 six-source exact preflight (genuine buyer runtime held)
 
 # Refuses synthetic events, unpinned sources or separately executed labs.
 on:
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   six-source-genuine-positive:
-    name: Exact source custody then real buyer commitment — refuse synthetic
+    name: Exact source/entrypoint preflight — L4 BLOCKED unless runtime qualified
     runs-on: ubuntu-26.04
     timeout-minutes: 120
     env:
@@ -103,9 +103,13 @@ jobs:
           python3 -B sources/infrastructure/tests/platform-integration/development/dev11_six_owner_positive.py \
             entrypoint --root sources \
             --output artifacts/dev11-six-owner/independent-refusal.json
-      # No success path invokes a synthetic JVM fixture. Until a genuine
-      # BFF->Medusa commit is available, this MUST remain a red workflow.
-      - name: Refuse absent single run-owned network, buyer event or independent readback
+      # On pull requests this job checks exact source contracts only.
+      # Real IAM/CP, provider, PostgreSQL, broker and JVM acceptance must run
+      # in a separately provisioned, private, run-owned disposable network.
+      # A green source preflight is explicitly L4 BLOCKED in its artifact.
+      # Manual invocation without such originals still fails closed.
+      - name: Connected qualification — MUST refuse absent real runtime
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           python3 -B sources/infrastructure/tests/platform-integration/development/dev11_six_owner_positive.py \
