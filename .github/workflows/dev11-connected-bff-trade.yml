@@ -10,6 +10,7 @@ on:
       - tests/platform-integration/development/buyer_bff_probe.py
       - tests/platform-integration/development/dev.py
       - tests/platform-integration/development/dev11-buyer-bff-base-lock.json
+      - tests/platform-integration/development/dev11-six-owner-lock.json
   workflow_dispatch:
 
 permissions:
@@ -41,8 +42,8 @@ jobs:
             --remote-env BAOBAB_ENVIRONMENT=development \
             --remote-env GITHUB_ACTIONS=true \
             --remote-env DEV11_CONNECTED_BFF_REQUIRED=true \
-            --remote-env DEV11_TRADE_SHA=9ddbdb1e8a5b3ab550afc956f974c7b8b6a0ab4c \
-            --remote-env DEV11_ZURIBEANS_SHA=76fa3f20f9b613ebe34a01e163fd083ef2478177 \
+            --remote-env DEV11_TRADE_SHA=0b79f45abc7c9b328550a8816948b30eac03b74e \
+            --remote-env DEV11_ZURIBEANS_SHA=74206c27320ecde54d4b4bf55225849007d9469e \
             --remote-env "DEV05_NPM_TOKEN=$DEV05_NPM_TOKEN" \
             --remote-env "DEV05_REGISTRY_USERNAME=$DEV05_REGISTRY_USERNAME" \
             python3 -B tests/platform-integration/development/buyer_bff.py
