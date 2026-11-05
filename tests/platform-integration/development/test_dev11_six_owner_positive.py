@@ -50,11 +50,11 @@ class SourceAndBuyerQualification(TestCase):
         bff = (base / "dev11-connected-bff-trade.yml").read_text()
         for owner, source in manifest["sources"].items():
             with self.subTest(owner=owner):
-                self.assertEqual(workflow.count("ref: " + source + "\\n"), 1)
+                self.assertEqual(workflow.count("ref: " + source + chr(10)), 1)
         self.assertIn("DEV11_TRADE_SHA=" + manifest["sources"]["baobab-trade"], bff)
         self.assertIn("DEV11_ZURIBEANS_SHA=" + manifest["sources"]["zuribeans"], bff)
         # No older competing source commits may hide in owner refs.
-        refs = re.findall(r"(?m)^\\s+ref: ([a-f0-9]{40})$", workflow)
+        refs = re.findall(r"(?m)^[ \t]+ref: ([a-f0-9]{40})$", workflow)
         self.assertEqual(set(refs), set(manifest["sources"].values()))
         self.assertIn("if: github.event_name == 'workflow_dispatch'", workflow)
 
