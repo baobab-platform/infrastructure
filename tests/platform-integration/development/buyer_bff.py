@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import time
+import stat
 
 import adapter
 import buyer_identity
@@ -21,6 +22,7 @@ import buyer_bff_contract as contract
 import cms_vertical
 import dev
 from dev07_checkout_witness import verify_checkout
+from dev07_checkout_configuration import validate_private_checkout_configuration
 
 BASE = Path(__file__).resolve().parent
 HTTP_HOPS = {
@@ -276,7 +278,8 @@ def checkout(run, reference):
         config = dev.read(directory / 'compose.json')['services']
         trade = config['trade-bff-http']['environment']
         bff = config['zuribeans-bff']['environment']
-        dev.require(trade.get('BAOBAB_NATIVE_BUYER_COMMIT_ENABLED') == 'true'
+        dev.require(state.get('dev07_checkout_configured') is True
+                    and trade.get('BAOBAB_NATIVE_BUYER_COMMIT_ENABLED') == 'true'
                     and trade.get('BAOBAB_NATIVE_PRICE_ISSUER_ENDPOINT', '').startswith('https://')
                     and bff.get('ZURIBEANS_BUYER_COMMIT_ENABLED') == 'true',
                     'DEV07_CHECKOUT_RUNTIME_NOT_PROVISIONED')
@@ -302,6 +305,49 @@ def checkout(run, reference):
                     *medusa, '/app/src/scripts/fixture-dev07-bff-http.ts', timeout=90)
         probe(directory, state, 'checkout')
         independent_checkout_witness(directory, state)
+
+
+def configure_checkout_candidate(run):
+    """Install only externally issued, run-private IAM/issuer connectivity.
+
+    An approved maker/checker CP issuer mandate, active spend budget, real
+    Medusa cart and buyer roles still have to exist independently. No
+    workload credential may grant those business facts by itself.
+    """
+    dev.require(os.environ.get('BAOBAB_ENVIRONMENT') == 'development',
+                'DEV07_CONFIGURE_REQUIRES_DEVELOPMENT')
+    with dev.guarded(run):
+        directory, state = dev.current(run)
+        source_lock = json.loads((BASE / 'dev07-checkout-source-lock.json').read_text(),
+                                  object_pairs_hook=dev.unique)['sources']
+        dev.require(all(state['sources'].get(owner) == sha
+                        for owner, sha in source_lock.items())
+                    and state.get('buyer_bff_http_profile') is True
+                    and state.get('dev07_checkout_configured') is not True,
+                    'DEV07_CONFIGURE_WRONG_OR_ALREADY_CONFIGURED_RUN')
+        verify_profile(directory, state)
+        path = directory / 'dev07-checkout-private-configuration.json'
+        info = path.lstat()
+        dev.require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+                    and (info.st_mode & 0o077) == 0 and 0 < info.st_size <= 8192,
+                    'DEV07_PRIVATE_CONFIG_FILE_NOT_OWNED')
+        value = json.loads(path.read_text(), object_pairs_hook=dev.unique)
+        validated = validate_private_checkout_configuration(value, run)
+        config = dev.read(directory / 'compose.json')
+        trade = config['services']['trade-bff-http']['environment']
+        dev.require(trade.get('BAOBAB_NATIVE_BUYER_COMMIT_ENABLED') == 'true'
+                    and trade.get('BAOBAB_TRADE_A_ORDER_AUTHORITY_ENABLED') == 'true',
+                    'DEV07_CHECKOUT_NATIVE_FENCE_PROFILE_NOT_CONFIGURED')
+        trade.update(validated)
+        state['dev07_bff_config_hashes']['dev07-checkout-private-configuration.json'] = (
+            hashlib.sha256(path.read_bytes()).hexdigest())
+        commit_config(directory, state, config)
+        dev.compose(directory, state, 'up', '-d', '--no-deps', '--force-recreate',
+                    'trade-bff-http', timeout=120)
+        runtime_identity(directory, state)
+        state['dev07_checkout_configured'] = True
+        dev.persist(directory, state, 'RUNNING')
+        print('DEV07_PRIVATE_ISSUER_WORKLOAD_CONFIGURED_NO_AUTHORITY_GRANTED', flush=True)
 
 
 def start_checkout_candidate():
@@ -666,6 +712,8 @@ if __name__ == '__main__':
     try:
         if len(sys.argv) == 2 and sys.argv[1] == 'start-checkout':
             start_checkout_candidate()
+        elif len(sys.argv) == 3 and sys.argv[1] == 'configure-checkout':
+            configure_checkout_candidate(sys.argv[2])
         elif len(sys.argv) == 4 and sys.argv[1] == 'checkout':
             checkout(sys.argv[2], sys.argv[3])
         elif len(sys.argv) == 3 and sys.argv[1] == 'finish-checkout':
