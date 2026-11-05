@@ -48,3 +48,27 @@ and verified host teardown. This qualifies the source HTTP component, not the
 complete browser account UI or INT-05 commercial journey. Provider, protected
 and production acceptance remain false. It activates no purchasing operation,
 RFQ/quotation lifecycle or native buyer commitment enforcement gate.
+
+## Governed buyer transaction trace
+
+Run the buyer commitment against the development deployment with the approved
+Trade price issuer and a disposable governed cart. Keep the existing
+buyer-context component run and synthetic origin refusal as separate evidence.
+For the connected run, use one private OTLP collector for ZuriBeans, Trade,
+CP, the IAM issuer, the publisher and ERP. Start the browser request without
+an incoming trace header so the confidential ZuriBeans route owns the root.
+
+Set `BAOBAB_DEV11_CP_OTLP_TRACES_ENDPOINT` to the collector's HTTP
+`/v1/traces` URL. For the pinned Hydra issuer, set `tracing.provider` to
+`otel`, `tracing.service_name` to `baobab-iam`, and
+`tracing.providers.otlp.server_url` to the private collector's host and port.
+Set `tracing.providers.otlp.insecure` only if the disposable collector uses
+HTTP. Preserve the W3C trace header through the private introspection relay.
+
+Pass the independently read Trade receipt to `dev11_exported_trace.py` using
+`--native-origin`. Use the trace ID from that receipt with `--trace-id`.
+The observer reads Jaeger directly and matches the exact outbox span, event ID,
+BFF root, CP decisions, IAM introspection edge, confirmed publication, ERP
+admission, worker and its native engine call. Retain the independent iDempiere
+and CP database readbacks alongside the export. The exported graph alone
+grants neither business-effect qualification nor L4-OPS-01 acceptance.
