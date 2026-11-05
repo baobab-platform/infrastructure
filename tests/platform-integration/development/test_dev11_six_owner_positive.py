@@ -41,6 +41,37 @@ class SourceAndBuyerQualification(TestCase):
                 with self.assertRaisesRegex(Blocked, "SOURCE_HEAD_MISMATCH"):
                     sources(root)
 
+    def test_workflow_source_pins_are_identical_to_manifest_and_bff_owner(self):
+        import json
+        import re
+        manifest = json.loads(LOCK.read_text())
+        base = LOCK.parent.parent.parent.parent / ".github" / "workflows"
+        workflow = (base / "dev11-six-owner-genuine.yml").read_text()
+        bff = (base / "dev11-connected-bff-trade.yml").read_text()
+        for owner, source in manifest["sources"].items():
+            with self.subTest(owner=owner):
+                self.assertEqual(workflow.count("ref: " + source + "\\n"), 1)
+        self.assertIn("DEV11_TRADE_SHA=" + manifest["sources"]["baobab-trade"], bff)
+        self.assertIn("DEV11_ZURIBEANS_SHA=" + manifest["sources"]["zuribeans"], bff)
+        # No older competing source commits may hide in owner refs.
+        refs = re.findall(r"(?m)^\\s+ref: ([a-f0-9]{40})$", workflow)
+        self.assertEqual(set(refs), set(manifest["sources"].values()))
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", workflow)
+
+    def test_untracked_source_changes_are_included_in_exact_commit_validation(self):
+        import inspect
+        from dev11_six_owner_positive import sources
+        self.assertIn("--untracked-files=all", inspect.getsource(sources))
+        self.assertNotIn("--untracked-files=no", inspect.getsource(sources))
+
+    def test_source_preflight_pass_is_explicitly_not_runtime_acceptance(self):
+        from dev11_six_owner_positive import safe_report
+        report = safe_report("CURRENT_IAM_CP_AUTHORITY_UNVERIFIED", source_verified=True)
+        self.assertTrue(report["source_pins_checked"])
+        self.assertEqual(report["l4_ops_01"], "BLOCKED")
+        self.assertFalse(report["genuine_iam_cp_buyer_commitment_authority_qualified"])
+        self.assertFalse(report["independently_exported_full_trace"])
+
     def test_missing_real_six_owner_runtime_never_becomes_a_positive(self):
         with patch("dev11_six_owner_positive.sources",
                    return_value={"sources": {key: "a"*40 for key in OWNERS}}), \
