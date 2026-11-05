@@ -20,6 +20,7 @@ import buyer_identity
 import buyer_bff_contract as contract
 import cms_vertical
 import dev
+from dev07_checkout_witness import verify_checkout
 
 BASE = Path(__file__).resolve().parent
 HTTP_HOPS = {
@@ -163,6 +164,76 @@ def probe(directory, state, action, timeout=90):
     return dev.compose(directory, state, 'exec', '-T', 'probe', 'python', '/buyer_bff_probe.py', action, timeout=timeout)
 
 
+def independent_checkout_witness(directory, state):
+    """Run Trade's unchanged native-origin verifier in its own disposable image.
+
+    No raw token, cookie, CP SQL, issuer secret or bearer leaves its owner.
+    The verifier reads Trade PostgreSQL over a separate connection after the
+    confidential BFF response and after a replay, never inside checkout's XID.
+    This is source-SQL evidence only, not a full DEV-07 or ERP acceptance.
+    """
+    verify_profile(directory, state)
+    source = directory / 'sources/baobab-trade'
+    observer = source / 'scripts/dev11_native_business_origin.py'
+    dockerfile = source / 'Dockerfile.dev11-rabbit-dispatcher'
+    dev.require(observer.is_file() and dockerfile.is_file()
+                and 'COPY scripts/dev11_native_business_origin.py /opt/baobab-trade/native_origin.py'
+                    in dockerfile.read_text(),
+                'DEV07_GENUINE_NATIVE_ORIGIN_OBSERVER_NOT_PINNED')
+    image = state['project'] + '-trade-native-witness'
+    args = ['docker', 'build', '--tag', image, '--file', str(dockerfile)]
+    for name, value in {**dev.labels(state),
+                        'org.opencontainers.image.revision': state['sources']['baobab-trade']}.items():
+        args += ['--label', name + '=' + value]
+    dev.call([*args, str(source)], state=state, timeout=1200)
+    actual_image = dev.call(['docker', 'image', 'inspect', image, '--format', '{{.Id}}'], state=state)
+    dev.require(dev.DIGEST.fullmatch(actual_image), 'DEV07_WITNESS_IMAGE_ID_REQUIRED')
+    state['images']['trade-native-witness'] = image
+    state['image_ids']['trade-native-witness'] = actual_image
+    dev.persist(directory, state, 'RUNNING')
+    config = dev.read(directory / 'compose.json')
+    db_url = config['services']['trade-bff-http']['environment']['DATABASE_URL']
+    config['services']['trade-native-witness'] = {
+        'image': image,
+        'environment': {'NODE_ENV': 'test', 'BAOBAB_ENVIRONMENT': 'development',
+                        'DATABASE_URL': db_url},
+        'user': '65532:65532', 'networks': ['lab'],
+        'profiles': ['dev07-checkout-witness'], 'read_only': True,
+        'tmpfs': ['/tmp:rw,nosuid,noexec,size=4m'],
+        'cap_drop': ['ALL'], 'security_opt': ['no-new-privileges:true'],
+        'labels': dev.labels(state), 'restart': 'no',
+    }
+    commit_config(directory, state, config)
+    bff = dev.read(directory / 'bff-checkout-observation.json')
+    dev.require(isinstance(bff, dict) and isinstance(bff.get('order_id'), str)
+                and re.fullmatch(r'order_[A-Za-z0-9_-]{6,128}', bff['order_id'])
+                and isinstance(bff.get('idempotency_key'), str)
+                and re.fullmatch(r'[A-Za-z0-9._:-]{16,128}', bff['idempotency_key']),
+                'DEV07_BFF_OBSERVATION_SELECTORS_REFUSED')
+    shell = ('python -B /opt/baobab-trade/native_origin.py "$@" '
+             '--output /tmp/dev07-origin.json >/dev/null '
+             '&& cat /tmp/dev07-origin.json')
+    # The original Trade Python verifier selects the event from the real
+    # order+idempotency pair and demands exact one native order/seller/buyer/
+    # spend/outbox transaction. No user-controlled SQL or shell interpolation.
+    raw = dev.compose(directory, state, 'run', '--rm', '--no-deps', '--entrypoint', 'sh',
+                      'trade-native-witness', '-ec', shell, 'sh',
+                      '--order-id', bff['order_id'],
+                      '--idempotency-key', bff['idempotency_key'], timeout=90)
+    origin = json.loads(raw)
+    witness = verify_checkout(bff, origin,
+                              trade_sha=state['sources']['baobab-trade'],
+                              image_id=actual_image, run_id=state['run_id'])
+    # Keep identifiers, event digest, correlation and source custody private.
+    # The outgoing publication path may consume the original event_id after
+    # its own independent IAM/CP and publisher gates are satisfied.
+    dev.write(directory / 'dev07-checkout-native-origin.json', origin)
+    dev.write(directory / 'dev07-checkout-witness.json', witness)
+    state['dev07_checkout_sql_witnessed'] = True
+    dev.persist(directory, state, 'RUNNING')
+    print('DEV07_BFF_NATIVE_SAME_XID_SQL_WITNESSED_DEVELOPMENT_ONLY', flush=True)
+
+
 def checkout(run, reference):
     """Operate on a prepared checkout inside the existing development lab."""
     dev.require(os.environ.get('BAOBAB_ENVIRONMENT') == 'development'
@@ -201,6 +272,7 @@ def checkout(run, reference):
                     '-e', 'BAOBAB_NATIVE_PRICE_CART_ID=' + cart,
                     *medusa, '/app/src/scripts/fixture-dev07-bff-http.ts', timeout=90)
         probe(directory, state, 'checkout')
+        independent_checkout_witness(directory, state)
 
 
 def runtime_identity(directory, state):
