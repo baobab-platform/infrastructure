@@ -157,6 +157,36 @@ class N07SourceTests(unittest.TestCase):
                 with self.assertRaises(dev.Refused):
                     n07_disposable.inspect_redis(self.path,self.state)
 
+    def test_original_custody_refuses_symlink_and_ambiguous_json(self):
+        import json
+        observation = self.path / "n07-redis-observation.json"
+        external = self.path / "foreign-observation.json"
+        dev.write(external, original(self.state))
+        observation.symlink_to(external)
+        with self.assertRaises((OSError, dev.Refused)):
+            n07_disposable.inspect_redis(self.path, self.state)
+        observation.unlink()
+        # Duplicate keys in a putative producer receipt must not let the
+        # parser choose a convenient final acceptance or source value.
+        raw = json.dumps(original(self.state), separators=(",", ":"))
+        raw = raw[:-1] + ',"run_id":"' + "b"*32 + '"}'
+        observation.write_text(raw)
+        observation.chmod(0o600)
+        with self.assertRaises(dev.Refused):
+            n07_disposable.inspect_redis(self.path, self.state)
+
+    def test_original_custody_refuses_group_read_and_hardlinks(self):
+        original_path = self.path / "n07-redis-observation.json"
+        self.save(original(self.state))
+        original_path.chmod(0o640)
+        with self.assertRaises(dev.Refused):
+            n07_disposable.inspect_redis(self.path, self.state)
+        original_path.chmod(0o600)
+        linked = self.path / "n07-original-hardlink.json"
+        linked.hardlink_to(original_path)
+        with self.assertRaises(dev.Refused):
+            n07_disposable.inspect_redis(self.path, self.state)
+
     def test_redis_probe_requires_exact_run_private_identity(self):
         with patch.dict("os.environ",{"DEV01_RUN_ID":"untrusted"}):
             with self.assertRaises(n07_redis_probe.Blocked):
