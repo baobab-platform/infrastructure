@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 import secrets
 import os
+import re
+import sys
 import time
 
 import adapter
@@ -159,6 +161,43 @@ def native(directory, state, phase):
 def probe(directory, state, action, timeout=90):
     verify_profile(directory, state)
     return dev.compose(directory, state, 'exec', '-T', 'probe', 'python', '/buyer_bff_probe.py', action, timeout=timeout)
+
+
+def checkout(run, reference):
+    """Operate on a prepared checkout inside the existing development lab."""
+    dev.require(os.environ.get('BAOBAB_ENVIRONMENT') == 'development'
+                and re.fullmatch(r'[A-Za-z0-9._:/-]{8,200}', reference),
+                'DEV07_CHECKOUT_APPROVAL_REFERENCE_REQUIRED')
+    with dev.guarded(run):
+        directory, state = dev.current(run)
+        dev.require(state.get('buyer_bff_http_profile') is True, 'DEV07_CHECKOUT_WRONG_PROFILE')
+        verify_profile(directory, state)
+        runtime_identity(directory, state)
+        config = dev.read(directory / 'compose.json')['services']
+        trade = config['trade-bff-http']['environment']
+        bff = config['zuribeans-bff']['environment']
+        dev.require(trade.get('BAOBAB_NATIVE_BUYER_COMMIT_ENABLED') == 'true'
+                    and trade.get('BAOBAB_NATIVE_PRICE_ISSUER_ENDPOINT', '').startswith('https://')
+                    and bff.get('ZURIBEANS_BUYER_COMMIT_ENABLED') == 'true',
+                    'DEV07_CHECKOUT_RUNTIME_NOT_PROVISIONED')
+        selection = dev.read(directory / 'bff-checkout-selection.json')
+        cart = selection.get('cart_id', '')
+        dev.require(re.fullmatch(r'cart_[A-Za-z0-9_-]{6,128}', cart),
+                    'DEV07_CHECKOUT_CART_REFUSED')
+        medusa = ('trade-bff-http', 'node', '/app/node_modules/@medusajs/cli/cli.js', 'exec')
+        dev.compose(directory, state, 'run', '--rm', '--no-deps',
+                    '-e', 'BAOBAB_DEV07_NATIVE_PHASE=enforce-checkout',
+                    '-e', 'BAOBAB_DEV07_DISPOSABLE_CHECKOUT_APPROVED_RUN=' + run,
+                    '-e', 'BAOBAB_DEV07_CHECKOUT_CHANGE_REFERENCE=' + reference,
+                    *medusa, '/app/src/scripts/fixture-dev07-bff-http.ts', timeout=180)
+        if not (directory / 'bff-browser.json').exists():
+            probe(directory, state, 'login')
+        # The price lease is short. Start issuance only after login and
+        # enforcement are ready, then submit without another setup stage.
+        dev.compose(directory, state, 'run', '--rm', '--no-deps',
+                    '-e', 'BAOBAB_NATIVE_PRICE_CART_ID=' + cart,
+                    *medusa, '/app/src/scripts/issue-native-cart-charges.ts', timeout=90)
+        probe(directory, state, 'checkout')
 
 
 def runtime_identity(directory, state):
@@ -461,6 +500,11 @@ def main():
 
 
 if __name__ == '__main__':
-    try: main()
+    try:
+        if len(sys.argv) == 4 and sys.argv[1] == 'checkout':
+            checkout(sys.argv[2], sys.argv[3])
+        else:
+            dev.require(len(sys.argv) == 1, 'DEV07_BFF_UNKNOWN_COMMAND')
+            main()
     except Exception:
         raise SystemExit('DEV07_BFF_HTTP_FAILED; owned recovery retained') from None
