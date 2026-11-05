@@ -53,6 +53,12 @@ class SourceAndBuyerQualification(TestCase):
             self.assertFalse(report["enforced_medusa_buyer_origin"])
             self.assertEqual(report["reason"], "SIX_OWNER_RUNTIME_NOT_RUNNING")
 
+    def test_build_provenance_required_before_container_labels_can_claim_source(self):
+        from dev11_six_owner_positive import containers
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(Blocked, "SIX_OWNER_IMAGE_PROVENANCE_MISSING"):
+                containers("dev11-six-1234567890", {"sources": {}})
+
     def test_genuine_buyer_cannot_be_inferred_from_synthetic_outbox(self):
         with patch("dev11_six_owner_positive.sources",
                    return_value={"sources": {key: "a"*40 for key in OWNERS}}), \
