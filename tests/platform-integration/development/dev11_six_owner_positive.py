@@ -260,7 +260,7 @@ def main():
             if args.output is not None:
                 args.output.parent.mkdir(parents=True, exist_ok=True)
                 args.output.write_text(json.dumps(report, indent=2,
-                                                  sort_keys=True) + "\\n")
+                                                  sort_keys=True) + chr(10))
             print("DEV11_GENUINE_ENTRYPOINT_PRESENT_SOURCE_ONLY_L4_BLOCKED")
             return 0
         # IDs remain within the disposable private run, never CLI/history.
