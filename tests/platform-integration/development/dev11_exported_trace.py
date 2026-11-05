@@ -14,6 +14,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 TRACE_ID = re.compile(r"^[0-9a-f]{32}$")
 SERVICE = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
@@ -51,7 +52,7 @@ def service_name(resource):
     return None
 
 
-def project(trace, trace_id, required):
+def project(trace, trace_id, required, origin=None):
     insist(type(trace) is dict and isinstance(trace.get("result"), dict), "QUERY_FORMAT_INVALID")
     groups = trace["result"].get("resourceSpans")
     insist(isinstance(groups, list) and 0 < len(groups) <= 100, "RESOURCE_SPANS_INVALID")
@@ -74,6 +75,8 @@ def project(trace, trace_id, required):
                 links = span.get("links", [])
                 insist(isinstance(links, list) and len(links) <= 64, "SPAN_LINKS_INVALID")
                 observed[sid] = {"service": owner, "parent": parent, "links": links}
+                if origin is not None:
+                    observed[sid]["span"] = span
 
     parents = 0
     outside_links = 0
@@ -103,7 +106,7 @@ def project(trace, trace_id, required):
     services = sorted(set(s["service"] for s in observed.values()))
     insist(set(required).issubset(set(services)), "REQUIRED_NATIVE_SERVICES_ABSENT")
     insist(parents > 0 and roots > 0, "EXPORTED_LINEAGE_INCOMPLETE")
-    return {
+    report = {
         "schema": "infrastructure.dev11.exported-observation.v1",
         "type": "READ_ONLY_JAEGER_V3_QUERY",
         "exported_lineage_observed": True,
@@ -118,6 +121,85 @@ def project(trace, trace_id, required):
         "protected_acceptance": False,
         "production_authorized": False,
     }
+
+
+    if origin is not None:
+        report["native_buyer_trace"] = verify_native_buyer(observed, trace_id, origin)
+    return report
+
+
+def verify_native_buyer(observed, trace_id, receipt):
+    """Join independent Trade SQL identity to actual exported spans."""
+    origin = receipt.get("business_origin", {})
+    insist(receipt.get("schema") == "baobab.trade.dev11.native-origin.v1"
+           and receipt.get("classification") == "SOURCE_SQL_READBACK_ONLY"
+           and receipt.get("reason") == "NATIVE_ORIGIN_SQL_CONFIRMED"
+           and all(receipt.get(key) is True for key in (
+               "native_origin_qualified", "native_order_readback", "enforced_b2b_commit",
+               "exact_commit_transaction", "spend_commit_same_transaction")),
+           "NATIVE_SQL_ORIGIN_NOT_QUALIFIED")
+    event = origin.get("event_id", "")
+    anchor = re.fullmatch(r"00-([0-9a-f]{32})-([0-9a-f]{16})-01", origin.get("traceparent", ""))
+    insist(anchor and anchor[1] == trace_id
+           and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{2,199}", event)
+           and re.fullmatch(r"[0-9]{1,10}", origin.get("transaction_id", ""))
+           and re.fullmatch(r"[a-f0-9]{64}", origin.get("persisted_envelope_digest", "")),
+           "NATIVE_SQL_ORIGIN_IDENTITY_INVALID")
+
+    def attribute(sid, key):
+        entries = [a["value"] for a in observed[sid]["span"].get("attributes", [])
+                   if a.get("key") == key]
+        return next(iter(entries[0].values()), None) if len(entries) == 1 else None
+
+    def select(service, name, key=None, value=None):
+        return [sid for sid, row in observed.items()
+                if row["service"] == service and row["span"].get("name") == name
+                and (key is None or attribute(sid, key) == value)
+                and row["span"].get("status", {}).get("code") not in (2, "STATUS_CODE_ERROR")]
+
+    def ancestors(sid):
+        chain = set()
+        while sid:
+            chain.add(sid)
+            sid = observed[sid]["parent"]
+        return chain
+
+    def linked(sid, predecessor):
+        return any(identifier(link.get("traceId"), 16) == trace_id
+                   and identifier(link.get("spanId"), 8) == predecessor
+                   for link in observed[sid]["links"])
+
+    root = [sid for sid in select("zuribeans-bff", "baobab.zuribeans.bff.request",
+                                  "baobab.route", "buyer-commit") if not observed[sid]["parent"]
+            and attribute(sid, "http.response.status_class") == "2xx"]
+    outbox = select("baobab-trade", "baobab.trade.outbox.insert", "messaging.message.id", event)
+    insist(len(root) == 1 and outbox == [anchor[2]] and root[0] in ancestors(anchor[2]),
+           "NATIVE_BUYER_ROOT_OR_OUTBOX_NOT_OBSERVED")
+    trade_http = select("baobab-trade", "baobab.trade.http")
+    insist(any(sid in ancestors(anchor[2]) and root[0] in ancestors(sid)
+               for sid in trade_http), "NATIVE_BUYER_TRADE_HTTP_NOT_OBSERVED")
+    for service in ("baobab-iam", "baobab-cp"):
+        insist(any(row["service"] == service and root[0] in ancestors(sid)
+                   and row["span"].get("kind") in (2, "SPAN_KIND_SERVER")
+                   and row["span"].get("status", {}).get("code") not in (2, "STATUS_CODE_ERROR")
+                   for sid, row in observed.items()),
+               "NATIVE_BUYER_AUTHORITY_SERVER_NOT_OBSERVED")
+
+    publisher = select("baobab-trade-rabbit-publisher", "baobab.trade.rabbit.publish",
+                       "messaging.message.id", event)
+    admit = select("baobab-erp", "baobab.erp.inbox.admit", "messaging.message.id", event)
+    worker = select("baobab-erp", "baobab.erp.inbox.execute", "messaging.message.id", event)
+    native = select("baobab-erp", "baobab.erp.jvm.create") + select("baobab-erp", "baobab.erp.jvm.lookup")
+    insist(any(linked(sid, anchor[2]) and attribute(sid, "baobab.outbox.result") == "PUBLISHED"
+               for sid in publisher)
+           and any(linked(sid, anchor[2]) and attribute(sid, "baobab.erp.event_outcome") == "ADMITTED"
+                   for sid in admit)
+           and any(linked(sid, anchor[2]) and attribute(sid, "baobab.erp.event_outcome") == "BUSINESS_PROCESSED"
+                   and any(sid in ancestors(call) for call in native) for sid in worker),
+           "NATIVE_BUYER_ASYNC_EVENT_PATH_NOT_OBSERVED")
+    return {"event_id": event, "transaction_id": origin["transaction_id"],
+            "persisted_envelope_digest": origin["persisted_envelope_digest"],
+            "same_event_exported_path_observed": True}
 
 
 def query(base_url, trace_id):
@@ -139,6 +221,7 @@ def main():
     parser.add_argument("--jaeger", default="http://jaeger:16686")
     parser.add_argument("--service", action="append", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--native-origin", type=Path)
     args = parser.parse_args()
     try:
         insist(bool(TRACE_ID.fullmatch(args.trace_id)) and args.trace_id != "0" * 32,
@@ -146,7 +229,14 @@ def main():
         insist(1 <= len(args.service) <= 12 and len(set(args.service)) == len(args.service)
                and all(SERVICE.fullmatch(s) for s in args.service),
                "SERVICE_REQUIREMENTS_INVALID")
-        report = project(query(args.jaeger, args.trace_id), args.trace_id, args.service)
+        origin = None
+        if args.native_origin:
+            with args.native_origin.open("rb") as stream:
+                payload = stream.read(8193)
+            insist(len(payload) <= 8192, "NATIVE_SQL_ORIGIN_TOO_LARGE")
+            origin = json.loads(payload)
+            insist(type(origin) is dict, "NATIVE_SQL_ORIGIN_IDENTITY_INVALID")
+        report = project(query(args.jaeger, args.trace_id), args.trace_id, args.service, origin)
         success = True
     except (TraceNotVerified, TimeoutError, OSError, urllib.error.URLError, ValueError,
             TypeError, KeyError, AttributeError) as error:
@@ -163,7 +253,6 @@ def main():
             "production_authorized": False,
         }
         success = False
-    from pathlib import Path
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")

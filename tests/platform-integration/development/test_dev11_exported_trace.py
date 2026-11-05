@@ -76,5 +76,56 @@ class ExportedLineageTests(unittest.TestCase):
         self.assertEqual(result["cross_trace_links"], 1)
         self.assertEqual(result["l4_ops_01"], "BLOCKED")
 
+class NativeBuyerLineageTests(unittest.TestCase):
+    def test_matches_exact_outbox_event_and_refuses_substituted_erp_delivery(self):
+        event_id = "trade-order-event-1"
+        origin = {
+            "schema": "baobab.trade.dev11.native-origin.v1",
+            "classification": "SOURCE_SQL_READBACK_ONLY",
+            "reason": "NATIVE_ORIGIN_SQL_CONFIRMED",
+            "native_origin_qualified": True, "native_order_readback": True,
+            "enforced_b2b_commit": True, "exact_commit_transaction": True,
+            "spend_commit_same_transaction": True,
+            "business_origin": {
+                "event_id": event_id, "transaction_id": "101",
+                "persisted_envelope_digest": "b" * 64,
+                "traceparent": f"00-{TRACE}-{'5' * 16}-01",
+            },
+        }
+        groups = []
+
+        def emit(service, sid, name, parent="", link=False, **attributes):
+            links = [{"traceId": raw(TRACE), "spanId": raw("5" * 16)}] if link else []
+            group = node(service, sid * 16, parent * 16, links=links)
+            groups.append(group)
+            span = group["scopeSpans"][0]["spans"][0]
+            span["name"] = name
+            span["kind"] = "SPAN_KIND_SERVER"
+            span["attributes"] = [{"key": k, "value": {"stringValue": v}} for k, v in attributes.items()]
+            return span
+
+        message = {"messaging.message.id": event_id}
+        emit("zuribeans-bff", "1", "baobab.zuribeans.bff.request",
+             **{"baobab.route": "buyer-commit", "http.response.status_class": "2xx"})
+        emit("baobab-iam", "2", "iam", "1")
+        emit("baobab-trade", "3", "baobab.trade.http", "1")
+        emit("baobab-cp", "4", "cp", "3")
+        emit("baobab-trade", "5", "baobab.trade.outbox.insert", "3", **message)
+        emit("baobab-trade-rabbit-publisher", "6", "baobab.trade.rabbit.publish", "5",
+             link=True, **message, **{"baobab.outbox.result": "PUBLISHED"})
+        admission = emit("baobab-erp", "7", "baobab.erp.inbox.admit", "5",
+                         link=True, **message, **{"baobab.erp.event_outcome": "ADMITTED"})
+        emit("baobab-erp", "8", "baobab.erp.inbox.execute", "5",
+             link=True, **message, **{"baobab.erp.event_outcome": "BUSINESS_PROCESSED"})
+        emit("baobab-erp", "9", "baobab.erp.jvm.create", "8")
+        trace = {"result": {"resourceSpans": groups}}
+        result = project(trace, TRACE, ["baobab-erp"], origin)
+        self.assertEqual(result["native_buyer_trace"]["event_id"], event_id)
+        self.assertFalse(result["consumer_business_effect_qualified"])
+
+        admission["attributes"][0]["value"]["stringValue"] = "different-event"
+        with self.assertRaisesRegex(TraceNotVerified, "NATIVE_BUYER_ASYNC_EVENT_PATH_NOT_OBSERVED"):
+            project(trace, TRACE, ["baobab-erp"], origin)
+
 if __name__ == "__main__":
     unittest.main()
