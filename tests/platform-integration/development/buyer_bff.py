@@ -76,7 +76,8 @@ def lock():
         dev.require(os.environ.get('BAOBAB_ENVIRONMENT') == 'development'
                     and os.environ.get('DEV11_CONNECTED_BFF_REQUIRED') != 'true',
                     'DEV07_GENUINE_CHECKOUT_PROFILE_MUST_BE_ISOLATED')
-        candidate = dev.load_lock('dev07-checkout-source-lock.json')
+        candidate = json.loads((BASE / 'dev07-checkout-source-lock.json').read_text(),
+                               object_pairs_hook=dev.unique)
         sources = candidate.get('sources', {})
         dev.require(candidate.get('schema') == 'infrastructure.dev07.checkout-source-lock.v1'
                     and candidate.get('scope') == 'DEVELOPMENT_DISPOSABLE_ONLY'
@@ -266,7 +267,8 @@ def checkout(run, reference):
         # A baseline buyer-context run cannot become an executable checkout by
         # changing environment variables after provisioning. All four owners
         # must be the immutable disposable candidate tuple.
-        source_lock = dev.load_lock('dev07-checkout-source-lock.json')['sources']
+        source_lock = json.loads((BASE / 'dev07-checkout-source-lock.json').read_text(),
+                                      object_pairs_hook=dev.unique)['sources']
         dev.require(all(state['sources'].get(owner) == sha for owner, sha in source_lock.items()),
                     'DEV07_CHECKOUT_REQUIRES_EXACT_FOUR_OWNER_CANDIDATE')
         verify_profile(directory, state)
