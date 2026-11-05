@@ -46,12 +46,28 @@ def lock():
         dev.require(os.environ.get('BAOBAB_ENVIRONMENT') == 'development'
                     and os.environ.get('GITHUB_ACTIONS') == 'true',
                     'DEV11_CANDIDATE_TRUST_BOUNDARY')
+        # Match the same immutable, independently reviewed source tuple as
+        # the JVM owner and trace observer. A caller cannot quietly choose a
+        # different Trade or estate SHA for a seemingly connected result.
+        six = json.loads((BASE / 'dev11-six-owner-lock.json').read_text(),
+                         object_pairs_hook=dev.unique)
+        dev.require(six.get('schema') == 'infrastructure.dev11.six-owner-source-lock.v1'
+                    and isinstance(six.get('sources'), dict),
+                    'DEV11_SIX_OWNER_SOURCE_LOCK_INVALID')
         candidate = {
-            'baobab-trade': os.environ.get('DEV11_TRADE_SHA', ''),
-            'zuribeans': os.environ.get('DEV11_ZURIBEANS_SHA', ''),
+            'baobab-trade': six['sources']['baobab-trade'],
+            'zuribeans': six['sources']['zuribeans'],
         }
-        dev.require(all(dev.SHA.fullmatch(v) for v in candidate.values()),
+        dev.require(all(dev.SHA.fullmatch(v) for v in candidate.values())
+                    and os.environ.get('DEV11_TRADE_SHA') == candidate['baobab-trade']
+                    and os.environ.get('DEV11_ZURIBEANS_SHA') == candidate['zuribeans'],
                     'DEV11_IMMUTABLE_CANDIDATE_PINS_REQUIRED')
+        # The lifecycle base lock also owns CP/IAM, not only HTTP assets.
+        # Require it to agree with the exact six-owner manifest.
+        runtime = dev.load_lock('dev11-buyer-bff-base-lock.json')
+        dev.require(all(runtime['sources'].get(owner) == six['sources'][owner]
+                        for owner in ('baobab-cp', 'baobab-iam')),
+                    'DEV11_BFF_ISSUER_CP_SOURCE_DRIFT')
         value['sources'] = candidate
     return value
 
