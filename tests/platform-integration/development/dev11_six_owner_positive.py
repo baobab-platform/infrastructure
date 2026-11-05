@@ -286,7 +286,7 @@ def main():
     p.add_argument("--output", type=Path)
     args = p.parse_args()
     try:
-        lock = sources(args.root)
+        sources(args.root)
         if args.command == "sources":
             # Exact-source PASS is a *preflight only*, never the runtime gate.
             print("DEV11_SIX_OWNER_SOURCE_RECONCILED")
