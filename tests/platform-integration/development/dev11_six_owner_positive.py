@@ -32,6 +32,7 @@ SAFE = frozenset({
     "LOCK_INVALID", "SOURCE_MISSING", "SOURCE_HEAD_MISMATCH",
     "GOVERNED_BUYER_COMMIT_ENTRYPOINT_ABSENT",
     "SOURCE_NOT_CLEAN", "SIX_OWNER_RUNTIME_NOT_RUNNING",
+    "SIX_OWNER_IMAGE_PROVENANCE_MISSING",
     "SIX_OWNER_NETWORK_NOT_SHARED", "SIX_OWNER_SOURCE_IMAGE_MISMATCH",
     "GOVERNED_BUYER_EVENT_REQUIRED", "NATIVE_BUYER_ORIGIN_REFUSED",
     "CURRENT_IAM_CP_AUTHORITY_UNVERIFIED", "INDEPENDENT_NATIVE_EFFECT_REFUSED",
@@ -106,7 +107,24 @@ def sources(root: Path):
     return lock
 
 def containers(project, lock):
-    """Docker inspection of real containers, not a Compose YAML inventory."""
+    """Docker inspection plus build-ID readback, not a Compose YAML inventory.
+
+    OCI revision labels alone are author-provided. Each actual image ID must
+    match an independently retained run-local build receipt produced from the
+    verified checkout. Absent image provenance cannot qualify execution.
+    """
+    private = os.environ.get("DEV11_PRIVATE_IMAGE_MANIFEST", "")
+    insist(private.startswith("/run/private/") and
+           Path(private).is_file() and not Path(private).is_symlink(),
+           "SIX_OWNER_IMAGE_PROVENANCE_MISSING")
+    file = Path(private)
+    insist(file.stat().st_size <= 10000 and file.stat().st_mode & 0o077 == 0,
+           "SIX_OWNER_IMAGE_PROVENANCE_MISSING")
+    manifest = json.loads(file.read_text())
+    insist(type(manifest) is dict and manifest.get("schema") ==
+           "infrastructure.dev11.runtime-built-images.v1" and
+           set(manifest.get("images", {})) == set(SERVICE),
+           "SIX_OWNER_IMAGE_PROVENANCE_MISSING")
     insist(bool(re.fullmatch(r"dev11-six-[a-z0-9]{10,24}", project or "")),
            "SIX_OWNER_RUNTIME_NOT_RUNNING")
     ids = {}
@@ -129,6 +147,11 @@ def containers(project, lock):
         expected = os.environ["DEV11_INFRA_HEAD"] if owner == "infrastructure" else lock["sources"][owner]
         insist(labels.get("org.opencontainers.image.revision") == expected,
                "SIX_OWNER_SOURCE_IMAGE_MISMATCH")
+        original = manifest["images"].get(owner)
+        insist(type(original) is dict and original.get("source_sha") == expected and
+               re.fullmatch(r"sha256:[0-9a-f]{64}", original.get("image_id", "")) and
+               record["Image"] == original["image_id"],
+               "SIX_OWNER_IMAGE_PROVENANCE_MISSING")
         ids[owner] = set(record["NetworkSettings"]["Networks"])
     # Every real owner must be attached to a single, private, run-owned network.
     common = set.intersection(*ids.values())
