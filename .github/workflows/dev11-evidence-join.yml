@@ -31,6 +31,8 @@ jobs:
           persist-credentials: false
       - name: Bounded archive, GitHub run identity, invalid-step and replay-of-artifact tests
         run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev11_evidence_join.py' -v
+      - name: Independent exported buyer-to-JVM graph negative tests
+        run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev11_full_vertical_trace.py' -v
 
   independent-join:
     name: Independently verify real trace negatives and all three estate browser owners
