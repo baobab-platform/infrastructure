@@ -90,6 +90,23 @@ class SourceAndBuyerQualification(TestCase):
             with self.assertRaisesRegex(Blocked, "SIX_OWNER_IMAGE_PROVENANCE_MISSING"):
                 containers("dev11-six-1234567890", {"sources": {}})
 
+    def test_run_private_custody_refuses_outside_path_and_duplicate_keys(self):
+        from dev11_six_owner_positive import private_original, no_duplicate_keys
+        with self.assertRaisesRegex(Blocked, "GOVERNED_BUYER_EVENT_REQUIRED"):
+            private_original(Path("/tmp/not-private-event"), 80,
+                             "GOVERNED_BUYER_EVENT_REQUIRED")
+        with self.assertRaisesRegex(Blocked, "SIX_OWNER_IMAGE_PROVENANCE_MISSING"):
+            no_duplicate_keys([("schema", "accepted"), ("schema", "forged")])
+
+    def test_private_provenance_evidence_must_not_set_l4_from_source_only(self):
+        from dev11_six_owner_positive import safe_report
+        report = safe_report("OBSERVER_UNAVAILABLE", source_verified=True,
+                             native_origin=True, exported=True,
+                             independent_effect=True, network=True)
+        self.assertEqual(report["l4_ops_01"], "BLOCKED")
+        self.assertFalse(report["genuine_iam_cp_buyer_commitment_authority_qualified"])
+        self.assertFalse(report["production_authorized"])
+
     def test_genuine_buyer_cannot_be_inferred_from_synthetic_outbox(self):
         with patch("dev11_six_owner_positive.sources",
                    return_value={"sources": {key: "a"*40 for key in OWNERS}}), \
