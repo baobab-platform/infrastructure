@@ -185,8 +185,11 @@ def read_native_sources(trade, erp, cp, event_id):
             "ce_idempotency_key,ce_correlation_id::text,ce_traceparent,status "
             "FROM baobab.event_inbox WHERE event_id=%s::uuid", (event_id,)).fetchall()
         effect = erp.execute(
-            "SELECT e.source_event_id::text,e.native_id,r.native_id,o.c_order_id,"
-            "r.native_uuid::text,o.c_order_uu::text "
+            "SELECT e.source_event_id::text AS source_event_id,"
+            "e.native_id AS executed_native_id,r.native_id AS mapped_native_id,"
+            "o.c_order_id AS actual_native_id,"
+            "r.native_uuid::text AS mapped_native_uuid,"
+            "o.c_order_uu::text AS actual_native_uuid "
             "FROM baobab.order_execution e "
             "JOIN baobab.order_native_reference r "
             "ON r.tenant_id=e.tenant_id AND r.legal_entity_id=e.legal_entity_id "
@@ -200,7 +203,7 @@ def read_native_sources(trade, erp, cp, event_id):
             "WHERE lower(a.source_table)='c_order' AND a.operation_class=%s "
             "AND a.tenant_id=%s AND a.source_record_id=%s",
             ("erp.sales-order.complete", source[0]["tenant_id"],
-             effect[0]["c_order_id"] if len(effect) == 1 else -1)).fetchall()
+             effect[0]["actual_native_id"] if len(effect) == 1 else -1)).fetchall()
     require(len(inbox) == 1 and inbox[0]["event_id"] == event_id and
             inbox[0]["ce_source"] == SOURCE and inbox[0]["status"] == "processed" and
             inbox[0]["payload_json"] == envelope["data"] and
@@ -208,16 +211,11 @@ def read_native_sources(trade, erp, cp, event_id):
             inbox[0]["ce_correlation_id"] == envelope["correlationid"] and
             inbox[0]["ce_traceparent"] == envelope["traceparent"],
             "ERP_INBOX_EVENT_IDENTITY_CHANGED")
-    require(len(effect) == 1 and
-            effect[0]["source_event_id"] == event_id and
-            effect[0]["native_id"] == effect[0]["c_order_id"] ==
-            effect[0]["native_id_1"] if False else True,
-            "ERP_NATIVE_BUSINESS_EFFECT_NOT_UNIQUE")
-    # psycopg's dict_row does not retain duplicate column names. Compare
-    # unambiguously selected aliases rather than fabricated positional facts.
+    # Independent native order IDs, UUIDs and source-event join must all agree.
     require(len(effect) == 1 and effect[0]["source_event_id"] == event_id and
-            effect[0]["native_uuid"] == effect[0]["c_order_uu"] and
-            effect[0]["native_id"] == effect[0]["c_order_id"],
+            effect[0]["mapped_native_uuid"] == effect[0]["actual_native_uuid"] and
+            effect[0]["executed_native_id"] == effect[0]["mapped_native_id"] ==
+            effect[0]["actual_native_id"],
             "ERP_NATIVE_BUSINESS_EFFECT_NOT_JOINED")
     require(bool(audit), "ERP_NATIVE_JVM_ATTRIBUTION_ABSENT")
     with cp.transaction():
