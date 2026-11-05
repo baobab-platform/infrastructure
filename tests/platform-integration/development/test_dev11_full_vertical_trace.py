@@ -80,6 +80,39 @@ class FullVerticalExportTests(unittest.TestCase):
         with self.assertRaisesRegex(Blocked,"ORPHAN_OR_CYCLIC_EXPORTED_SPAN"):
             project_original_export(altered,TRACE,EVENT)
 
+    def test_connected_but_incorrect_issuer_broker_parentage_is_refused(self):
+        for pos, parent, code in [
+            (2, 1, "BFF_IAM_ISSUER_CAUSAL_EDGE_ABSENT"),
+            (3, 1, "IAM_ISSUER_CLIENT_CAUSAL_EDGE_ABSENT"),
+            (7, 1, "CP_IAM_INTROSPECTION_CAUSAL_EDGE_ABSENT"),
+            (8, 1, "TRADE_EVENT_PRODUCER_CAUSAL_EDGE_ABSENT"),
+            (9, 5, "PERSISTED_OUTBOX_PUBLISHER_CAUSAL_EDGE_ABSENT"),
+            (10, 5, "ORIGINAL_EVENT_BROKER_CONSUMER_EDGE_ABSENT"),
+        ]:
+            graph = original()
+            graph["result"]["resourceSpans"][pos]["scopeSpans"][0]["spans"][0][
+                "parentSpanId"] = enc(f"{parent:016x}")
+            with self.subTest(index=pos), self.assertRaisesRegex(Blocked, code):
+                project_original_export(graph, TRACE, EVENT)
+
+    def test_exported_private_credentials_sql_and_customer_data_are_refused(self):
+        for secret_name, secret_value in [
+            ("http.request.header.authorization", "Bearer a.private.secret"),
+            ("db.statement", "select * from private_customer"),
+            ("enduser.id", "person-123"),
+            ("url.full", "https://iam.example.test/oauth2/token?secret=private"),
+            ("baobab.operation", "Bearer private.jwt.value"),
+        ]:
+            graph = original()
+            graph["result"]["resourceSpans"][7]["scopeSpans"][0]["spans"][0][
+                "attributes"].append({
+                    "key": secret_name, "value": {"stringValue": secret_value}
+                })
+            with self.subTest(attribute=secret_name), self.assertRaisesRegex(
+                Blocked, "EXPORTED_PRIVATE_ATTRIBUTE_REFUSED"
+            ):
+                project_original_export(graph, TRACE, EVENT)
+
     def test_source_only_aggregate_cannot_certify_native_l4(self):
         result = project_original_export(original(),TRACE,EVENT)
         self.assertFalse(result["protected_acceptance"])
