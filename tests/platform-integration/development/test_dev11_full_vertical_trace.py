@@ -3,7 +3,6 @@ Fixtures are NEVER classified as executed L4 evidence.
 """
 from __future__ import annotations
 import base64
-import copy
 import unittest
 from dev11_full_vertical_trace import Blocked, project_original_export
 
