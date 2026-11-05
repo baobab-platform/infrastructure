@@ -18,6 +18,7 @@ import argparse
 import importlib.util
 import json
 import os
+import stat
 from pathlib import Path
 import re
 import subprocess
@@ -106,6 +107,36 @@ def sources(root: Path):
         insist(not dirty, "SOURCE_NOT_CLEAN")
     return lock
 
+def private_original(path: Path, maximum: int, reason: str) -> bytes:
+    """One immutable owner-only inode; never follow a swapped symlink.
+    Caller supplies private run-local resource; no path/content leaves CI.
+    """
+    insist(isinstance(path, Path) and path.is_absolute() and
+           path.is_relative_to(Path("/run/private")) and
+           not path.is_symlink(), reason)
+    folder = Path("/run/private")
+    info = folder.lstat()
+    insist(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and
+           not info.st_mode & 0o077, reason)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        meta = os.fstat(stream.fileno())
+        insist(stat.S_ISREG(meta.st_mode) and meta.st_uid == os.getuid() and
+               meta.st_nlink == 1 and not meta.st_mode & 0o077 and
+               1 <= meta.st_size <= maximum, reason)
+        data = stream.read(maximum + 1)
+    insist(1 <= len(data) <= maximum, reason)
+    return data
+
+
+def no_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        insist(key not in result, "SIX_OWNER_IMAGE_PROVENANCE_MISSING")
+        result[key] = value
+    return result
+
+
 def containers(project, lock):
     """Docker inspection plus build-ID readback, not a Compose YAML inventory.
 
@@ -114,13 +145,9 @@ def containers(project, lock):
     verified checkout. Absent image provenance cannot qualify execution.
     """
     private = os.environ.get("DEV11_PRIVATE_IMAGE_MANIFEST", "")
-    insist(private.startswith("/run/private/") and
-           Path(private).is_file() and not Path(private).is_symlink(),
-           "SIX_OWNER_IMAGE_PROVENANCE_MISSING")
-    file = Path(private)
-    insist(file.stat().st_size <= 10000 and file.stat().st_mode & 0o077 == 0,
-           "SIX_OWNER_IMAGE_PROVENANCE_MISSING")
-    manifest = json.loads(file.read_text())
+    manifest = json.loads(private_original(
+        Path(private), 10000, "SIX_OWNER_IMAGE_PROVENANCE_MISSING"),
+        object_pairs_hook=no_duplicate_keys)
     insist(type(manifest) is dict and manifest.get("schema") ==
            "infrastructure.dev11.runtime-built-images.v1" and
            set(manifest.get("images", {})) == set(SERVICE),
@@ -278,10 +305,9 @@ def main():
             return 0
         # IDs remain within the disposable private run, never CLI/history.
         path = args.private_event_id_file
-        insist(path is not None and path.is_file() and not path.is_symlink() and
-               path.stat().st_size <= 80 and path.stat().st_mode & 0o077 == 0,
-               "GOVERNED_BUYER_EVENT_REQUIRED")
-        args.event_id = path.read_text().strip()
+        insist(path is not None, "GOVERNED_BUYER_EVENT_REQUIRED")
+        args.event_id = private_original(
+            path, 80, "GOVERNED_BUYER_EVENT_REQUIRED").decode("ascii").strip()
         report = qualify(args)
     except Exception as exc:
         reason = str(exc) if isinstance(exc, Blocked) and str(exc) in SAFE else "OBSERVER_UNAVAILABLE"
