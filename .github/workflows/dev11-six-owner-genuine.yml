@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/zuribeans
-          ref: 74206c27320ecde54d4b4bf55225849007d9469e
+          ref: 9239a38c3c201105f18e35bb7558408e0e403e0a
           path: sources/zuribeans
           token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
           persist-credentials: false
@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/baobab-cp
-          ref: 91a3a6abaa69d658c4f928d1b3565990e7a90952
+          ref: e461b9e2c3a3f0cdd0c2f8b909c263c627f128be
           path: sources/baobab-cp
           token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
           persist-credentials: false
