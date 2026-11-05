@@ -35,6 +35,9 @@ def validate_private_checkout_configuration(value: object, run_id: str) -> dict[
             and isinstance(run_id, str)
             and re.fullmatch(r"[0-9a-f]{32}", run_id) is not None,
             "DEV07_CHECKOUT_PRIVATE_CONFIG_SCOPE_INVALID")
+    require(isinstance(value["issuer_endpoint"], str)
+            and len(value["issuer_endpoint"]) <= 300,
+            "DEV07_CHECKOUT_PRICE_ISSUER_ENDPOINT_DENIED")
     try:
         url = urlsplit(value["issuer_endpoint"])
         host = url.hostname

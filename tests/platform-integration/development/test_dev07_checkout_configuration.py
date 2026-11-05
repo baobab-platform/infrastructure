@@ -48,6 +48,14 @@ class CheckoutPrivateConfigTests(unittest.TestCase):
                 with self.assertRaises(PrivateCheckoutConfigurationDenied):
                     validate_private_checkout_configuration(wrong, self.run)
 
+    def test_wrong_endpoint_types_fail_closed(self):
+        for value in (None, 0, {}, [], True):
+            with self.subTest(value=value):
+                wrong = copy.deepcopy(self.value)
+                wrong["issuer_endpoint"] = value
+                with self.assertRaises(PrivateCheckoutConfigurationDenied):
+                    validate_private_checkout_configuration(wrong, self.run)
+
     def test_short_secret_denied(self):
         wrong = copy.deepcopy(self.value)
         wrong["trade_workload_client_secret"] = "short"
