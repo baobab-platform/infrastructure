@@ -101,7 +101,7 @@ def sources(root: Path):
         # No local source patches are allowed after checkout; consumers must
         # execute precisely what the source revision attests.
         dirty = subprocess.check_output(
-            ["git", "-C", str(src), "status", "--porcelain", "--untracked-files=no"],
+            ["git", "-C", str(src), "status", "--porcelain", "--untracked-files=all"],
             text=True, stderr=subprocess.DEVNULL).strip()
         insist(not dirty, "SOURCE_NOT_CLEAN")
     return lock
@@ -253,7 +253,15 @@ def main():
             return 0
         require_genuine_entrypoint(args.root)
         if args.command == "entrypoint":
-            print("DEV11_GENUINE_ENTRYPOINT_PRESENT_SOURCE_ONLY")
+            # Source availability is not a buyer commitment. The bounded
+            # artifact must remain explicitly blocked, including on green CI.
+            report = safe_report("CURRENT_IAM_CP_AUTHORITY_UNVERIFIED",
+                                 source_verified=True)
+            if args.output is not None:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(json.dumps(report, indent=2,
+                                                  sort_keys=True) + "\\n")
+            print("DEV11_GENUINE_ENTRYPOINT_PRESENT_SOURCE_ONLY_L4_BLOCKED")
             return 0
         # IDs remain within the disposable private run, never CLI/history.
         path = args.private_event_id_file
