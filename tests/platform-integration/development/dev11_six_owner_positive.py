@@ -30,6 +30,7 @@ OWNERS = ("zuribeans", "baobab-iam", "baobab-cp",
           "baobab-trade", "baobab-erp")
 SAFE = frozenset({
     "LOCK_INVALID", "SOURCE_MISSING", "SOURCE_HEAD_MISMATCH",
+    "GOVERNED_BUYER_COMMIT_ENTRYPOINT_ABSENT",
     "SOURCE_NOT_CLEAN", "SIX_OWNER_RUNTIME_NOT_RUNNING",
     "SIX_OWNER_NETWORK_NOT_SHARED", "SIX_OWNER_SOURCE_IMAGE_MISMATCH",
     "GOVERNED_BUYER_EVENT_REQUIRED", "NATIVE_BUYER_ORIGIN_REFUSED",
@@ -135,6 +136,21 @@ def containers(project, lock):
            "SIX_OWNER_NETWORK_NOT_SHARED")
     return True
 
+def require_genuine_entrypoint(root: Path):
+    """Do not launch a costly stack when no authenticated purchase endpoint exists.
+
+    This is ONLY a negative preflight: a source file's presence cannot establish
+    legitimate IAM/CP authority or a native business effect. The runtime and
+    read-only independent observer remain mandatory.
+    """
+    required = (
+        root / "zuribeans/src/app/api/buyer/commit/route.ts",
+        root / "baobab-trade/src/api/store/b2b/buyer-commit/route.ts",
+    )
+    insist(all(path.is_file() and path.stat().st_size > 100 for path in required),
+           "GOVERNED_BUYER_COMMIT_ENTRYPOINT_ABSENT")
+    return True
+
 def trade_origin(root, event_id):
     from psycopg.rows import dict_row
     import psycopg
@@ -197,10 +213,10 @@ def qualify(args):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("command", choices=["sources", "qualify"])
+    p.add_argument("command", choices=["sources", "entrypoint", "qualify"])
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--project")
-    p.add_argument("--event-id")
+    p.add_argument("--private-event-id-file", type=Path)
     p.add_argument("--output", type=Path)
     args = p.parse_args()
     try:
@@ -209,6 +225,16 @@ def main():
             # Exact-source PASS is a *preflight only*, never the runtime gate.
             print("DEV11_SIX_OWNER_SOURCE_RECONCILED")
             return 0
+        require_genuine_entrypoint(args.root)
+        if args.command == "entrypoint":
+            print("DEV11_GENUINE_ENTRYPOINT_PRESENT_SOURCE_ONLY")
+            return 0
+        # IDs remain within the disposable private run, never CLI/history.
+        path = args.private_event_id_file
+        insist(path is not None and path.is_file() and not path.is_symlink() and
+               path.stat().st_size <= 80 and path.stat().st_mode & 0o077 == 0,
+               "GOVERNED_BUYER_EVENT_REQUIRED")
+        args.event_id = path.read_text().strip()
         report = qualify(args)
     except Exception as exc:
         reason = str(exc) if isinstance(exc, Blocked) and str(exc) in SAFE else "OBSERVER_UNAVAILABLE"
