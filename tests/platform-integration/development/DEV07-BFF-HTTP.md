@@ -151,6 +151,64 @@ The operator must prepare
 country and a run-unique idempotency key. No payment or carrier outcome
 may be simulated as a successful native commerce order.
 
+### Run-private issuer and workload connection
+
+The candidate starts with the BFF/Trade *route toggles* already enabled, a
+run-private native order HMAC secret and the **native buyer fence still
+SHADOW**. It **does not** start an issuer, grant CP approver authority, create
+a budget or register any legal or human business permission. The operator
+must arrange the independently approved development issuer as a private HTTPS
+service reachable on the isolated `lab` network, with a certificate trusted
+by Trade's `/tls/ca.pem`. The issuer must own a real Ed25519 private key and
+serve genuine signed, exact-cart charge evidence. Only its public key is
+installed in Trade. A hostname outside the private `*.baobab-dev.test`
+namespace is refused. The private trusted TLS ingress must expose that DNS
+name and a certificate covering it; an issuer is **not** implicitly created
+by choosing a URL.
+
+The operator writes a JSON object into the active run's private
+`dev07-checkout-private-configuration.json`, owned by the run user, mode
+`0600`, with exactly the following field names (fill values with **actual
+independently issued** credentials from the private provider; illustrative
+angle-bracket placeholders are invalid by design):
+
+```json
+{
+  "schema": "infrastructure.dev07.checkout-private-configuration.v1",
+  "run_id": "<leased 32-character run id>",
+  "issuer_endpoint": "https://price.baobab-dev.test/v1/trade/cart-final-charges",
+  "issuer_public_key_pem": "<real signed-price issuer Ed25519 public PEM>",
+  "price_provider_audience": "<registered price issuer audience>",
+  "trade_workload_client_id": "<registered Trade workload>",
+  "trade_workload_client_secret": "<real secret>",
+  "market_workload_client_id": "<registered CP market reader>",
+  "market_workload_client_secret": "<real secret>",
+  "tenant_workload_client_id": "<registered CP context reader>",
+  "tenant_workload_client_secret": "<real secret>",
+  "price_provider_client_id": "<registered price provider reader>",
+  "price_provider_client_secret": "<real secret>"
+}
+```
+
+Use the existing `dev.run_dir(RUN_ID)` path inside the private development
+workspace; never upload this file to Actions artifacts, repository contents,
+a pull request, chat or debug logs. The fields are allowlisted by
+`dev07_checkout_configuration.py`; the install step performs no CP or IAM
+mutation:
+
+```sh
+python3 -B tests/platform-integration/development/buyer_bff.py configure-checkout RUN_ID
+```
+
+Keep `DEV07_GENUINE_CHECKOUT_REQUIRED=true` and exact source pin environment
+variables in the operator session through **start, configure and checkout**.
+The configured Trade container is recreated with the new run-owned
+connectivity data. Its approval, site/market, cart and budget policy checks
+remain live. Place the actual `bff-checkout-selection.json` with the active
+cart, a country code and new idempotency key in the same private run. The
+source will refuse missing buyer/seller/issuer grants rather than treat any
+placeholder as an accepted one.
+
 For an existing live, correctly provisioned candidate:
 
 ```sh
