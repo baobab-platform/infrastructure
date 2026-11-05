@@ -35,10 +35,24 @@ def read_state():
     run_id = os.environ.get("DEV01_RUN_ID", "")
     require(len(run_id) == 32 and all(c in "0123456789abcdef" for c in run_id))
     path = Path(RUN) / "state.json"
-    info = path.lstat()
-    require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
-            and not info.st_mode & 0o077 and info.st_nlink == 1)
-    state = json.loads(path.read_bytes())
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as original:
+        info = os.fstat(original.fileno())
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+                and not info.st_mode & 0o077 and info.st_nlink == 1
+                and 1 <= info.st_size <= 1_048_576)
+        raw = original.read(1_048_577)
+    require(len(raw) <= 1_048_576)
+    # A second open, duplicate-key override, or path replacement must not
+    # create a false Redis ACL/one-use observation for a different run.
+    def unique(pairs):
+        data = {}
+        for key, value in pairs:
+            require(key not in data)
+            data[key] = value
+        return data
+    state = json.loads(raw, object_pairs_hook=unique)
+    require(isinstance(state, dict))
     require(state.get("run_id") == run_id
             and state.get("environment") == "development"
             and state.get("n07_profile") is True
