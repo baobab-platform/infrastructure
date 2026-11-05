@@ -195,8 +195,11 @@ def checkout(run, reference):
         # The price lease is short. Start issuance only after login and
         # enforcement are ready, then submit without another setup stage.
         dev.compose(directory, state, 'run', '--rm', '--no-deps',
+                    '-e', 'BAOBAB_DEV07_NATIVE_PHASE=price-and-reserve',
+                    '-e', 'BAOBAB_DEV07_DISPOSABLE_CHECKOUT_APPROVED_RUN=' + run,
+                    '-e', 'BAOBAB_DEV07_CHECKOUT_CHANGE_REFERENCE=' + reference,
                     '-e', 'BAOBAB_NATIVE_PRICE_CART_ID=' + cart,
-                    *medusa, '/app/src/scripts/issue-native-cart-charges.ts', timeout=90)
+                    *medusa, '/app/src/scripts/fixture-dev07-bff-http.ts', timeout=90)
         probe(directory, state, 'checkout')
 
 

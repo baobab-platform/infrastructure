@@ -98,8 +98,9 @@ development run is `BAOBAB_ENVIRONMENT=development python -B
 tests/platform-integration/development/buyer_bff.py checkout RUN_ID CHANGE_REFERENCE`
 (on one line). It checks the pinned run and container identity, requests
 the explicit disposable Decision 9 transition under the supplied change
-reference, opens the buyer session if needed, issues the priced cart
-through the existing Trade CLI and invokes the confidential checkout probe.
+reference, opens the buyer session if needed, issues and re-reads the priced cart through Trade, reserves the derived
+amount against the current budget, then invokes the confidential checkout probe.
 The baseline buyer-context profile leaves checkout disabled. The operator
 must provision the isolated Trade and BFF checkout settings, registered
-workloads, approved price signer, cart and spend hold before this entry point.
+workloads, approved price signer, buyer-owned bound cart, registered sites
+and active spend budget before this entry point.
