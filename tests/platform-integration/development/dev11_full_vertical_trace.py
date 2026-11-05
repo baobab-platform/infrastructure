@@ -53,11 +53,26 @@ def attributes(values):
                 "EXPORTED_ATTRIBUTES_INVALID")
         key = item["key"]
         require(key not in result and len(key) <= 128, "EXPORTED_ATTRIBUTES_INVALID")
+        # An otherwise connected Jaeger graph with leaked HTTP credentials,
+        # subjects, SQL, site addresses or request bodies is NOT qualified.
+        lowered = key.lower()
+        sensitive = ("authorization", "cookie", "token", "password", "secret",
+                     "credential", "email", "principal", "subject", "customer",
+                     "address", "user.id", "enduser", "db.statement", "db.query",
+                     "http.url", "http.target", "url.full", "url.path",
+                     "url.query", "http.request.header", "http.response.header",
+                     "client.ip", "net.peer.ip", "request.body", "response.body")
+        require(not any(part in lowered for part in sensitive),
+                "EXPORTED_PRIVATE_ATTRIBUTE_REFUSED")
         v = item.get("value")
         require(isinstance(v, dict), "EXPORTED_ATTRIBUTES_INVALID")
         if "stringValue" in v:
             require(type(v["stringValue"]) is str and len(v["stringValue"]) <= 512,
                     "EXPORTED_ATTRIBUTES_INVALID")
+            require(not any(fragment in v["stringValue"].lower() for fragment in
+                            ("bearer ", "basic ", "password=", "client_secret=",
+                             "authorization:", "cookie:")),
+                    "EXPORTED_PRIVATE_ATTRIBUTE_REFUSED")
             result[key] = v["stringValue"]
     return result
 
@@ -132,6 +147,44 @@ def project_original_export(payload, trace_id, event_id):
             value["service"] == child_service and value["name"] == child_name and
             value["parent"] in spans and spans[value["parent"]]["service"] == parent_service
             for value in spans.values())
+    # A mere set of named spans under one root is insufficient. Every
+    # required synchronised and broker edge must use the actual exported
+    # producer/client parent, not an unrelated sibling with the same service.
+    def direct(child_service, child_name, parent_service, parent_name):
+        return any(
+            span["service"] == child_service and span["name"] == child_name and
+            span["parent"] in spans and
+            spans[span["parent"]]["service"] == parent_service and
+            spans[span["parent"]]["name"] == parent_name
+            for span in spans.values())
+
+    require(direct("zuribeans-bff", "baobab.zuribeans.bff.credentialed_http",
+                   "zuribeans-bff", "baobab.zuribeans.bff.request"),
+            "BFF_CREDENTIAL_CLIENT_CAUSAL_EDGE_ABSENT")
+    require(direct("baobab-iam", "baobab.iam.http",
+                   "zuribeans-bff", "baobab.zuribeans.bff.credentialed_http"),
+            "BFF_IAM_ISSUER_CAUSAL_EDGE_ABSENT")
+    require(direct("baobab-iam", "baobab.iam.issuer.client",
+                   "baobab-iam", "baobab.iam.http"),
+            "IAM_ISSUER_CLIENT_CAUSAL_EDGE_ABSENT")
+    require(direct("baobab-trade", "baobab.trade.cp.http",
+                   "baobab-trade", "baobab.trade.http"),
+            "TRADE_CP_CLIENT_CAUSAL_EDGE_ABSENT")
+    require(direct("baobab-cp", "baobab.cp.iam.introspect",
+                   "baobab-cp", "baobab.cp.http"),
+            "CP_IAM_INTROSPECTION_CAUSAL_EDGE_ABSENT")
+    require(direct("baobab-trade", "baobab.trade.outbox.insert",
+                   "baobab-trade", "baobab.trade.http"),
+            "TRADE_EVENT_PRODUCER_CAUSAL_EDGE_ABSENT")
+    require(direct("baobab-trade-rabbit-publisher",
+                   "baobab.trade.rabbit.publish",
+                   "baobab-trade", "baobab.trade.outbox.insert"),
+            "PERSISTED_OUTBOX_PUBLISHER_CAUSAL_EDGE_ABSENT")
+    require(direct("baobab-erp", "baobab.erp.inbox.execute",
+                   "baobab-trade-rabbit-publisher", "baobab.trade.rabbit.publish") or
+            direct("baobab-erp", "baobab.erp.inbox.execute",
+                   "baobab-trade", "baobab.trade.outbox.insert"),
+            "ORIGINAL_EVENT_BROKER_CONSUMER_EDGE_ABSENT")
     require(has_parent("baobab-trade", "baobab.trade.http", "zuribeans-bff"),
             "BFF_TRADE_CAUSAL_BOUNDARY_ABSENT")
     require(has_parent("baobab-cp", "baobab.cp.http", "baobab-trade"),
