@@ -192,6 +192,34 @@ class N07SourceTests(unittest.TestCase):
             with self.assertRaises(n07_redis_probe.Blocked):
                 n07_redis_probe.read_state()
 
+    def test_probe_state_source_refuses_symlinks_duplicate_keys_and_oversize(self):
+        import json
+        state = {
+            "run_id": "a" * 32, "environment": "development",
+            "n07_profile": True, "lock_file": "n07-base-lock.json",
+            "phase": "RUNNING", "secrets": {"redis": "0" * 64},
+        }
+        file = self.path / "state.json"
+        dev.write(file, state)
+        with patch.object(n07_redis_probe, "RUN", str(self.path)), \\
+             patch.dict("os.environ", {"DEV01_RUN_ID": "a" * 32}):
+            self.assertEqual(n07_redis_probe.read_state(), state)
+            file.unlink()
+            target = self.path / "state-other.json"
+            dev.write(target, state)
+            file.symlink_to(target)
+            with self.assertRaises(OSError):
+                n07_redis_probe.read_state()
+            file.unlink()
+            doc = json.dumps(state)[:-1] + ',"run_id":"' + "b" * 32 + '"}'
+            file.write_text(doc)
+            file.chmod(0o600)
+            with self.assertRaises(n07_redis_probe.Blocked):
+                n07_redis_probe.read_state()
+            file.write_bytes(b"x" * (1_048_577))
+            with self.assertRaises(n07_redis_probe.Blocked):
+                n07_redis_probe.read_state()
+
     def test_redis_wire_is_protocol_data_not_shell(self):
         self.assertEqual(
             n07_redis_probe.wire(b"PING"),
