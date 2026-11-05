@@ -304,6 +304,54 @@ def checkout(run, reference):
         independent_checkout_witness(directory, state)
 
 
+def start_checkout_candidate():
+    """Start a leased, isolated candidate; never report a buyer commitment."""
+    dev.require(os.environ.get('BAOBAB_ENVIRONMENT') == 'development'
+                and os.environ.get('DEV07_GENUINE_CHECKOUT_REQUIRED') == 'true',
+                'DEV07_EXPLICIT_CHECKOUT_CANDIDATE_REQUIRED')
+    run = prepare()
+    try:
+        with dev.guarded(run):
+            up(run)
+    except BaseException:
+        # Failed bring-up must never orphan the source-pinned IAM/CP runtime.
+        with dev.guarded(run):
+            dev.down(run)
+        raise
+    print('DEV07_DISPOSABLE_CHECKOUT_RUN_ID=' + run, flush=True)
+
+
+def finish_checkout_candidate(run):
+    """Independently clean the private native and CP fixture, then host resources."""
+    failed = False
+    try:
+        with dev.guarded(run):
+            directory, state = dev.current(run)
+            source_lock = json.loads((BASE / 'dev07-checkout-source-lock.json').read_text(),
+                                      object_pairs_hook=dev.unique)['sources']
+            dev.require(all(state['sources'].get(owner) == sha
+                            for owner, sha in source_lock.items()),
+                        'DEV07_CHECKOUT_TEARDOWN_WRONG_OWNER')
+            for action in (
+                lambda: native(directory, state, 'cleanup'),
+                lambda: dev.compose(directory, state, 'exec', '-T', 'probe', 'python',
+                                    '/buyer_identity_probe.py', 'binding-control', timeout=30),
+                lambda: buyer_identity.cleanup_owners(run),
+            ):
+                try:
+                    action()
+                except Exception:
+                    failed = True
+    finally:
+        # All owner cleanup is best-effort; host teardown is unconditional.
+        with dev.guarded(run):
+            dev.down(run)
+    dev.require(not dev.resources(run) and not dev.run_dir(run).exists(),
+                'DEV07_CHECKOUT_HOST_TEARDOWN_INCOMPLETE')
+    dev.require(not failed, 'DEV07_CHECKOUT_OWNER_CLEANUP_INCOMPLETE')
+    print('DEV07_DISPOSABLE_CHECKOUT_CLEANED_NO_PROTECTED_ACCEPTANCE', flush=True)
+
+
 def runtime_identity(directory, state):
     for service in ('trade-bff-http', 'zuribeans-bff', 'trade-bff-db', 'bff-redis'):
         cid = dev.compose(directory, state, 'ps', '-q', service)
@@ -605,8 +653,12 @@ def main():
 
 if __name__ == '__main__':
     try:
-        if len(sys.argv) == 4 and sys.argv[1] == 'checkout':
+        if len(sys.argv) == 2 and sys.argv[1] == 'start-checkout':
+            start_checkout_candidate()
+        elif len(sys.argv) == 4 and sys.argv[1] == 'checkout':
             checkout(sys.argv[2], sys.argv[3])
+        elif len(sys.argv) == 3 and sys.argv[1] == 'finish-checkout':
+            finish_checkout_candidate(sys.argv[2])
         else:
             dev.require(len(sys.argv) == 1, 'DEV07_BFF_UNKNOWN_COMMAND')
             main()
