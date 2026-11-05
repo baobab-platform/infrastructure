@@ -179,3 +179,56 @@ atomic commitment/spend, ERP effect and production flags false and L4 blocked.
 A missing schema, database outage, skipped step, missing original or added
 authority claim cannot stand in for that negative. A future genuine B2B
 positive requires its own reviewed business/authority qualification path.
+
+
+## 5 November 2026 — full-operation exported trace verifier (candidate, not L4 acceptance)
+
+The new infrastructure observer at
+tests/platform-integration/development/dev11_full_vertical_trace.py
+is strictly **read-only**, separately executable, and refuses all unobserved
+BFF/issuer/CP/Trade/broker/ERP boundaries. Its implementation requires:
+- a true ZuriBeans BFF root and credentialed-client exported spans;
+- actual IAM server/native issuer-client, Trade server/CP client/outbox,
+  CP server/introspection-client, RabbitMQ confirmed publisher,
+  ERP original-event consumer and actual ERP→JVM native-client spans;
+- one connected valid W3C trace with every parent exported (no fabricated
+  IDs), non-cyclic service ancestry and exact matching event IDs in the
+  Trade producer, Rabbit publisher and ERP consumer spans;
+- independent read-only PostgreSQL origin readback from the original Trade
+  event_outbox row and ERP event_inbox, canonical-to-native immutable mapping,
+  the native C_Order and immutable CP AUTHORIZED finance decision.
+
+The observer does not trust a producer-provided PASS, an unpersisted CloudEvent,
+a broker ACK, self-reported span arrays or a synthetic JVM result. A real JVM
+**service-emitted** span is still a separately qualified future boundary: the
+new ERP client spans represent actual Python→native JVM transport only,
+and native PostgreSQL/CP readback verifies the *effect*. They are not falsely
+labelled as a Java agent exporter.
+
+To invoke from an independently provisioned disposable network with actual
+read-only DB grants and access to the Jaeger v3 read API:
+
+    DEV11_TRADE_READONLY_URL=... DEV11_ERP_READONLY_URL=... \
+      DEV11_CP_READONLY_URL=... python3 -B \
+      tests/platform-integration/development/dev11_full_vertical_trace.py \
+      --event-id ORIGINAL_PERSISTED_TRADE_EVENT_UUID \
+      --jaeger http://127.0.0.1:16686 \
+      --output /run/private/dev11-full-operation.json
+
+The three database URLs are never CLI arguments or artifacts. Only the
+bounded sanitised result may be retained after independent original digest
+checks, and disposable credentials/resources must be revoked/destroyed.
+An absent runnable network or any missing provider yields BLOCKED.
+The original eight-owner GitHub evidence join still runs separately; this
+new component cannot set L4-OPS-01 to PASS by itself.
+
+Reproduce pure negative tests without private credentials:
+
+    python3 -B -m unittest discover \
+      -s tests/platform-integration/development \
+      -p test_dev11_full_vertical_trace.py -v
+
+The candidate owner branches are ZuriBeans #156, IAM #153, CP #463,
+Trade #189, ERP #125 and Infrastructure #72. No protected staging, real
+tax/duty provider, native buyer commitment or production approval is
+inferred from these telemetry adapters. All new owner PRs remain held.
