@@ -1,0 +1,68 @@
+name: DEV-11 connected confidential BFF IAM CP Trade candidate
+
+# Actual disposable Next.js, Hydra/Kratos, Control Plane, Medusa, Postgres
+# and Redis. Never substitutes mocked authority or unpinned consumer sources.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/dev11-connected-bff-trade.yml
+      - tests/platform-integration/development/buyer_bff.py
+      - tests/platform-integration/development/buyer_bff_probe.py
+      - tests/platform-integration/development/dev.py
+      - tests/platform-integration/development/dev11-buyer-bff-base-lock.json
+      - tests/platform-integration/development/dev11-six-owner-lock.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  native-bff-trade:
+    name: Current IAM/CP and native BFF Trade W3C allow/deny/teardown
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install existing pinned integration CLI
+        run: npm ci --prefix tests/platform-integration/devcontainer-cli --ignore-scripts --no-audit --no-fund
+      - name: Start private common Codespaces integration lab
+        run: tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer up --frozen-lockfile --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json
+      - name: Run real candidate sources and current authority positives and negatives
+        env:
+          DEV05_NPM_TOKEN: ${{ github.token }}
+          DEV05_REGISTRY_USERNAME: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            --remote-env BAOBAB_ENVIRONMENT=development \
+            --remote-env GITHUB_ACTIONS=true \
+            --remote-env DEV11_CONNECTED_BFF_REQUIRED=true \
+            --remote-env DEV11_TRADE_SHA=4df942719b14cbdcdb81160f11d75d858f1f94cc \
+            --remote-env DEV11_ZURIBEANS_SHA=e171ede6cbb9512359266e85870e297c5a1e4361 \
+            --remote-env "DEV05_NPM_TOKEN=$DEV05_NPM_TOKEN" \
+            --remote-env "DEV05_REGISTRY_USERNAME=$DEV05_REGISTRY_USERNAME" \
+            python3 -B tests/platform-integration/development/buyer_bff.py
+      - name: Independent devcontainer cleanup
+        if: always()
+        run: |
+          tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
+            --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
+            python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Independent host cleanup
+        if: always()
+        run: python3 -B tests/platform-integration/l4.py recover development --all
+      - name: Retain only scrubbed immutable candidate receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev11-native-bff-iam-cp-trade
+          path: |
+            tests/platform-integration/evidence/dev01-*/completed/*.json
+            tests/platform-integration/evidence/dev07-bff-http-suite*.json
+          if-no-files-found: error
+          retention-days: 14
