@@ -232,6 +232,16 @@ class InfrastructureDependencyMaintenancePolicyTests(unittest.TestCase):
             lambda doc: doc["updates"][0].update({"open-pull-requests-limit": 0}),
         )
 
+    def test_immutable_action_pinning_uses_accepted_shared_gate(self):
+        text = (ROOT / ".github/workflows/enforce-action-pinning.yml").read_text()
+        self.assertIn(
+            "enforce-action-pinning.yml@"
+            "31de2bc3dcd56128c019c640dc7e12c10ae9ca69",
+            text,
+        )
+        self.assertIn("contents: read", text)
+        self.assertIn('".github/workflows/**"', text)
+
     def test_accepted_shared_validator_and_six_ecosystem_inputs(self):
         text = POLICY.read_text(encoding="utf-8")
         self.assertIn(
