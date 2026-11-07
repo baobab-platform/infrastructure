@@ -33,7 +33,7 @@ New `.github/workflows/dependency-security.yml` runs on pull requests, main and 
 - Each locked npm consumer is independently installed with `npm ci --ignore-scripts --no-audit --no-fund` and runs a full `npm audit --audit-level=high`. Do not omit development dependencies or ignore audit failures.
 - Terraform uses immutable setup-terraform source and version 1.16.5 to execute `fmt -check`, `init -backend=false -lockfile=readonly` and `validate`. It has **no AWS credentials, OIDC role, remote state, plan, apply or destroy**. Validation and checksums are **not** a Terraform vulnerability scanner or protected-plan evidence.
 
-The accepted Shared validator is now called with six required ecosystems, supplemented by manifest-aware and negative local policy tests. The existing Foundation workflow has `dependency_review_enabled: false`. Confirm whether the GitHub dependency-review control can be enabled and actually works; absence of that evidence is an explicit security qualification gap, not a PASS.
+The accepted Shared validator is now called with six required ecosystems, supplemented by manifest-aware and negative local policy tests. The repository also now invokes the **accepted SHA-pinned Shared Action-pinning workflow** on workflow/action changes. These are source-enforcement checks, not evidence that pinned Actions have no current advisories. The offline suite contains **20 regression cases**. The existing Foundation workflow has `dependency_review_enabled: false`. Confirm whether the GitHub dependency-review control can be enabled and actually works; absence of that evidence is an explicit security qualification gap, not a PASS.
 
 ## 3. Supplier-chain/security concerns that remain
 
