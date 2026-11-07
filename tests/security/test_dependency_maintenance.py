@@ -165,7 +165,7 @@ class InfrastructureDependencyMaintenancePolicyTests(unittest.TestCase):
             lambda doc: doc.update({
                 "updates": [
                     u for u in doc["updates"]
-                    if u.get("directory") != "/tests/platform-integration/int02/human"
+                    if not (u.get("package-ecosystem") == "npm" and u.get("directory") == "/tests/platform-integration/int02/human")
                 ]
             }),
         )
