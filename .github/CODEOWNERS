@@ -4,3 +4,14 @@
 /.baobab/ @baobab-platform/platform-engineering
 /Dockerfile @baobab-platform/platform-engineering @baobab-platform/security
 /SECURITY.md @baobab-platform/security
+/.github/dependabot.yml @baobab-platform/platform-engineering @baobab-platform/security
+/.github/workflows/dependency-security.yml @baobab-platform/platform-engineering @baobab-platform/security
+/.baobab/repository.yaml @baobab-platform/platform-engineering @baobab-platform/security
+/docs/security/dependency-maintenance.md @baobab-platform/platform-engineering @baobab-platform/security
+/tests/security/test_dependency_maintenance.py @baobab-platform/platform-engineering @baobab-platform/security
+/terraform/environments/staging/ @baobab-platform/platform-engineering @baobab-platform/security
+/compose/ @baobab-platform/platform-engineering @baobab-platform/security
+/deploy/runtime-helper/ @baobab-platform/platform-engineering @baobab-platform/security
+/.devcontainer/platform-integration/ @baobab-platform/platform-engineering @baobab-platform/security
+/tests/platform-integration/ @baobab-platform/platform-engineering @baobab-platform/security
+/.gitleaksignore @baobab-platform/platform-engineering @baobab-platform/security
