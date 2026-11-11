@@ -2,11 +2,11 @@
   "schema": "infrastructure.dev11.six-owner-source-lock.v1",
   "scope": "DEVELOPMENT_DISPOSABLE_ONLY",
   "sources": {
-    "zuribeans": "e171ede6cbb9512359266e85870e297c5a1e4361",
-    "baobab-iam": "ba2100304f9fdabee5308b72d6ff5cbbd3d30ce8",
-    "baobab-cp": "e461b9e2c3a3f0cdd0c2f8b909c263c627f128be",
-    "baobab-trade": "4df942719b14cbdcdb81160f11d75d858f1f94cc",
-    "baobab-erp": "93d2ac51fb07f9afcdfb958fe2df2c94f5484746"
+    "zuribeans": "2ca5d85c663a725c698df4fe66452f113a8a3a23",
+    "baobab-iam": "399a505f08ad34922845bfd8a08bab385e2de80f",
+    "baobab-cp": "ba337b5700ff344e9ca3762a5ded53042a0c07fe",
+    "baobab-trade": "209e640b5811af6397cf5a3016fe2cf9b41ae889",
+    "baobab-erp": "f8558b616e81f37ef0246a0e7fc58bc81b2a1e3a"
   },
   "owner": "infrastructure",
   "infrastructure_source": "EXACT_RUNNING_PR_HEAD",

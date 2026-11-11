@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/zuribeans
-          ref: e171ede6cbb9512359266e85870e297c5a1e4361
+          ref: 2ca5d85c663a725c698df4fe66452f113a8a3a23
           path: sources/zuribeans
           token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
           persist-credentials: false
@@ -49,7 +49,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/baobab-iam
-          ref: ba2100304f9fdabee5308b72d6ff5cbbd3d30ce8
+          ref: 399a505f08ad34922845bfd8a08bab385e2de80f
           path: sources/baobab-iam
           token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
           persist-credentials: false
@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/baobab-cp
-          ref: e461b9e2c3a3f0cdd0c2f8b909c263c627f128be
+          ref: ba337b5700ff344e9ca3762a5ded53042a0c07fe
           path: sources/baobab-cp
           token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
           persist-credentials: false
@@ -65,7 +65,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/baobab-trade
-          ref: 4df942719b14cbdcdb81160f11d75d858f1f94cc
+          ref: 209e640b5811af6397cf5a3016fe2cf9b41ae889
           path: sources/baobab-trade
           token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
           persist-credentials: false
@@ -74,7 +74,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/baobab-erp
-          ref: 93d2ac51fb07f9afcdfb958fe2df2c94f5484746
+          ref: f8558b616e81f37ef0246a0e7fc58bc81b2a1e3a
           path: sources/baobab-erp
           token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
           persist-credentials: false

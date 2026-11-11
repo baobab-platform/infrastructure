@@ -29,6 +29,29 @@ buyer/seller commitment under a shared transaction, or that the same
 Trade event ID has end-to-end independently exported OpenTelemetry
 lineage. Both are required before `l4_ops_01` can become PASS.
 
+## Connected BFF failure diagnosis
+
+[Run 42168676260](https://github.com/baobab-platform/infrastructure/actions/runs/42168676260)
+reached the Trade image build before failing. It did not reach native fixture
+preparation or an authenticated BFF request. The previous runner subsequently
+attempted native cleanup before the service existed, which obscured the
+original failure.
+
+For a failed candidate, use the closed `DEV07_BFF_FAILURE` stage and reason
+in the job log and the scrubbed `dev07-bff-http-suite.json` and SHA-256 sidecar
+after host teardown. The suite records the failed stage and owner source SHA
+where applicable. A failure receipt keeps `bff_http_qualified=false` and the
+job exits non-zero. When fixture preparation started, cleanup is attempted even
+if preparation failed partway. CP/IAM owner cleanup and labelled host cleanup
+are attempted independently. Raw build output, provider responses and
+credentials stay out of the artifact.
+
+The source preflight and the genuine-checkout witness each use their reviewed
+immutable lock. A new pin starts a new observation. Preserve the original
+failure and the ERP synthetic-origin receipt under their original pins.
+
+## Estate quality requirements
+
 For each estate the verified mandatory step outcomes are:
 
 | Owner | Playwright | Accessibility | Visual | Lighthouse | Static budget |

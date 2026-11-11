@@ -2,10 +2,10 @@
   "schema": "infrastructure.dev07.checkout-source-lock.v1",
   "scope": "DEVELOPMENT_DISPOSABLE_ONLY",
   "sources": {
-    "baobab-trade": "79dc564a5d94d41eb4cd88d5476cc391b2a24b9e",
-    "zuribeans": "e171ede6cbb9512359266e85870e297c5a1e4361",
-    "baobab-cp": "8f5879f8b21695a590a5673b954f54c8047fe4ac",
-    "baobab-iam": "ba2100304f9fdabee5308b72d6ff5cbbd3d30ce8"
+    "baobab-trade": "209e640b5811af6397cf5a3016fe2cf9b41ae889",
+    "zuribeans": "2ca5d85c663a725c698df4fe66452f113a8a3a23",
+    "baobab-cp": "ba337b5700ff344e9ca3762a5ded53042a0c07fe",
+    "baobab-iam": "399a505f08ad34922845bfd8a08bab385e2de80f"
   },
   "checkout_operation": "trade.order.commit",
   "native_order": "NON_DRAFT_MEDUSA_ORDER",

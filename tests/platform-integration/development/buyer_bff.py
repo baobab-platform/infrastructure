@@ -35,6 +35,18 @@ HTTP_HOPS = {
     'cp.baobab-dev.test:/v1/platform-context/resolve': 'CP_CONTEXT',
     'engine.baobab-dev.test:/store/b2b/buyer-context': 'TRADE_CONTEXT',
 }
+SAFE_FAILURE_REASONS = {
+    'COMMAND_FAILED', 'COMMAND_UNAVAILABLE_OR_TIMED_OUT', 'IMAGE_RATE_LIMITED',
+    'IMAGE_UNAVAILABLE', 'INVALID_PROVIDER_CONFIGURATION', 'LEASE_EXPIRED',
+    'RUNTIME_PERMISSION_DENIED', 'DEV07_BFF_HTTP_HEALTH_REQUIRED',
+    'DEV11_REAL_BFF_TRADE_CP_CAUSAL_PATH_FAILED',
+}
+
+
+def report_stage(state, stage, *, source=None):
+    state['dev07_bff_stage'] = stage
+    state['dev07_bff_stage_source'] = source
+    print('DEV07_BFF_STAGE=' + stage, flush=True)
 
 
 def lock():
@@ -140,7 +152,8 @@ def build(directory, state):
     for service, repo, dockerfile in (
         ('trade-bff-http', 'baobab-trade', 'Dockerfile.dev07-http'),
         ('zuribeans-bff', 'zuribeans', 'Dockerfile.dev07')):
-        print('DEV07_BFF_STAGE=BUILD_' + repo.upper().replace('-', '_'), flush=True)
+        report_stage(state, 'BUILD_' + repo.upper().replace('-', '_'), source=repo)
+        dev.persist(directory, state, 'RUNNING')
         source = directory / 'sources' / repo
         dev.check_dockerfile(source / dockerfile)
         image = state['project'] + '-' + service
@@ -478,10 +491,15 @@ def up(run):
     for name in ('trade-bff-db', 'trade-bff-http'):
         services[name].update(labels=labels, restart='no', networks=['lab'])
     commit_config(directory, state, config)
-    print('DEV07_BFF_STAGE=MIGRATE', flush=True)
+    report_stage(state, 'MIGRATE', source='baobab-trade')
+    dev.persist(directory, state, 'RUNNING')
     dev.compose(directory, state, 'up', '-d', '--wait', '--wait-timeout', '120', 'trade-bff-db', timeout=180)
     for cmd in ('migrate', 'migrate:search'):
         dev.compose(directory, state, 'run', '--rm', '--no-deps', 'trade-bff-http', 'npm', 'run', cmd, timeout=240)
+    # Checkpoint before the mutating call so a partial prepare is cleaned up.
+    state['dev07_bff_native_prepare_started'] = True
+    report_stage(state, 'NATIVE_FIXTURES', source='baobab-trade')
+    dev.persist(directory, state, 'RUNNING')
     native(directory, state, 'prepare')
     key = dev.read(output / 'store-key.json')['publishable_key']
     epoch = cms_vertical.bff_epoch(run)
@@ -539,7 +557,8 @@ def up(run):
     dev.compose(directory, state, 'up', '-d', 'trade-bff-http', 'bff-redis', 'zuribeans-bff', 'edge', timeout=120)
     # The changed network aliases recreate edge with the new configuration.
     # Wait for HTTP readiness below instead of racing its initial PID with reload.
-    print('DEV07_BFF_STAGE=HTTP_HEALTH', flush=True)
+    report_stage(state, 'HTTP_HEALTH')
+    dev.persist(directory, state, 'RUNNING')
     for attempt in range(60):
         try:
             if json.loads(probe(directory, state, 'health', timeout=20)) == {'trade': 200, 'bff': 200}:
@@ -556,6 +575,8 @@ def up(run):
 
 def qualify(run):
     directory, state = dev.current(run)
+    report_stage(state, 'QUALIFY_HTTP')
+    dev.persist(directory, state, 'RUNNING')
     for action in ('login', 'positive', 'csrf', 'foreign'):
         probe(directory, state, action)
     if os.environ.get('DEV11_CONNECTED_BFF_REQUIRED') == 'true':
@@ -630,22 +651,29 @@ def cleanup(run):
             directory, state = dev.current(run)
             cleanup_stage = 'NATIVE_FIXTURES'
             try:
-                native(directory, state, 'cleanup')
+                if state.get('dev07_bff_native_prepare_started') is True:
+                    native(directory, state, 'cleanup')
                 cleanup_stage = 'COMPONENT_RECEIPT_READ'
-                value = dev.read(directory / 'bff-report.json')
-                value['checks']['native-fixture-cleanup'] = True
-                cleanup_stage = 'COMPONENT_RECEIPT_VALIDATE'
-                contract.validate(value, run, state['sources'])
-                state['dev07_bff_http'] = value
-                cleanup_stage = 'COMPONENT_RECEIPT_PERSIST'
-                dev.persist(directory, state, 'RUNNING')
+                report = directory / 'bff-report.json'
+                if report.is_file() and state.get('dev07_bff_native_prepare_started') is True:
+                    value = dev.read(report)
+                    value['checks']['native-fixture-cleanup'] = True
+                    cleanup_stage = 'COMPONENT_RECEIPT_VALIDATE'
+                    contract.validate(value, run, state['sources'])
+                    state['dev07_bff_http'] = value
+                    cleanup_stage = 'COMPONENT_RECEIPT_PERSIST'
+                    dev.persist(directory, state, 'RUNNING')
             except Exception:
                 # Finite source-owned labels only; exception text can contain
                 # private native output, credentials or paths and stays private.
                 print('DEV07_BFF_CLEANUP_FAILED=' + cleanup_stage, flush=True)
                 failed = True
             try:
-                dev.compose(directory, state, 'exec', '-T', 'probe', 'python', '/buyer_identity_probe.py', 'binding-control', timeout=30)
+                if state.get('dev07_bff_runtime_identity_verified') is True:
+                    dev.compose(directory, state, 'exec', '-T', 'probe', 'python', '/buyer_identity_probe.py', 'binding-control', timeout=30)
+            except Exception:
+                failed = True
+            try:
                 buyer_identity.cleanup_owners(run)
             except Exception:
                 failed = True
@@ -669,15 +697,28 @@ def private_http_diagnostics(run):
 
 
 def main():
-    run = None; failed = False
+    run = None; failed = False; failure = None
     for name in ('dev07-bff-http-suite.json', 'dev07-bff-http-suite.sha256.json'):
         (dev.EVIDENCE / name).unlink(missing_ok=True)
     try:
         run = prepare()
         with dev.guarded(run):
             up(run); qualify(run)
-    except Exception:
-        if run: private_http_diagnostics(run)
+    except Exception as error:
+        reason = str(error) if isinstance(error, dev.Refused) else ''
+        failure = {
+            'stage': 'PREPARE', 'source_sha': None,
+            'reason': reason if reason in SAFE_FAILURE_REASONS else 'UNCLASSIFIED_FAILURE',
+        }
+        if run:
+            # Read the last checkpoint even when the lease has expired.
+            state_path = dev.run_dir(run) / 'state.json'
+            if state_path.is_file():
+                state = dev.read(state_path)
+                failure['stage'] = state.get('dev07_bff_stage', 'IAM_CP_SETUP')
+                failure['source_sha'] = state['sources'].get(state.get('dev07_bff_stage_source'))
+            private_http_diagnostics(run)
+        print('DEV07_BFF_FAILURE=' + failure['stage'] + ':' + failure['reason'], flush=True)
         failed = True; print('DEV07_BFF_HTTP_NOT_QUALIFIED', flush=True)
     finally:
         if run:
@@ -692,15 +733,16 @@ def main():
         and receipt.get('dev07_binding_revocation_verified') is True and receipt.get('dev07_issuer_cleanup') is True)
     if os.environ.get('DEV11_CONNECTED_BFF_REQUIRED') == 'true':
         observed = receipt.get('dev11_bff_connected')
-        dev.require(isinstance(observed, dict) and observed.get('runtime_qualified') is False
+        qualified = (isinstance(observed, dict) and observed.get('runtime_qualified') is False
                     and observed.get('outbox_consumer_qualified') is False
                     and isinstance(observed.get('checks'), dict)
                     and all(observed['checks'].values())
-                    and receipt['teardown_verified'] and qualified,
-                    'DEV11_BFF_CP_TRADE_CONNECTED_QUALIFICATION_FAILED')
+                    and receipt['teardown_verified'] and qualified)
     result = {'schema': 'infrastructure.dev07-bff-http-qualified.v1', 'lifecycle': receipt,
               'bff_http_qualified': bool(qualified), 'int05_qualified': False,
               'provider_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
+    if failure:
+        result['failure'] = failure
     path = dev.EVIDENCE / 'dev07-bff-http-suite.json'
     dev.write(path, result)
     dev.write(path.with_name('dev07-bff-http-suite.sha256.json'), {'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
