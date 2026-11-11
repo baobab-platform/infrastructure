@@ -2,7 +2,7 @@
   "schema": "infrastructure.dev07.checkout-source-lock.v1",
   "scope": "DEVELOPMENT_DISPOSABLE_ONLY",
   "sources": {
-    "baobab-trade": "209e640b5811af6397cf5a3016fe2cf9b41ae889",
+    "baobab-trade": "b9ad5fa42745f79bc94f43abaec28771a4996ce2",
     "zuribeans": "2ca5d85c663a725c698df4fe66452f113a8a3a23",
     "baobab-cp": "ba337b5700ff344e9ca3762a5ded53042a0c07fe",
     "baobab-iam": "399a505f08ad34922845bfd8a08bab385e2de80f"
