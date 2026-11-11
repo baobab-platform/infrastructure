@@ -1,0 +1,85 @@
+# BA-SEC-DEP-001: native dependency security surveillance (source-level addition).
+# No protected cloud credentials, Terraform plan/apply, or staged image promotion.
+# Automatic version bot schedules are not a substitute for advisory response.
+name: Infrastructure Native Dependency Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go-vulnerabilities:
+    name: Pinned govulncheck on Go runtime helper dependency graph
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact repository source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use repository Go version
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # pinned
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Native Go vulnerability analysis (fail closed)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  locked-npm-harnesses:
+    name: Native npm advisory scan — ${{ matrix.directory }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        directory:
+          - tests/platform-integration/devcontainer-cli
+          - tests/platform-integration/int02/human
+    defaults:
+      run:
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use reviewed Node 24 audit runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
+      - name: Materialise frozen lockfile without dependency install scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Audit all third-party npm packages, including development tooling
+        run: npm audit --audit-level=high
+
+  staging-terraform-lock:
+    name: Validate staged provider lock without AWS credentials or apply
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: terraform/environments/staging
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use reviewed Terraform CLI
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.16.5"
+          terraform_wrapper: false
+      - name: Reject provider lock drift and invalid staging configuration
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -lockfile=readonly
+          terraform validate
