@@ -40,6 +40,10 @@ SAFE_FAILURE_REASONS = {
     'IMAGE_UNAVAILABLE', 'INVALID_PROVIDER_CONFIGURATION', 'LEASE_EXPIRED',
     'RUNTIME_PERMISSION_DENIED', 'DEV07_BFF_HTTP_HEALTH_REQUIRED',
     'DEV11_REAL_BFF_TRADE_CP_CAUSAL_PATH_FAILED',
+    'CLEAN_HARNESS_REQUIRED', 'EMBEDDED_CONTRACT_DRIFT', 'SOURCE_CHECKOUT_MISMATCH',
+    'DEV07_CALLBACK_PROFILE_REFUSED', 'DEV07_REGISTRATION_REFUSED',
+    'DEV07_GRANT_REFUSED', 'DEV07_ASSURANCE_ABSENT',
+    'DEV11_IMMUTABLE_CANDIDATE_PINS_REQUIRED', 'DEV11_BFF_ISSUER_CP_SOURCE_DRIFT',
 }
 
 
@@ -696,6 +700,17 @@ def private_http_diagnostics(run):
         return
 
 
+def write_suite(receipt, qualified, failure):
+    result = {'schema': 'infrastructure.dev07-bff-http-qualified.v1', 'lifecycle': receipt,
+              'bff_http_qualified': bool(qualified), 'int05_qualified': False,
+              'provider_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
+    if failure:
+        result['failure'] = failure
+    path = dev.EVIDENCE / 'dev07-bff-http-suite.json'
+    dev.write(path, result)
+    dev.write(path.with_name('dev07-bff-http-suite.sha256.json'), {'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+
+
 def main():
     run = None; failed = False; failure = None
     for name in ('dev07-bff-http-suite.json', 'dev07-bff-http-suite.sha256.json'):
@@ -705,7 +720,7 @@ def main():
         with dev.guarded(run):
             up(run); qualify(run)
     except Exception as error:
-        reason = str(error) if isinstance(error, dev.Refused) else ''
+        reason = str(error) if isinstance(error, (dev.Refused, ValueError)) else ''
         failure = {
             'stage': 'PREPARE', 'source_sha': None,
             'reason': reason if reason in SAFE_FAILURE_REASONS else 'UNCLASSIFIED_FAILURE',
@@ -723,7 +738,11 @@ def main():
     finally:
         if run:
             failed = cleanup(run) or failed
-    dev.require(run is not None, 'DEV07_BFF_PREPARATION_FAILED')
+    if run is None:
+        # Base prepare may tear down before it can return the run ID. Keep
+        # the closed failure diagnostic without claiming teardown here.
+        write_suite(None, False, failure)
+        raise dev.Refused('DEV07_BFF_PREPARATION_FAILED')
     receipt = dev.read(dev.EVIDENCE / ('dev01-' + run) / 'completed/receipt.json')
     dev.require(receipt['teardown_verified'] and not dev.resources(run) and not dev.run_dir(run).exists(), 'DEV07_BFF_HOST_TEARDOWN_REQUIRED')
     component = receipt.get('dev07_bff_http')
@@ -738,14 +757,7 @@ def main():
                     and isinstance(observed.get('checks'), dict)
                     and all(observed['checks'].values())
                     and receipt['teardown_verified'] and qualified)
-    result = {'schema': 'infrastructure.dev07-bff-http-qualified.v1', 'lifecycle': receipt,
-              'bff_http_qualified': bool(qualified), 'int05_qualified': False,
-              'provider_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
-    if failure:
-        result['failure'] = failure
-    path = dev.EVIDENCE / 'dev07-bff-http-suite.json'
-    dev.write(path, result)
-    dev.write(path.with_name('dev07-bff-http-suite.sha256.json'), {'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+    write_suite(receipt, qualified, failure)
     dev.require(qualified, 'DEV07_BFF_HTTP_CASES_INCOMPLETE')
     print('DEV07_BFF_ACTUAL_NEXT_IAM_REDIS_CP_TRADE_HTTP_AND_TEARDOWN_PASS', flush=True)
 

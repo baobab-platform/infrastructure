@@ -167,6 +167,19 @@ class BuyerBffTests(unittest.TestCase):
                                                   'reason': 'UNCLASSIFIED_FAILURE'})
             self.assertTrue(path.with_name('dev07-bff-http-suite.sha256.json').is_file())
 
+    def test_preparation_refusal_retains_failure_without_fabricating_a_lifecycle(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            with patch.object(dev, 'EVIDENCE', root), \
+                 patch.object(buyer_bff, 'prepare', side_effect=dev.Refused('EMBEDDED_CONTRACT_DRIFT')):
+                with self.assertRaisesRegex(dev.Refused, 'DEV07_BFF_PREPARATION_FAILED'):
+                    buyer_bff.main()
+            report = dev.read(root / 'dev07-bff-http-suite.json')
+            self.assertIsNone(report['lifecycle'])
+            self.assertFalse(report['bff_http_qualified'])
+            self.assertEqual(report['failure'], {'stage': 'PREPARE', 'source_sha': None,
+                                                 'reason': 'EMBEDDED_CONTRACT_DRIFT'})
+
     def relay(self, body, *, name=c.BFF, secret='own-secret', enabled=True):
         spec = importlib.util.spec_from_file_location('_buyer_bff_native_test', Path(__file__).with_name('native_probe.py'))
         module = importlib.util.module_from_spec(spec)

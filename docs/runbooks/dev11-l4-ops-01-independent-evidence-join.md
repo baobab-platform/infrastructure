@@ -49,6 +49,10 @@ credentials stay out of the artifact.
 The source preflight and the genuine-checkout witness each use their reviewed
 immutable lock. A new pin starts a new observation. Preserve the original
 failure and the ERP synthetic-origin receipt under their original pins.
+When changing CP, match the Shared lock to the same embedded contract bytes
+before running the candidate. This includes the workload registry used by
+the IAM fixture. A preparation refusal still produces a failure report even
+when the lifecycle could not return a run identifier.
 
 ## Estate quality requirements
 
