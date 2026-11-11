@@ -258,7 +258,7 @@ class InfrastructureDependencyMaintenancePolicyTests(unittest.TestCase):
     def test_daily_go_vulnerability_scan_is_pinned_and_fails(self):
         text = SECURITY.read_text(encoding="utf-8")
         self.assertIn('cron: "17 3 * * *"', text)
-        self.assertIn("go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...", text)
+        self.assertIn("go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...", text)
         self.assertIn("go-version-file: go.mod", text)
 
     def test_both_locked_npm_consumers_are_audited(self):
@@ -301,7 +301,7 @@ class InfrastructureDependencyMaintenancePolicyTests(unittest.TestCase):
         for token in (
             "BA-SEC-DEP-001", "SOURCE_COMMITTED", "CI_VERIFIED",
             "SECURITY_ALERT_PATH_VERIFIED", "BLOCKED", "CONSUMER_QUALIFIED",
-            "Terraform provider advisories", "dynamic Compose images",
+            "Terraform provider advisories", "Dynamic Compose images",
         ):
             self.assertIn(token, text)
 
