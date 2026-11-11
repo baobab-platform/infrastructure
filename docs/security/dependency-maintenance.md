@@ -29,7 +29,7 @@ Routine updates are weekly and staggered on Monday Africa/Johannesburg. All entr
 
 New `.github/workflows/dependency-security.yml` runs on pull requests, main and daily:
 
-- Native Go vulnerability analysis is pinned to `govulncheck@v1.1.4` and reads `go.mod` through a pinned setup-go Action; the tool release was checked against the upstream project release.
+- Native Go vulnerability analysis is pinned to `govulncheck@v1.9.0` and reads `go.mod` through a pinned setup-go Action. The prior v1.1.4 scanner panicked in `golang.org/x/tools@v0.29.0` while building SSA with the repository Go 1.27.3 toolchain; v1.9.0 is selected from the upstream versioned module tags rather than the stale GitHub Releases latest entry. Passing the scanner on the exact PR head remains mandatory.
 - Each locked npm consumer is independently installed with `npm ci --ignore-scripts --no-audit --no-fund` and runs a full `npm audit --audit-level=high`. Do not omit development dependencies or ignore audit failures.
 - Terraform uses immutable setup-terraform source and version 1.16.5 to execute `fmt -check`, `init -backend=false -lockfile=readonly` and `validate`. It has **no AWS credentials, OIDC role, remote state, plan, apply or destroy**. Validation and checksums are **not** a Terraform vulnerability scanner or protected-plan evidence.
 
