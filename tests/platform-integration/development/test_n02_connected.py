@@ -133,6 +133,7 @@ class N02CheckpointTests(unittest.TestCase):
             "infrastructure_harness_sha": INFRA,
         }
         dev.write(profile_path, profile)
+        self.state["n02_private_profile_sha256"] = hashlib.sha256(profile_path.read_bytes()).hexdigest()
         import types
         with (patch.dict(os.environ, {"BAOBAB_N02_CLIENT_REGISTRATION_PROFILE": "/private/n02-register.json"}),
               patch.object(dev, "current", return_value=(self.root, self.state)),
@@ -164,6 +165,32 @@ class N02CheckpointTests(unittest.TestCase):
                 join.execute_pinned_browser(RUN, profile_path, self.root)
             never_credit.assert_not_called()
 
+        def changed_during_browser(*args, **kwargs):
+            dev.write(profile_path, {**profile, "replacement": True})
+            return types.SimpleNamespace(returncode=0)
+
+        with (patch.dict(os.environ, {"BAOBAB_N02_CLIENT_REGISTRATION_PROFILE": "/private/n02-register.json"}),
+              patch.object(dev, "current", return_value=(self.root, self.state)),
+              patch.object(dev, "verify_sources"),
+              patch.object(join, "actual_first_party_preflight"),
+              patch.object(join, "run_client_controller"),
+              patch.object(join.subprocess, "run", side_effect=changed_during_browser),
+              patch.object(join, "checkpoint") as never_credit):
+            with self.assertRaisesRegex(dev.Refused, "SEAL_MISMATCH"):
+                join.execute_pinned_browser(RUN, profile_path, self.root)
+            never_credit.assert_not_called()
+
+    def test_unsealed_or_replaced_profile_is_refused(self):
+        profile = self.root / "profile.json"
+        dev.write(profile, {"original": True})
+        with self.assertRaisesRegex(dev.Refused, "SEAL_MISMATCH"):
+            join.read_sealed_profile(profile, self.state)
+        self.state["n02_private_profile_sha256"] = hashlib.sha256(profile.read_bytes()).hexdigest()
+        self.assertEqual(join.read_sealed_profile(profile, self.state), {"original": True})
+        dev.write(profile, {"replacement": True})
+        with self.assertRaisesRegex(dev.Refused, "SEAL_MISMATCH"):
+            join.read_sealed_profile(profile, self.state)
+
     def test_runner_refuses_wrong_pins_without_running_browser(self):
         source = self.root / "sources" / "baobab-iam"
         actual = source / "tests" / "browser" / "n02_live.py"
@@ -177,6 +204,7 @@ class N02CheckpointTests(unittest.TestCase):
             "cp_source_sha": CP, "zuribeans_source_sha": ESTATE,
             "infrastructure_harness_sha": INFRA,
         })
+        self.state["n02_private_profile_sha256"] = hashlib.sha256(profile_path.read_bytes()).hexdigest()
         with (patch.object(dev, "current", return_value=(self.root, self.state)),
               patch.object(dev, "verify_sources"),
               patch.object(join.subprocess, "run") as launched):
@@ -406,6 +434,7 @@ class N02CheckpointTests(unittest.TestCase):
             "cp_source_sha": CP, "zuribeans_source_sha": ESTATE,
             "infrastructure_harness_sha": INFRA,
         })
+        self.state["n02_private_profile_sha256"] = hashlib.sha256(profile_path.read_bytes()).hexdigest()
         with (patch.dict(os.environ, {
                 "BAOBAB_N02_CLIENT_REGISTRATION_PROFILE": "/private/never.json",
               }),

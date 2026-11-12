@@ -15,7 +15,17 @@ empty keys, duplicate empty flow values and bare query fields. Malformed URLs
 produce the fixed refusal code. Legitimate same-origin login/recovery redirects
 remain passing. These unit tests do not qualify a live browser or provider.
 
-Validation: the full #72 development suite passes 254 tests; the #69 suite passes 159 tests. Both PRs retain
+Validation: the full #72 development suite passes 255 tests; the #69 suite passes 160 tests. Both PRs retain
 original same-run browser, live IAM/CP/native-owner, independent evidence
 custody and teardown requirements. These source corrections do not close
 N02/N07 acceptance or authorize protected execution.
+
+
+The audit also found that browser execution did not compare the saved profile
+digest at all. It now requires the seal at entry, after ingress preflight,
+after client registration/verification and after the browser process returns,
+before accepting its checkpoint. Missing seals and persistent replacements
+fail closed, including a zero-exit browser whose profile changed during execution.
+These checks do not claim to protect against a malicious same-user process that
+can rewrite both private run state and profiles, nor against replace-and-restore
+between observations; host isolation and owner-only custody remain required.
