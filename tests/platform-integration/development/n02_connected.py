@@ -142,6 +142,16 @@ def seal_first_party_origin(run_id, profile_path):
     dev.persist(directory, state, "PREPARED")
 
 
+def read_sealed_profile(path, state):
+    """Refuse absent or changed custody before using a browser profile."""
+    profile, raw = read_original(path)
+    digest = state.get("n02_private_profile_sha256")
+    dev.require(isinstance(digest, str) and DIGEST.fullmatch(digest) is not None
+                and hashlib.sha256(raw).hexdigest() == digest,
+                "N02_PRIVATE_PROFILE_SEAL_MISMATCH")
+    return profile
+
+
 def require_kratos_browser_redirect(status, location, expected_origin, flow):
     """A source-only assertion about a *received* real Kratos redirect."""
     import urllib.parse
@@ -369,7 +379,7 @@ def execute_pinned_browser(run_id, profile_path, original_dir):
                 "N02_PINNED_BROWSER_PRODUCER_MISSING")
     dev.require(isinstance(profile_path, Path) and profile_path.is_absolute(),
                 "N02_PRIVATE_PROFILE_REQUIRED")
-    profile = dev.read(profile_path)
+    profile = read_sealed_profile(profile_path, state)
     dev.require(profile.get("environment") == "development"
                 and profile.get("schema") == "baobab.iam.n02.browser-qualification.v1"
                 and profile.get("run_id") == run_id
@@ -397,6 +407,7 @@ def execute_pinned_browser(run_id, profile_path, original_dir):
     # Kratos current session and real login/recovery browser redirects.
     # Unreachable/incorrect services mean NO registration and NO N02 proof.
     actual_first_party_preflight(profile)
+    read_sealed_profile(profile_path, state)
     # Registration is actually performed by the *pinned IAM owner source*
     # against the runtime's private Hydra Admin API before Chromium starts.
     # An issued OAuth client ID alone never grants a CP Principal.
@@ -404,6 +415,7 @@ def execute_pinned_browser(run_id, profile_path, original_dir):
     dev.require(bool(client_profile), "N02_OWNER_CLIENT_REGISTRATION_PROFILE_REQUIRED")
     run_client_controller(run_id, Path(client_profile), original_dir, "register")
     run_client_controller(run_id, Path(client_profile), original_dir, "verify")
+    read_sealed_profile(profile_path, state)
     budget = min(300, int(state["deadline"] - time.time()) - 15)
     dev.require(budget >= 30, "N02_BROWSER_LEASE_TOO_SHORT")
     env = dict(os.environ)
@@ -418,6 +430,7 @@ def execute_pinned_browser(run_id, profile_path, original_dir):
         )
     except (OSError, subprocess.SubprocessError):
         raise dev.Refused("N02_PINNED_BROWSER_EXECUTION_UNAVAILABLE") from None
+    read_sealed_profile(profile_path, state)
     dev.require(observed.returncode == 0, "N02_REAL_BROWSER_CASES_NOT_OBSERVED")
     return checkpoint(run_id, original_dir, max_wait_seconds=0)
 
