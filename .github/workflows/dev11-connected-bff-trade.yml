@@ -42,7 +42,7 @@ jobs:
             --remote-env BAOBAB_ENVIRONMENT=development \
             --remote-env GITHUB_ACTIONS=true \
             --remote-env DEV11_CONNECTED_BFF_REQUIRED=true \
-            --remote-env DEV11_TRADE_SHA=b9ad5fa42745f79bc94f43abaec28771a4996ce2 \
+            --remote-env DEV11_TRADE_SHA=c5308bbb593aa700742e6086fc20c467e265abd9 \
             --remote-env DEV11_ZURIBEANS_SHA=2ca5d85c663a725c698df4fe66452f113a8a3a23 \
             --remote-env "DEV05_NPM_TOKEN=$DEV05_NPM_TOKEN" \
             --remote-env "DEV05_REGISTRY_USERNAME=$DEV05_REGISTRY_USERNAME" \

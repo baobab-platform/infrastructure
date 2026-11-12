@@ -102,3 +102,18 @@ checkout configuration/witness tests. These are source regressions only; no
 buyer order, approval, private credential, ERP effect or runtime acceptance
 was fabricated. Final-head CI must rerun after publication. Both Infrastructure
 merge gates remain held pending their original connected evidence.
+
+
+### Trade security dependency reconciliation
+
+Trade #189 candidate `c5308bbb593aa700742e6086fc20c467e265abd9` replaces
+`b9ad5fa42745f79bc94f43abaec28771a4996ce2` in both DEV-07 checkout and
+DEV-11 six-owner locks and their matching workflow inputs. Its changes are
+five dependency overrides, the npm-generated lock, GraphQL compatibility and
+pollution regressions, and the owner security assessment. Local owner validation
+passed 1,151 existing tests, three added regressions, typecheck/lint and complete
+Medusa build/authority assets; fresh npm audit has zero high/critical findings
+(80 moderate and four low remain). This is candidate source reconciliation;
+current-head Trade Foundation/container/native CI and Infrastructure connected
+reruns remain required. Historical green runs do not qualify the new tuple.
+N02/N07 identity locks are not changed by this Trade-only correction.

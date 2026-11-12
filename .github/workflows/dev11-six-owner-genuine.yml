@@ -65,7 +65,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/baobab-trade
-          ref: b9ad5fa42745f79bc94f43abaec28771a4996ce2
+          ref: c5308bbb593aa700742e6086fc20c467e265abd9
           path: sources/baobab-trade
           token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
           persist-credentials: false
