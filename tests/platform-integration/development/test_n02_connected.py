@@ -344,6 +344,31 @@ class N02CheckpointTests(unittest.TestCase):
             up.assert_not_called()
             qualify.assert_not_called()
 
+    def test_profile_seal_hashes_the_bytes_used_to_validate_origin(self):
+        profile = self.root / "profile.json"
+        data = {
+            "run_id": RUN, "iam_source_sha": IAM, "shared_source_sha": SHARED,
+            "cp_source_sha": CP, "zuribeans_source_sha": ESTATE,
+            "infrastructure_harness_sha": INFRA,
+        }
+        dev.write(profile, data)
+        expected = hashlib.sha256(profile.read_bytes()).hexdigest()
+        state = dict(self.state, phase="PREPARED", lock_file="n02-base-lock.json")
+
+        def replace_after_validation(observed):
+            self.assertEqual(observed, data)
+            dev.write(profile, {**data, "replacement": True})
+            return "original.baobab-dev.test"
+
+        with (patch.object(dev, "current", return_value=(self.root, state)),
+              patch.object(dev, "verify_sources"),
+              patch("n02_ingress.reviewed_name", side_effect=replace_after_validation),
+              patch.object(dev, "persist")):
+            join.seal_first_party_origin(RUN, profile)
+        self.assertEqual(state["n02_private_profile_sha256"], expected)
+        self.assertNotEqual(expected, hashlib.sha256(profile.read_bytes()).hexdigest())
+        self.assertEqual(state["n02_estate_origin"], "https://original.baobab-dev.test")
+
     def test_first_party_kratos_redirect_requires_current_same_origin_flow(self):
         origin = "https://n02.zuribeans.example.test"
         flow = "11111111-1111-4111-8111-111111111111"
@@ -358,6 +383,10 @@ class N02CheckpointTests(unittest.TestCase):
             (303, "/identity/kratos/login?flow=not-a-uuid"),
             (303, "/identity/kratos/login?flow=" + flow + "&return_to=/admin"),
             (303, "/identity/kratos/login?flow=" + flow + "#fragment"),
+            (303, "/identity/kratos/login?flow=" + flow + "&return_to="),
+            (303, "/identity/kratos/login?flow=" + flow + "&flow="),
+            (303, "/identity/kratos/login?flow=" + flow + "&ignored"),
+            (303, "https://[invalid/identity/kratos/login?flow=" + flow),
             (303, None),
         ):
             with self.subTest(status=status, location=location):

@@ -128,7 +128,7 @@ def seal_first_party_origin(run_id, profile_path):
                 and profile_path.is_absolute() and not profile_path.is_symlink()
                 and profile_path.is_relative_to(directory),
                 "N02_PRIVATE_FIRST_PARTY_PROFILE_REQUIRED")
-    data = dev.read(profile_path)
+    data, raw = read_original(profile_path)
     fqdn = n02_ingress.reviewed_name(data)
     dev.require(data.get("run_id") == run_id
                 and data.get("iam_source_sha") == state["sources"]["baobab-iam"]
@@ -138,7 +138,7 @@ def seal_first_party_origin(run_id, profile_path):
                 and data.get("infrastructure_harness_sha") == state["harness_sha"],
                 "N02_FIRST_PARTY_ALL_SOURCE_PINS_REQUIRED")
     state["n02_estate_origin"] = "https://" + fqdn
-    state["n02_private_profile_sha256"] = hashlib.sha256(profile_path.read_bytes()).hexdigest()
+    state["n02_private_profile_sha256"] = hashlib.sha256(raw).hexdigest()
     dev.persist(directory, state, "PREPARED")
 
 
@@ -149,16 +149,22 @@ def require_kratos_browser_redirect(status, location, expected_origin, flow):
                 and 0 < len(location) <= 4096
                 and not any(ord(ch) < 32 for ch in location),
                 "N02_REAL_KRATOS_BROWSER_REDIRECT_REQUIRED")
-    parsed = urllib.parse.urlsplit(urllib.parse.urljoin(expected_origin, location))
+    try:
+        parsed = urllib.parse.urlsplit(urllib.parse.urljoin(expected_origin, location))
+        # Keep blank values: an extra empty parameter is still unreviewed input.
+        query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True,
+                                      strict_parsing=True, max_num_fields=2)
+    except ValueError:
+        raise dev.Refused("N02_KRATOS_FIRST_PARTY_FLOW_REDIRECT_REFUSED") from None
     dev.require(parsed.scheme + "://" + parsed.netloc == expected_origin
                 and parsed.path == "/identity/kratos/" + flow
                 and parsed.username is None and parsed.password is None
                 and not parsed.fragment
-                and set(urllib.parse.parse_qs(parsed.query)) == {"flow"}
-                and len(urllib.parse.parse_qs(parsed.query)["flow"]) == 1
+                and set(query) == {"flow"}
+                and len(query["flow"]) == 1
                 and re.fullmatch(
                     r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}",
-                    urllib.parse.parse_qs(parsed.query)["flow"][0],
+                    query["flow"][0],
                     re.IGNORECASE
                 ) is not None,
                 "N02_KRATOS_FIRST_PARTY_FLOW_REDIRECT_REFUSED")
