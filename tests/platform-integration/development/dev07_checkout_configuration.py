@@ -6,6 +6,8 @@ to commit if any of them deny the purchase.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 from urllib.parse import urlsplit
 
@@ -36,7 +38,8 @@ def validate_private_checkout_configuration(value: object, run_id: str) -> dict[
             and re.fullmatch(r"[0-9a-f]{32}", run_id) is not None,
             "DEV07_CHECKOUT_PRIVATE_CONFIG_SCOPE_INVALID")
     require(isinstance(value["issuer_endpoint"], str)
-            and len(value["issuer_endpoint"]) <= 300,
+            and len(value["issuer_endpoint"]) <= 300
+            and not re.search(r"[\x00-\x20\x7f]", value["issuer_endpoint"]),
             "DEV07_CHECKOUT_PRICE_ISSUER_ENDPOINT_DENIED")
     try:
         url = urlsplit(value["issuer_endpoint"])
@@ -54,12 +57,22 @@ def validate_private_checkout_configuration(value: object, run_id: str) -> dict[
             and not url.path.endswith("/"),
             "DEV07_CHECKOUT_PRICE_ISSUER_ENDPOINT_DENIED")
     pem = value["issuer_public_key_pem"]
-    require(isinstance(pem, str) and 100 <= len(pem) <= 2000
-            and pem.startswith("-----BEGIN PUBLIC KEY-----\n")
-            and pem.rstrip("\n").endswith("-----END PUBLIC KEY-----")
-            and len(pem.split("-----END PUBLIC KEY-----")) == 2
-            and re.fullmatch(r"[A-Za-z0-9+/=\r\n]+",
-                    pem.split("-----BEGIN PUBLIC KEY-----\n", 1)[1].split("-----END PUBLIC KEY-----", 1)[0]) is not None,
+    require(isinstance(pem, str) and 100 <= len(pem) <= 2000,
+            "DEV07_CHECKOUT_ED25519_PUBLIC_KEY_REQUIRED")
+    match = re.fullmatch(
+        r"-----BEGIN PUBLIC KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)"
+        r"\r?\n-----END PUBLIC KEY-----(?:\r?\n)?", pem)
+    require(match is not None, "DEV07_CHECKOUT_ED25519_PUBLIC_KEY_REQUIRED")
+    encoded = match[1].replace("\r", "").replace("\n", "")
+    try:
+        der = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        raise PrivateCheckoutConfigurationDenied(
+            "DEV07_CHECKOUT_ED25519_PUBLIC_KEY_REQUIRED") from None
+    # RFC 8410: id-Ed25519, absent parameters, then a 32-byte BIT STRING.
+    # A PEM label alone also admits RSA, X25519 and arbitrary non-key bytes.
+    require(len(der) == 44 and der[:12] == bytes.fromhex("302a300506032b6570032100")
+            and base64.b64encode(der).decode("ascii") == encoded,
             "DEV07_CHECKOUT_ED25519_PUBLIC_KEY_REQUIRED")
     audience = value["price_provider_audience"]
     require(isinstance(audience, str) and

@@ -1,4 +1,5 @@
 """Only config rejection tests; secrets and source approvals are never minted."""
+import base64
 import copy
 import unittest
 from dev07_checkout_configuration import (
@@ -13,7 +14,7 @@ class CheckoutPrivateConfigTests(unittest.TestCase):
             "schema": SCHEMA, "run_id": self.run,
             "issuer_endpoint": "https://price.baobab-dev.test/v1/trade/cart-final-charges",
             "issuer_public_key_pem":
-                "-----BEGIN PUBLIC KEY-----\n" + "A" * 180 + "\n-----END PUBLIC KEY-----\n",
+                "-----BEGIN PUBLIC KEY-----\n" + "MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=" + "\n-----END PUBLIC KEY-----\n",
             "price_provider_audience": "baobab-price-issuer",
         }
         for n in ("trade", "market", "tenant", "price_provider"):
@@ -55,6 +56,27 @@ class CheckoutPrivateConfigTests(unittest.TestCase):
                 wrong["issuer_endpoint"] = value
                 with self.assertRaises(PrivateCheckoutConfigurationDenied):
                     validate_private_checkout_configuration(wrong, self.run)
+
+    def test_only_ed25519_spki_is_accepted(self):
+        valid = base64.b64decode(self.value["issuer_public_key_pem"].splitlines()[1])
+        for der in (b"\0" * 135, valid[:8] + b"\x6e" + valid[9:],
+                    valid[:-1], valid + b"\0"):
+            with self.subTest(der_length=len(der)):
+                wrong = copy.deepcopy(self.value)
+                wrong["issuer_public_key_pem"] = (
+                    "-----BEGIN PUBLIC KEY-----\n" + base64.b64encode(der).decode()
+                    + "\n-----END PUBLIC KEY-----\n")
+                with self.assertRaisesRegex(PrivateCheckoutConfigurationDenied, "ED25519"):
+                    validate_private_checkout_configuration(wrong, self.run)
+
+    def test_url_parser_cannot_strip_controls(self):
+        for endpoint in (" " + self.value["issuer_endpoint"],
+                         self.value["issuer_endpoint"].replace("price", "pri\nce"),
+                         self.value["issuer_endpoint"] + "\t"):
+            wrong = copy.deepcopy(self.value)
+            wrong["issuer_endpoint"] = endpoint
+            with self.assertRaisesRegex(PrivateCheckoutConfigurationDenied, "ENDPOINT"):
+                validate_private_checkout_configuration(wrong, self.run)
 
     def test_short_secret_denied(self):
         wrong = copy.deepcopy(self.value)

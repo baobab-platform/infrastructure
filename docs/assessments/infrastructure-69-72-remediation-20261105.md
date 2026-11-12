@@ -71,3 +71,34 @@ All remaining real-positive acceptance requirements stay intact:
 
 **Protected environments:** no staging/production change, automatic merge,
 provider success waiver, identity grant or false accepted evidence was made.
+
+
+## 2026-11-12 checkout configuration audit
+
+Reviewed Infrastructure #72 at `749166768633d8c8a36fd496a3f878b673f5ff87`.
+Its 16 successful PR workflows do not establish the dispatch-only genuine
+six-owner transaction or the independent eight-owner acceptance join. #69
+at `4417e24adefce0e214281830f5093c56fea8b0fb` likewise retains N02/N07
+browser and native-owner qualification obligations despite green CI.
+
+Corrected `dev07_checkout_configuration.py`: the previous PEM wrapper and
+base64-character check accepted arbitrary bytes as an Ed25519 public key.
+Configuration now requires the exact RFC 8410 SubjectPublicKeyInfo encoding
+(id-Ed25519, absent algorithm parameters, 32-byte public-key BIT STRING),
+valid canonical base64, and no appended DER data. This is structural key
+validation, not issuer authorization or proof of possession. The existing
+Trade signature verification and IAM/CP authority remain required.
+Reference: https://www.rfc-editor.org/rfc/rfc8410.html sections 3, 4 and 10.1.
+
+Endpoint configuration now rejects whitespace and ASCII control characters
+before URL parsing, preventing parser normalization from hiding input changes.
+The existing HTTPS, private hostname, path, credentials and query restrictions
+remain in force. Regression cases cover arbitrary bytes, X25519 algorithm
+substitution, truncated/appended DER and stripped URL controls. The public
+positive fixture is RFC 8410's published example, not a generated credential.
+
+Validation: all 253 development harness unit tests pass locally, including 15
+checkout configuration/witness tests. These are source regressions only; no
+buyer order, approval, private credential, ERP effect or runtime acceptance
+was fabricated. Final-head CI must rerun after publication. Both Infrastructure
+merge gates remain held pending their original connected evidence.
