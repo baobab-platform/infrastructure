@@ -164,3 +164,135 @@ tests do not substitute for a repeat real-issued-token readback.
 
 Diagnostics expose only fixed binding booleans and a bounded relative lifetime,
 never tokens, absolute timestamps, subjects, provider bodies or credentials.
+
+## IAM-N02 opt-in connected-browser pre-deactivation checkpoint (development only)
+
+A new **opt-in** join in `ci_int03c.py` checks an **original real Chromium
+browser observation** while the disposable CP/IAM run is still alive and
+before the original INT-03C issuer/Principal deactivation and final teardown.
+The standard seven-case DEV-04 runner is unchanged without this opt-in.
+
+Set the following only on the explicitly supervised synthetic development host:
+
+```sh
+export BAOBAB_ENVIRONMENT=development
+export BAOBAB_N02_JOIN=development
+export BAOBAB_N02_ORIGINAL_DIR=/absolute/owner-private/n02-current-run
+export BAOBAB_N02_PRIVATE_PROFILE=/absolute/owner-private/n02-browser-profile.json
+python3 -B tests/platform-integration/development/ci_int03c.py
+```
+
+The opt-in runner selects `development/n02-base-lock.json`, a separate
+**candidate** immutable source tuple: Shared draft #421, reviewed CP main,
+and IAM draft #147. The accepted `development/lock.json` remains unchanged
+for ordinary DEV-04 runs. The candidate lock is not approval or evidence;
+before any qualification, reconcile every immutable head, its matching
+consumer contracts, and the final Infrastructure executable SHA. Re-pin
+via a reviewed PR if IAM/Shared/CP heads change. The candidate still cannot
+provision the estate UX, CP ACTIVE caller or genuine recovery courier.
+
+The original browser producer must independently attach to the **same**
+private, no-public-port development topology, with real Kratos/Hydra, current
+CP, an approved development BFF caller, and the actual first-party estate
+UI/ingress. Its checked-out IAM source must be the exact code in the current
+`development/lock.json`, not a mutable tag. Browser profile inputs are
+source-pinned to IAM, Shared, CP **and** the executable Infrastructure
+harness; the disposable run nonce must equal the current owner's actual
+`run_id`. The approved owner controls the private profile, enrolled
+synthetic AAL2 factor, real recovery courier and two separate credentials.
+Do not expose private credentials or browser URLs through Actions logs.
+
+During `DEV04_STAGE=N02_REAL_BROWSER_PRE_DEACTIVATION`, the host
+executes exactly the reviewed `tests/browser/n02_live.py` from the IAM source
+checkout pinned by the current disposable run, using the private profile
+(0600), a bounded 300-second maximum and suppressed stdout/stderr so browser
+credentials/URLs cannot appear in Actions logs. No caller-provided command,
+fixture substitution or process exit code alone advances acceptance. This
+requires a pre-provisioned Chromium/Playwright environment and real
+network-accessible **private** estate BFF, Kratos, Hydra and CP; the existing
+DEV-04 topology alone does not supply that estate experience, and a blocked
+browser run causes genuine failure and finally-teardown.
+
+After actual Chromium execution, the host requires the original
+`browser-observation.json` and matching
+`browser-observation.sha256` (both 0600 in a 0700 directory). Missing or
+malformed evidence, any skipped browser case, wrong source, bogus protected
+claim, or stale/wrong run is a fatal refusal. After matching the original,
+the host independently rechecks live CP/IAM health and records a closed,
+unattested `n02_browser_checkpoint` in its own state. The later unchanged
+DEV-04 destructive tests and actual teardown embed this checkpoint in the
+original completed receipt. IAM's `n02_evidence_gate.py` must compare its
+hash, source and pre-deactivation phase to the original browser receipt before
+reporting even an **unattested** candidate.
+
+This is an execution and custody **bridge**, not a fabricated N02 pass, BFF
+provisioner, approved browser estate, independent provider attestation or
+staging authority. The current Infrastructure fixture by itself does **not**
+provision the necessary estate UI, CP-approved BFF workload, confidential
+Hydra human client or actual recovery courier. Until those owner integrations
+are installed and real browser/source-pinned DEV-04 receipts are observed,
+N02 connected development acceptance remains **BLOCKED**. If the new join
+fails, the host's `finally` cleanup still applies, and no browser or
+provider support is promoted. Protected environments remain separate.
+
+
+### N02 first-party TLS/host-only Kratos ingress — source candidate
+
+The source-only, owner-reviewed NGINX route template under
+`n02-ingress/nginx.conf.template` and its fail-closed renderer
+`n02_ingress.py` are **not running services**. They separate three
+endpoint owners at a single reviewed first-party HTTPS origin:
+
+- `/auth/*` — real IAM #147 Go native browser BFF on **verified TLS**
+  upstream `127.0.0.1:9443`, with original path and exact Host preserved.
+- `/self-service/*` and `/sessions/whoami` — Kratos public service
+  on **verified TLS** upstream `127.0.0.1:9444`. Kratos Admin never
+  passes this ingress.
+- All remaining estate paths including
+  `/identity/native-qualification` and the independent existing
+  `/api/iam/*` BFF — current ZuriBeans Next.js on private loopback
+  `127.0.0.1:3000`. This is **not** a proxy of the Next buyer session.
+
+This placement is necessary for Kratos's **host-only Secure session cookie**
+to reach the native BFF's `/auth/login` and consent endpoints. The old
+different-Kratos-origin browser profile could not guarantee this. The
+Hydra issuer must remain a **distinct** HTTPS origin. The operator must
+configure Kratos `serve.public.base_url`, login/recovery UI URLs,
+session cookie attributes and allowlisted return URLs for this exact
+first-party host. The Go BFF must have `PublicOrigin` set identically;
+both TLS upstream certificates must authenticate that hostname against
+the separately mounted private `upstream-roots.pem`. No untrusted
+`X-Forwarded-Proto`, wildcard shared-domain cookie, plaintext Go BFF
+upstream, public admin, or protected deployment is accepted.
+
+The template is rendered only for development with the same current,
+owner-private `BAOBAB_N02_PRIVATE_PROFILE` as IAM's Playwright script.
+This source process does **not** install NGINX, generate trust anchors,
+provision a domain/certificate, load a native database, create CP authority
+or produce live evidence.
+
+```sh
+export BAOBAB_ENVIRONMENT=development
+python3 -B tests/platform-integration/development/n02_ingress.py \
+  --profile /absolute/private/n02-browser-profile.json \
+  --output-dir /absolute/private/0700-existing-render-dir
+# Owner inspects the original private nginx.conf and its digest.
+# Mount reviewed certificates, CA roots and an isolated ingress host.
+# Validate the actual selected pinned NGINX image with nginx -t.
+```
+
+**Source alignment hold:** The separate candidate `n02-base-lock.json`
+pins draft Shared #421's changed `identity/v1/workload-registry.yaml`,
+but CP's accepted `contracts.lock.yaml` pins an older Shared commit.
+Development `prepare` must continue rejecting their byte mismatch.
+Draft [CP #455](https://github.com/baobab-platform/baobab-cp/pull/455)
+carries the exact candidate CP projection and a denial test without
+silently changing the globally accepted CP Shared pin. Final review must
+reconcile **all CP consumers**, then pin the reviewed CP/Shared pair and
+re-run the immutable browser+INT03C evidence. In addition, the actual
+ZuriBeans estate SHA, ingress configuration digest and running service
+images/identity must be captured by the original source/evidence chain;
+a browser source claim alone is insufficient.
+
+This is development source readiness only; do not record N02 PASS,
+N04 provider certification or protected deployment.

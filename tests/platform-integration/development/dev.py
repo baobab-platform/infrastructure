@@ -293,7 +293,7 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
 
 
 def load_lock(lock_name='lock.json'):
-    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json', 'buyer-identity-base-lock.json', 'buyer-bff-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
+    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json', 'buyer-identity-base-lock.json', 'buyer-bff-base-lock.json', 'n02-base-lock.json', 'n07-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
     data = json.loads((BASE / lock_name).read_text(), object_pairs_hook=unique)
     require(set(data) == {'schema', 'profile', 'authority', 'infrastructure_baseline', 'sources',
                          'images', 'max_lease_seconds', 'synthetic_only', 'protected_acceptance'}, 'LOCK_SHAPE')
@@ -301,9 +301,22 @@ def load_lock(lock_name='lock.json'):
             and data['profile'] == 'iam-cp-development' and data['authority'] == 'ADR-SHARED-043'
             and data['synthetic_only'] is True and data['protected_acceptance'] is False
             and data['max_lease_seconds'] == 3600 and SHA.fullmatch(data['infrastructure_baseline']), 'LOCK_POLICY')
-    require(set(data['sources']) == {'shared', 'baobab-cp', 'baobab-iam'}
+    # Native N02 has a real first-party ZuriBeans browser consumer. Pin its
+    # immutable checkout and include it in the same run's verified source
+    # roster. Every accepted DEV-01/04 lock still has exactly three sources.
+    expected_sources = {'shared', 'baobab-cp', 'baobab-iam'}
+    if lock_name == 'n02-base-lock.json':
+        expected_sources.add('zuribeans')
+    if lock_name == 'n07-base-lock.json':
+        # N07 adds exact estate and native resource owner sources; the
+        # accepted DEV-01/04 and N02 locks remain unchanged.
+        expected_sources.update({'zuribeans', 'nabhold', 'thamani', 'baobab-tms'})
+    require(set(data['sources']) == expected_sources
             and all(isinstance(v, str) and SHA.fullmatch(v) for v in data['sources'].values()), 'SOURCE_PIN_REQUIRED')
-    require(set(data['images']) == {'postgres', 'probe', 'edge', 'hydra', 'kratos'} and all(
+    expected_images = {'postgres', 'probe', 'edge', 'hydra', 'kratos'}
+    if lock_name == 'n07-base-lock.json':
+        expected_images.add('redis')
+    require(set(data['images']) == expected_images and all(
         isinstance(v, str) and '@sha256:' in v and DIGEST.fullmatch(v) for v in data['images'].values()), 'IMAGE_DIGEST_REQUIRED')
     check_dockerfile(BASE / 'iam.Dockerfile')
     return data
@@ -405,6 +418,9 @@ def prepare(lease=3600, lock_name='lock.json'):
             'sources': lock['sources'], 'runtime_images': lock['images'],
             'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin', 'hook', 'introspection', 'verifier')},
             'images': {}, 'image_ids': {}, 'tests': False}
+    if lock_name == 'n07-base-lock.json':
+        data['secrets']['redis'] = secrets.token_hex(32)
+        data['n07_profile'] = True
     # Durable recovery identity exists BEFORE a clone, build or Docker mutation.
     persist(directory, data, 'PREPARING')
     watcher = subprocess.Popen([sys.executable, '-B', str(BASE / 'dev.py'), 'watch', '--run-id', run_id],
@@ -446,11 +462,17 @@ def compose(directory, state, *args, timeout=180):
 
 
 NATIVE_FILES={'hydra.yml','kratos/kratos.yml','kratos/identity.schema.json','introspection.htpasswd'}
+N07_FILES={'n07-redis.conf','n07-redis.acl'}
 
 def verify_sources(directory, state):
     if state.get('phase') in {'RUNNING','TESTED'}:
         anchors=state.get('native_config_hashes',{})
         require(set(anchors)==NATIVE_FILES and all(hashlib.sha256((directory/path).read_bytes()).hexdigest()==digest for path,digest in anchors.items()),'NATIVE_CONFIGURATION_DRIFT')
+    if state.get('n07_profile') and state.get('phase') in {'RUNNING','TESTED'}:
+        hashes = state.get('n07_native_hashes', {})
+        require(set(hashes) == N07_FILES and all(
+            hashlib.sha256((directory / name).read_bytes()).hexdigest() == digest
+            for name,digest in hashes.items()), 'N07_REDIS_CONFIG_DRIFT')
     if state.get('dev15_registry_sha256'):
         # Detect post-admission registry tampering before every real provider
         # phase. Baseline DEV-01 runs remain byte-for-byte unaffected.
@@ -497,13 +519,18 @@ def up(run_id):
         print('DEV03_PHASE=ORY_CONFIG',flush=True)
         adapter.configure(directory, state)
         state['native_config_hashes']={path:hashlib.sha256((directory/path).read_bytes()).hexdigest() for path in NATIVE_FILES}
+        if state.get('n07_profile'):
+            state['n07_native_hashes']={path:hashlib.sha256((directory/path).read_bytes()).hexdigest() for path in N07_FILES}
         write(directory / 'compose.json', adapter.composition(state, directory, lock['images'], NAMESPACE))
         state['compose_sha256'] = hashlib.sha256((directory / 'compose.json').read_bytes()).hexdigest()
         persist(directory, state, 'STARTING')
         compose(directory, state, 'config', '--quiet')
         print('DEV03_PHASE=ORY_START',flush=True)
+        services=['hydra', 'kratos', 'cp-db', 'edge', 'probe']
+        if state.get('n07_profile'):
+            services.append('redis')
         compose(directory, state, 'up', '-d', '--wait', '--wait-timeout', '240',
-                'hydra', 'kratos', 'cp-db', 'edge', 'probe', timeout=300)
+                *services, timeout=300)
         database = 'baobab_dev_' + run_id
         # Infrastructure creates/marks its fresh store only. All canonical
         # state and migrations are owned by the CP command below, never SQL.
@@ -626,7 +653,10 @@ def test(run_id, health_attempts=45):
     else:
         raise Refused('IAM_CP_HEALTH_FAILED')
     require(bootstrap(directory, state) == read(directory / 'bootstrap.json'), 'BOOTSTRAP_REPLAY_MISMATCH')
-    for name in adapter.SERVICES - adapter.MIGRATIONS:
+    service_roster = adapter.SERVICES - adapter.MIGRATIONS
+    if state.get('n07_profile'):
+        service_roster = service_roster | {'redis'}
+    for name in service_roster:
         container = compose(directory, state, 'ps', '-q', name)
         require(re.fullmatch(r'[0-9a-f]{12,64}', container), 'CONTAINER_NOT_RUNNING')
         actual = json.loads(call(['docker', 'inspect', container]))[0]
@@ -738,6 +768,12 @@ def down(run_id):
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
                   'engine_integration':state.get('engine_integration'), 'engine_runtime_identity_verified':state.get('engine_runtime_identity_verified',False), 'engine_oci_manifest_digest':state.get('engine_oci_manifest_digest'), 'engine_lock_sha256':state.get('engine_lock_sha256'),
                   'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_oci_manifest_digest':state.get('cms_oci_manifest_digest'), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'dev07_buyer':state.get('dev07_buyer'), 'dev07_issuer_cleanup':state.get('dev07_issuer_cleanup',False), 'dev07_binding_revocation_verified':state.get('dev07_binding_revocation_verified',False), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
+                  **({'n02_browser_checkpoint': state['n02_browser_checkpoint']}
+                     if state.get('n02_browser_checkpoint') else {}),
+                  **({'n07_redis_checkpoint': state['n07_redis_checkpoint'],
+                      'n07_issuer_cp_component': 'REAL_DEVELOPMENT_NEGATIVES_UNATTESTED',
+                      'n07_tms_native_booking_qualified': False}
+                     if state.get('n07_redis_checkpoint') else {}),
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         if state.get('dev15_registry_sha256'):
