@@ -293,7 +293,9 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
 
 
 def load_lock(lock_name='lock.json'):
-    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json', 'buyer-identity-base-lock.json', 'buyer-bff-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
+    # Both connected candidates share this lifecycle; neither may erase the
+    # other's closed lock selection or broaden it to arbitrary caller paths.
+    require(lock_name in {'lock.json', 'subscriptions-base-lock.json', 'external-base-lock.json', 'cms-base-lock.json', 'engine-base-lock.json', 'buyer-identity-base-lock.json', 'buyer-bff-base-lock.json', 'dev11-buyer-bff-base-lock.json', 'dev07-checkout-base-lock.json', 'n02-base-lock.json', 'n07-base-lock.json'}, 'UNKNOWN_SOURCE_LOCK')
     data = json.loads((BASE / lock_name).read_text(), object_pairs_hook=unique)
     require(set(data) == {'schema', 'profile', 'authority', 'infrastructure_baseline', 'sources',
                          'images', 'max_lease_seconds', 'synthetic_only', 'protected_acceptance'}, 'LOCK_SHAPE')
@@ -301,9 +303,22 @@ def load_lock(lock_name='lock.json'):
             and data['profile'] == 'iam-cp-development' and data['authority'] == 'ADR-SHARED-043'
             and data['synthetic_only'] is True and data['protected_acceptance'] is False
             and data['max_lease_seconds'] == 3600 and SHA.fullmatch(data['infrastructure_baseline']), 'LOCK_POLICY')
-    require(set(data['sources']) == {'shared', 'baobab-cp', 'baobab-iam'}
+    # Native N02 has a real first-party ZuriBeans browser consumer. Pin its
+    # immutable checkout and include it in the same run's verified source
+    # roster. Every accepted DEV-01/04 lock still has exactly three sources.
+    expected_sources = {'shared', 'baobab-cp', 'baobab-iam'}
+    if lock_name == 'n02-base-lock.json':
+        expected_sources.add('zuribeans')
+    if lock_name == 'n07-base-lock.json':
+        # N07 adds exact estate and native resource owner sources; the
+        # accepted DEV-01/04 and N02 locks remain unchanged.
+        expected_sources.update({'zuribeans', 'nabhold', 'thamani', 'baobab-tms'})
+    require(set(data['sources']) == expected_sources
             and all(isinstance(v, str) and SHA.fullmatch(v) for v in data['sources'].values()), 'SOURCE_PIN_REQUIRED')
-    require(set(data['images']) == {'postgres', 'probe', 'edge', 'hydra', 'kratos'} and all(
+    expected_images = {'postgres', 'probe', 'edge', 'hydra', 'kratos'}
+    if lock_name == 'n07-base-lock.json':
+        expected_images.add('redis')
+    require(set(data['images']) == expected_images and all(
         isinstance(v, str) and '@sha256:' in v and DIGEST.fullmatch(v) for v in data['images'].values()), 'IMAGE_DIGEST_REQUIRED')
     check_dockerfile(BASE / 'iam.Dockerfile')
     return data
@@ -405,6 +420,9 @@ def prepare(lease=3600, lock_name='lock.json'):
             'sources': lock['sources'], 'runtime_images': lock['images'],
             'secrets': {k: secrets.token_hex(32) for k in ('cp_db', 'iam_db', 'admin', 'hook', 'introspection', 'verifier')},
             'images': {}, 'image_ids': {}, 'tests': False}
+    if lock_name == 'n07-base-lock.json':
+        data['secrets']['redis'] = secrets.token_hex(32)
+        data['n07_profile'] = True
     # Durable recovery identity exists BEFORE a clone, build or Docker mutation.
     persist(directory, data, 'PREPARING')
     watcher = subprocess.Popen([sys.executable, '-B', str(BASE / 'dev.py'), 'watch', '--run-id', run_id],
@@ -446,11 +464,17 @@ def compose(directory, state, *args, timeout=180):
 
 
 NATIVE_FILES={'hydra.yml','kratos/kratos.yml','kratos/identity.schema.json','introspection.htpasswd'}
+N07_FILES={'n07-redis.conf','n07-redis.acl'}
 
 def verify_sources(directory, state):
     if state.get('phase') in {'RUNNING','TESTED'}:
         anchors=state.get('native_config_hashes',{})
         require(set(anchors)==NATIVE_FILES and all(hashlib.sha256((directory/path).read_bytes()).hexdigest()==digest for path,digest in anchors.items()),'NATIVE_CONFIGURATION_DRIFT')
+    if state.get('n07_profile') and state.get('phase') in {'RUNNING','TESTED'}:
+        hashes = state.get('n07_native_hashes', {})
+        require(set(hashes) == N07_FILES and all(
+            hashlib.sha256((directory / name).read_bytes()).hexdigest() == digest
+            for name,digest in hashes.items()), 'N07_REDIS_CONFIG_DRIFT')
     if state.get('dev15_registry_sha256'):
         # Detect post-admission registry tampering before every real provider
         # phase. Baseline DEV-01 runs remain byte-for-byte unaffected.
@@ -497,13 +521,18 @@ def up(run_id):
         print('DEV03_PHASE=ORY_CONFIG',flush=True)
         adapter.configure(directory, state)
         state['native_config_hashes']={path:hashlib.sha256((directory/path).read_bytes()).hexdigest() for path in NATIVE_FILES}
+        if state.get('n07_profile'):
+            state['n07_native_hashes']={path:hashlib.sha256((directory/path).read_bytes()).hexdigest() for path in N07_FILES}
         write(directory / 'compose.json', adapter.composition(state, directory, lock['images'], NAMESPACE))
         state['compose_sha256'] = hashlib.sha256((directory / 'compose.json').read_bytes()).hexdigest()
         persist(directory, state, 'STARTING')
         compose(directory, state, 'config', '--quiet')
         print('DEV03_PHASE=ORY_START',flush=True)
+        services=['hydra', 'kratos', 'cp-db', 'edge', 'probe']
+        if state.get('n07_profile'):
+            services.append('redis')
         compose(directory, state, 'up', '-d', '--wait', '--wait-timeout', '240',
-                'hydra', 'kratos', 'cp-db', 'edge', 'probe', timeout=300)
+                *services, timeout=300)
         database = 'baobab_dev_' + run_id
         # Infrastructure creates/marks its fresh store only. All canonical
         # state and migrations are owned by the CP command below, never SQL.
@@ -626,7 +655,10 @@ def test(run_id, health_attempts=45):
     else:
         raise Refused('IAM_CP_HEALTH_FAILED')
     require(bootstrap(directory, state) == read(directory / 'bootstrap.json'), 'BOOTSTRAP_REPLAY_MISMATCH')
-    for name in adapter.SERVICES - adapter.MIGRATIONS:
+    service_roster = adapter.SERVICES - adapter.MIGRATIONS
+    if state.get('n07_profile'):
+        service_roster = service_roster | {'redis'}
+    for name in service_roster:
         container = compose(directory, state, 'ps', '-q', name)
         require(re.fullmatch(r'[0-9a-f]{12,64}', container), 'CONTAINER_NOT_RUNNING')
         actual = json.loads(call(['docker', 'inspect', container]))[0]
@@ -738,6 +770,12 @@ def down(run_id):
                   'domain_qualification': 'DEV03_NATIVE_CP_AUTHORITY_ONLY' if state.get('authority') else 'NOT_EXECUTED',
                   'engine_integration':state.get('engine_integration'), 'engine_runtime_identity_verified':state.get('engine_runtime_identity_verified',False), 'engine_oci_manifest_digest':state.get('engine_oci_manifest_digest'), 'engine_lock_sha256':state.get('engine_lock_sha256'),
                   'external_oci_manifest_digest':state.get('external_oci_manifest_digest'), 'external':state.get('external'), 'external_lock_sha256':state.get('external_lock_sha256'), 'external_runtime_identity_verified':state.get('external_runtime_identity_verified',False), 'cms_oci_manifest_digest':state.get('cms_oci_manifest_digest'), 'cms_config_hashes':state.get('cms_config_hashes'), 'cms_runtime_identity_verified':state.get('cms_runtime_identity_verified',False), 'cms':state.get('cms'), 'cms_lock_sha256':state.get('cms_lock_sha256'), 'dev07_buyer':state.get('dev07_buyer'), 'dev07_issuer_cleanup':state.get('dev07_issuer_cleanup',False), 'dev07_binding_revocation_verified':state.get('dev07_binding_revocation_verified',False), 'authority':state.get('authority'), 'int03c': qualification, 'int03c_qualified': False,
+                  **({'n02_browser_checkpoint': state['n02_browser_checkpoint']}
+                     if state.get('n02_browser_checkpoint') else {}),
+                  **({'n07_redis_checkpoint': state['n07_redis_checkpoint'],
+                      'n07_issuer_cp_component': 'REAL_DEVELOPMENT_NEGATIVES_UNATTESTED',
+                      'n07_tms_native_booking_qualified': False}
+                     if state.get('n07_redis_checkpoint') else {}),
                   'contract_hashes': state.get('contract_hashes', {}),
                   'nab03_qualified': False, 'protected_acceptance': False, 'production_authorized': False}
         if state.get('dev15_registry_sha256'):
@@ -758,6 +796,60 @@ def down(run_id):
             report.update(dev07_bff_http=component,
                 dev07_bff_runtime_identity_verified=state.get('dev07_bff_runtime_identity_verified', False),
                 dev07_bff_config_hashes=state.get('dev07_bff_config_hashes', {}))
+        if state.get('dev07_checkout_sql_witnessed') is True:
+            # The runtime-owned private originals cannot silently disappear
+            # during host teardown without a durable integrity checkpoint.
+            # Do not export cart, Principal, order, event or trace identifiers.
+            from dev07_checkout_witness import verify_checkout
+            witness_path = directory / 'dev07-checkout-witness.json'
+            origin_path = directory / 'dev07-checkout-native-origin.json'
+            bff_path = directory / 'bff-checkout-observation.json'
+            witness = read(witness_path)
+            expected = verify_checkout(
+                read(bff_path), read(origin_path),
+                trade_sha=state['sources']['baobab-trade'],
+                image_id=state['image_ids']['trade-native-witness'],
+                run_id=run_id,
+            )
+            require(witness == expected
+                    and state['sources'].get('baobab-trade') == witness['trade_source_sha']
+                    and witness['native_order_seller_buyer_spend_outbox_same_xid'] is True
+                    and witness['dev07_accepted'] is False
+                    and witness['l4_ops_01'] == 'BLOCKED',
+                    'DEV07_CHECKOUT_WITNESS_CUSTODY_CHANGED')
+            report['dev07_checkout_witness'] = {
+                'schema': 'infrastructure.dev07.checkout-witness-custody.v1',
+                'origin_sha256': hashlib.sha256(origin_path.read_bytes()).hexdigest(),
+                'witness_sha256': hashlib.sha256(witness_path.read_bytes()).hexdigest(),
+                'bff_observation_sha256': hashlib.sha256(bff_path.read_bytes()).hexdigest(),
+                'trade_source_sha': witness['trade_source_sha'],
+                'witness_image_id': witness['observer_image_id'],
+                'native_same_transaction_observed': True,
+                'independent_iam_cp_qualified': False,
+                'dev07_accepted': False,
+                'l4_ops_01': 'BLOCKED',
+                'production_authorized': False,
+            }
+        if state.get('dev11_bff_connected'):
+            candidate = state['dev11_bff_connected']
+            require(set(candidate) == {'scope', 'source_pins', 'checks',
+                       'outbox_consumer_qualified', 'runtime_qualified',
+                       'production_authorized'}
+                    and candidate['scope'] == 'LIVE_NEXT_IAM_CP_MEDUSA_HTTP_ONLY'
+                    and candidate['source_pins'] == {repo: state['sources'][repo]
+                        for repo in ('baobab-cp', 'baobab-trade', 'zuribeans')}
+                    and isinstance(candidate['checks'], dict)
+                    and set(candidate['checks']) == {
+                       'dev11_bff_authorised_route_w3c', 'dev11_bff_csrf_denied_w3c',
+                       'dev11_bff_missing_session_denied_w3c',
+                       'dev11_native_bff_log_joined', 'dev11_native_trade_log_joined',
+                       'dev11_native_cp_log_joined'}
+                    and all(type(value) is bool for value in candidate['checks'].values())
+                    and candidate['outbox_consumer_qualified'] is False
+                    and candidate['runtime_qualified'] is False
+                    and candidate['production_authorized'] is False,
+                    'DEV11_PRIVATE_CONNECTED_RECEIPT_INVALID')
+            report['dev11_bff_connected'] = candidate
         folder = EVIDENCE / ('dev01-' + run_id)
         private_directory(folder)
         pending = folder / '.pending'
@@ -788,6 +880,24 @@ def publish_receipt(folder, run_id):
     require(report.get('run_id') == run_id and report.get('schema') ==
             'infrastructure.dev01.lifecycle.observed.v1', 'PENDING_RECEIPT_IDENTITY_INVALID')
     require(not run_dir(run_id).exists() and not resources(run_id), 'TEARDOWN_SURVIVORS')
+    if report.get('dev07_checkout_witness'):
+        proof = report['dev07_checkout_witness']
+        require(set(proof) == {
+            'schema', 'origin_sha256', 'witness_sha256',
+            'bff_observation_sha256', 'trade_source_sha', 'witness_image_id',
+            'native_same_transaction_observed', 'independent_iam_cp_qualified',
+            'dev07_accepted', 'l4_ops_01', 'production_authorized',
+        } and proof['schema'] == 'infrastructure.dev07.checkout-witness-custody.v1'
+            and all(isinstance(proof[name], str) and re.fullmatch(r'[0-9a-f]{64}', proof[name])
+                    for name in ('origin_sha256', 'witness_sha256', 'bff_observation_sha256'))
+            and proof['trade_source_sha'] == report['source_pins']['baobab-trade']
+            and proof['witness_image_id'] == report['image_ids']['trade-native-witness']
+            and proof['native_same_transaction_observed'] is True
+            and proof['independent_iam_cp_qualified'] is False
+            and proof['dev07_accepted'] is False
+            and proof['l4_ops_01'] == 'BLOCKED'
+            and proof['production_authorized'] is False,
+            'DEV07_CHECKOUT_SANITIZED_CUSTODY_INVALID')
     if report.get('dev07_bff_http'):
         import buyer_bff_contract
         buyer_bff_contract.validate(report['dev07_bff_http'], run_id, report['source_pins'])

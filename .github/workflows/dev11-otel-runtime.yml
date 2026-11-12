@@ -1,0 +1,104 @@
+name: DEV-11 actual OTLP exported trace smoke
+
+# Native SDK -> real Collector -> independent Jaeger v2 query.
+# This profile proves an exporter pipeline, NOT BFF/IAM/CP/Trade/ERP
+# instrumentation and NOT a business-effecting consumer.
+on:
+  pull_request:
+    paths:
+      - compose/compose.yaml
+      - compose/otel/dev11-collector.yaml
+      - .github/workflows/dev11-otel-runtime.yml
+      - tests/platform-integration/development/dev11_exported_trace.py
+      - tests/platform-integration/development/test_dev11_exported_trace.py
+      - tests/platform-integration/development/dev11_otlp_smoke.py
+      - tests/platform-integration/development/dev11-probe.Dockerfile
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exported-native-sdk:
+    name: Real OTel SDK -> Collector -> independent Jaeger v2 API
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exported-trace missing-hop/forgery negatives
+        run: python3 -B -m unittest discover -s tests/platform-integration/development -p test_dev11_exported_trace.py -v
+      - name: Prepare isolated Compose and immutable per-run private directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp compose/.env.example compose/.env
+          sed -i \
+            -e 's/^APISIX_ADMIN_KEY=.*/APISIX_ADMIN_KEY=ci-apisix-admin-key-32chars-min-xx/' \
+            -e 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-postgres-password-32chars-min/' \
+            -e 's/^RABBITMQ_DEFAULT_PASS=.*/RABBITMQ_DEFAULT_PASS=ci-rabbitmq-password-32chars-min/' \
+            -e 's/^REDIS_PASSWORD=.*/REDIS_PASSWORD=ci-redis-password-32chars-minimum/' \
+            compose/.env
+          echo "COMPOSE_PROJECT_NAME=dev11-otel-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/dev11-private" tests/platform-integration/evidence
+          chmod 0700 "$RUNNER_TEMP/dev11-private"
+      - name: Build approved official-SDK probe before joining internal-only network
+        run: docker build -f tests/platform-integration/development/dev11-probe.Dockerfile -t dev11-otel-smoke:ci .
+      - name: Start genuine Jaeger v2 and OTLP Collector in isolated profile
+        env:
+          OTEL_COLLECTOR_CONFIG: ./otel/dev11-collector.yaml
+        run: |
+          set -euo pipefail
+          docker compose --env-file compose/.env -f compose/compose.yaml --profile dev11 config --quiet
+          docker compose --env-file compose/.env -f compose/compose.yaml --profile dev11 up -d jaeger otel-collector
+      - name: Export actual official SDK spans, not synthetic verifier input
+        run: |
+          set -euo pipefail
+          docker run --rm --network "${COMPOSE_PROJECT_NAME}_observability" \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD/tests/platform-integration/development:/work:ro" \
+            -v "$RUNNER_TEMP/dev11-private:/run/private" \
+            dev11-otel-smoke:ci /work/dev11_otlp_smoke.py \
+            --output-private-trace-id /run/private/trace-id
+      - name: Independent process queries Jaeger v3 read API after exported batch
+        run: |
+          set -euo pipefail
+          verified=0
+          for attempt in $(seq 1 20); do
+            if docker run --rm --network "${COMPOSE_PROJECT_NAME}_observability" \
+              --user "$(id -u):$(id -g)" \
+              -v "$PWD/tests/platform-integration/development:/work:ro" \
+              -v "$RUNNER_TEMP/dev11-private:/run/private" \
+              dev11-otel-smoke:ci /work/dev11_exported_trace.py \
+                --trace-id "$(cat "$RUNNER_TEMP/dev11-private/trace-id")" \
+                --jaeger http://jaeger:16686 \
+                --service dev11-telemetry-probe \
+                --output /run/private/independent-result.json; then
+              verified=1
+              break
+            fi
+            sleep 2
+          done
+          [ "$verified" -eq 1 ] || {
+            echo "DEV11_REAL_JAEGER_TRACE_NOT_INDEPENDENTLY_OBSERVED"
+            exit 2
+          }
+          cp "$RUNNER_TEMP/dev11-private/independent-result.json" \
+            tests/platform-integration/evidence/dev11-exported-runtime.json
+      - name: Independently tear down every disposable trace resource
+        if: always()
+        env:
+          OTEL_COLLECTOR_CONFIG: ./otel/dev11-collector.yaml
+        run: |
+          docker compose --env-file compose/.env -f compose/compose.yaml --profile dev11 down --volumes --remove-orphans || exit 2
+          rm -rf "$RUNNER_TEMP/dev11-private"
+      - name: Retain only sanitised independently queried OTLP evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.7.5
+        with:
+          name: dev11-otel-real-exporter-only
+          path: tests/platform-integration/evidence/dev11-exported-runtime.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -7,6 +7,7 @@ from http.cookiejar import CookieJar
 import json
 import os
 import re
+import secrets
 import sys
 import time
 import urllib.error
@@ -69,6 +70,48 @@ def buyer(organisation=None, csrf=None):
     return http('POST', '/api/buyer/context', {
         'organisationId': organisation or fixture['organisation_id'], 'countryCode': 'UG',
         'csrfToken': csrf or browser['csrf']}, headers={'Cookie': browser['cookie']})
+
+
+def checkout():
+    """Submit the already provisioned, priced cart through confidential custody."""
+    selection = p.read('bff-checkout-selection.json')
+    p.require(set(selection) == {'cart_id', 'country_code', 'idempotency_key'}
+              and re.fullmatch(r'cart_[A-Za-z0-9_-]{6,128}', selection['cart_id'])
+              and re.fullmatch(r'[A-Z]{2}', selection['country_code'])
+              and re.fullmatch(r'[A-Za-z0-9._:-]{16,128}', selection['idempotency_key']),
+              'DEV07_CHECKOUT_SELECTION_REFUSED')
+    browser = p.read('bff-browser.json')
+    fixture = p.read('buyer-fixture.json')
+    request = {
+        'cartId': selection['cart_id'], 'countryCode': selection['country_code'],
+        'idempotencyKey': selection['idempotency_key'],
+        'organisationId': fixture['organisation_id'], 'csrfToken': browser['csrf'],
+    }
+    headers = {'Cookie': browser['cookie']}
+    denied, _, _ = http('POST', '/api/buyer/commit',
+                        {**request, 'csrfToken': secrets.token_urlsafe(32),
+                         'idempotencyKey': secrets.token_hex(20)}, headers=headers)
+    p.require(denied == 401, 'DEV07_CHECKOUT_CSRF_REFUSAL_NOT_OBSERVED')
+    status, raw, first_headers = http('POST', '/api/buyer/commit', request, headers=headers)
+    p.require(status == 200, 'DEV07_CHECKOUT_COMMIT_NOT_OBSERVED')
+    purchase = json.loads(raw)['purchase']
+    order = purchase['orderId']
+    trace = first_headers.get('traceparent', '')
+    p.require(purchase == {'outcome': 'COMMITTED', 'orderId': order}
+              and re.fullmatch(r'order_[A-Za-z0-9_-]{6,128}', order)
+              and re.fullmatch(r'00-(?!0{32})[0-9a-f]{32}-(?!0{16})[0-9a-f]{16}-01', trace),
+              'DEV07_CHECKOUT_COMMIT_RESPONSE_REFUSED')
+    status, raw, _ = http('POST', '/api/buyer/commit', request, headers=headers)
+    p.require(status == 200 and json.loads(raw) == {
+        'purchase': {'outcome': 'REPLAYED', 'orderId': order}},
+        'DEV07_CHECKOUT_REPLAY_NOT_OBSERVED')
+    # This is private request/response evidence. The Trade database observer
+    # must still prove the original event and all same-transaction effects.
+    p.write('bff-checkout-observation.json', {
+        'order_id': order, 'idempotency_key': selection['idempotency_key'],
+        'traceparent': trace, 'csrf_refused': True, 'same_order_replayed': True,
+        'native_sql_readback_observed': False,
+    })
 
 
 def positive():
@@ -166,8 +209,61 @@ def revoke():
     observed('issuer-consent-revocation')
 
 
+def dev11_connected_trace():
+    """Exercise real BFF -> IAM/CP -> Trade HTTP with verified private TLS.
+
+    Run-owned trace IDs remain inside /run/dev01; only booleans leave the
+    private runtime. The host separately checks real BFF/Trade service logs.
+    """
+    browser = p.read('bff-browser.json')
+    fixture = p.read('buyer-fixture.json')
+    trace = secrets.token_hex(16)
+    upstream = secrets.token_hex(8)
+    carrier = '00-' + trace + '-' + upstream + '-01'
+    args = {'organisationId': fixture['organisation_id'], 'countryCode': 'UG',
+            'csrfToken': browser['csrf']}
+    request_headers = {'Cookie': browser['cookie'], 'traceparent': carrier}
+    code, body, headers = http('POST', '/api/buyer/context', args, headers=request_headers)
+    observed = headers.get('traceparent', '')
+    valid = re.fullmatch(r'00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})', observed)
+    positive = bool(code == 200 and valid and valid.group(1) == trace
+                    and valid.group(2) != upstream and set(json.loads(body)) == {'buyer'})
+
+    bad = {**args, 'csrfToken': 'x' * 43}
+    denied_code, denied_body, denied_headers = http(
+        'POST', '/api/buyer/context', bad, headers=request_headers)
+    wrong = denied_headers.get('traceparent', '')
+    wrong_span = re.fullmatch(r'00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})', wrong)
+    csrf_denied = (denied_code == 401 and json.loads(denied_body) ==
+                   {'code': 'AUTHENTICATION_UNAVAILABLE_OR_DENIED'} and
+                   wrong_span is not None and wrong_span.group(1) == trace)
+
+    no_custody, response, absent_headers = http(
+        'POST', '/api/buyer/context', args, headers={'traceparent': carrier})
+    missing_span = re.fullmatch(
+        r'00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})',
+        absent_headers.get('traceparent', ''))
+    no_custody_denied = (no_custody == 401 and
+                        json.loads(response) == {'code': 'AUTHENTICATION_UNAVAILABLE_OR_DENIED'}
+                        and missing_span is not None and missing_span.group(1) == trace)
+    p.write('dev11-trace-marker.json', {'trace': trace, 'upstream': upstream})
+    print(json.dumps({
+        'scope': 'NATIVE_NEXT_TRADE_HTTP_WITH_CURRENT_IAM_CP',
+        'checks': {'dev11_bff_authorised_route_w3c': positive,
+                   'dev11_bff_csrf_denied_w3c': csrf_denied,
+                   'dev11_bff_missing_session_denied_w3c': no_custody_denied},
+        'outbox_consumer_qualified': False, 'production_authorized': False,
+    }, sort_keys=True))
+
+
 def main(action):
     p.require(p.read('state.json').get('buyer_bff_http_profile') is True)
+    if action == 'dev11-trace':
+        dev11_connected_trace()
+        return
+    if action == 'checkout':
+        checkout()
+        return
     if action == 'health':
         result = {'trade': p.request('GET', 'https://engine.baobab-dev.test/health', timeout=3)[0],
                   'bff': http('GET', '/api/health')[0]}

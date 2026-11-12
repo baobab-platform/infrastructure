@@ -48,3 +48,205 @@ and verified host teardown. This qualifies the source HTTP component, not the
 complete browser account UI or INT-05 commercial journey. Provider, protected
 and production acceptance remain false. It activates no purchasing operation,
 RFQ/quotation lifecycle or native buyer commitment enforcement gate.
+
+## Governed buyer transaction trace
+
+Run the buyer commitment against the development deployment with the approved
+Trade price issuer and a disposable governed cart. Keep the existing
+buyer-context component run and synthetic origin refusal as separate evidence.
+For the connected run, use one private OTLP collector for ZuriBeans, Trade,
+CP, the IAM issuer, the publisher and ERP. Start the browser request without
+an incoming trace header so the confidential ZuriBeans route owns the root.
+
+Set `BAOBAB_DEV11_CP_OTLP_TRACES_ENDPOINT` to the collector's HTTP
+`/v1/traces` URL. For the pinned Hydra issuer, set `tracing.provider` to
+`otel`, `tracing.service_name` to `baobab-iam`, and
+`tracing.providers.otlp.server_url` to the private collector's host and port.
+Set `tracing.providers.otlp.insecure` only if the disposable collector uses
+HTTP. Preserve the W3C trace header through the private introspection relay.
+
+Pass the independently read Trade receipt to `dev11_exported_trace.py` using
+`--native-origin`. Use the trace ID from that receipt with `--trace-id`.
+The observer reads Jaeger directly and matches the exact outbox span, event ID,
+BFF root, CP decisions, IAM introspection edge, confirmed publication, ERP
+admission, worker and its native engine call. Retain the independent iDempiere
+and CP database readbacks alongside the export. The exported graph alone
+grants neither business-effect qualification nor L4-OPS-01 acceptance.
+
+### Submit the disposable checkout through the existing probe
+
+In the active private buyer BFF run, after login and after Trade records the
+approved fixture price and spend hold, write `bff-checkout-selection.json` in
+the private probe directory with the exact `cart_id`, `country_code` and a
+fresh `idempotency_key`. Invoke the existing probe with the `checkout` action
+(`python /buyer_bff_probe.py checkout` in the probe container). It sends a
+wrong-CSRF request before the first commit, then requires the same order on
+an authorised retry with the original key. The resulting
+`bff-checkout-observation.json` contains private correlation material and
+stays inside the run.
+
+On a separate read-only connection to the run's Trade PostgreSQL database,
+pass the observed `order_id` and `idempotency_key` to Trade's
+`dev11_native_business_origin.py --order-id ... --idempotency-key ... --output ...`.
+The observer requires exactly one matching canonical event and proves the
+same transaction through the existing native readback. Retain the original
+event ID from that receipt for the publisher. The checkout action is
+operator-invoked on a provisioned fixture.
+
+From the host, the equivalent owner entry point for an active, provisioned
+development run is `BAOBAB_ENVIRONMENT=development python -B
+tests/platform-integration/development/buyer_bff.py checkout RUN_ID CHANGE_REFERENCE`
+(on one line). It checks the pinned run and container identity, requests
+the explicit disposable Decision 9 transition under the supplied change
+reference, opens the buyer session if needed, issues and re-reads the priced cart through Trade, reserves the derived
+amount against the current budget, then invokes the confidential checkout probe.
+The baseline buyer-context profile leaves checkout disabled. The operator
+must provision the isolated Trade and BFF checkout settings, registered
+workloads, approved price signer, buyer-owned bound cart, registered sites
+and active spend budget before this entry point.
+
+### Executable checkout-candidate lifecycle and independent native witness
+
+**Status: implementation path available; no successful provisioned checkout is
+asserted by this document.** The ordinary buyer-context suite is unchanged
+and intentionally disposes its run. It cannot be promoted to checkout by
+switching environment variables after the fact.
+
+In a development integration devcontainer with the independently reviewed
+four-owner candidate installed, select the immutable source tuple explicitly:
+
+```sh
+export BAOBAB_ENVIRONMENT=development
+export DEV07_GENUINE_CHECKOUT_REQUIRED=true
+export DEV07_CHECKOUT_TRADE_SHA=79dc564a5d94d41eb4cd88d5476cc391b2a24b9e
+export DEV07_CHECKOUT_ZURIBEANS_SHA=e171ede6cbb9512359266e85870e297c5a1e4361
+python3 -B tests/platform-integration/development/buyer_bff.py start-checkout
+# Record the printed disposable RUN_ID inside the private operator workspace.
+```
+
+The candidate uses
+`dev07-checkout-source-lock.json` and
+`dev07-checkout-base-lock.json` rather than modifying historical BFF,
+INT-03C or DEV-11 accepted-source locks. It pins CP #465, the already
+merged ZuriBeans BFF source and Trade #189 (including the read-only
+PostgreSQL origin observer packaged in the existing DEV-11 Python image).
+Its IAM, CP, Trade and estate source commits are immutable for the
+duration of this leased run. Private source, image, configuration and host
+identity are rechecked at each stage.
+
+**Before checkout**, the owner must provide the genuine approved development
+issuer (CP-approved signer and independent maker/checker mandate), the
+corresponding private HTTPS charge provider and workload credentials, a
+native active Medusa cart with final charges, current seller binding,
+registered buyer site and IAM Principal, current buyer membership,
+consequential buyer role/approver with no self-approval, and an active
+budget able to reserve the *complete* final valuation. This source change
+does not mint those grants, issue fabricated prices, or install an
+allow-by-default approval. In the private run the operator must configure
+the Trade and ZuriBeans commit toggles and the actual IAM/CP/provider
+settings under the run-owned configuration hash and recreate the affected
+containers. Missing settings/refused authority block the purchase.
+The operator must prepare
+`bff-checkout-selection.json` with an existing cart, the two-letter
+country and a run-unique idempotency key. No payment or carrier outcome
+may be simulated as a successful native commerce order.
+
+### Run-private issuer and workload connection
+
+The candidate starts with the BFF/Trade *route toggles* already enabled, a
+run-private native order HMAC secret and the **native buyer fence still
+SHADOW**. It **does not** start an issuer, grant CP approver authority, create
+a budget or register any legal or human business permission. The operator
+must arrange the independently approved development issuer as a private HTTPS
+service reachable on the isolated `lab` network, with a certificate trusted
+by Trade's `/tls/ca.pem`. The issuer must own a real Ed25519 private key and
+serve genuine signed, exact-cart charge evidence. Only its public key is
+installed in Trade. A hostname outside the private `*.baobab-dev.test`
+namespace is refused. The private trusted TLS ingress must expose that DNS
+name and a certificate covering it; an issuer is **not** implicitly created
+by choosing a URL.
+
+The operator writes a JSON object into the active run's private
+`dev07-checkout-private-configuration.json`, owned by the run user, mode
+`0600`, with exactly the following field names (fill values with **actual
+independently issued** credentials from the private provider; illustrative
+angle-bracket placeholders are invalid by design):
+
+```json
+{
+  "schema": "infrastructure.dev07.checkout-private-configuration.v1",
+  "run_id": "<leased 32-character run id>",
+  "issuer_endpoint": "https://price.baobab-dev.test/v1/trade/cart-final-charges",
+  "issuer_public_key_pem": "<real signed-price issuer Ed25519 public PEM>",
+  "price_provider_audience": "<registered price issuer audience>",
+  "trade_workload_client_id": "<registered Trade workload>",
+  "trade_workload_client_secret": "<real secret>",
+  "market_workload_client_id": "<registered CP market reader>",
+  "market_workload_client_secret": "<real secret>",
+  "tenant_workload_client_id": "<registered CP context reader>",
+  "tenant_workload_client_secret": "<real secret>",
+  "price_provider_client_id": "<registered price provider reader>",
+  "price_provider_client_secret": "<real secret>"
+}
+```
+
+Use the existing `dev.run_dir(RUN_ID)` path inside the private development
+workspace; never upload this file to Actions artifacts, repository contents,
+a pull request, chat or debug logs. The fields are allowlisted by
+`dev07_checkout_configuration.py`; the install step performs no CP or IAM
+mutation:
+
+```sh
+python3 -B tests/platform-integration/development/buyer_bff.py configure-checkout RUN_ID
+```
+
+Keep `DEV07_GENUINE_CHECKOUT_REQUIRED=true` and exact source pin environment
+variables in the operator session through **start, configure and checkout**.
+The configured Trade container is recreated with the new run-owned
+connectivity data. Its approval, site/market, cart and budget policy checks
+remain live. Place the actual `bff-checkout-selection.json` with the active
+cart, a country code and new idempotency key in the same private run. The
+source will refuse missing buyer/seller/issuer grants rather than treat any
+placeholder as an accepted one.
+
+For an existing live, correctly provisioned candidate:
+
+```sh
+python3 -B tests/platform-integration/development/buyer_bff.py checkout RUN_ID DEV07-REVIEW-CHANGE-001
+python3 -B tests/platform-integration/development/buyer_bff.py finish-checkout RUN_ID
+```
+
+The checkout command first applies the **run-specific** development-only
+SHADOW-to-ENFORCED transition through the reviewed Trade native fixture,
+never production or staging; it then issues actual signed cart charge
+evidence through the provider and CP, reserves the current valuation, and
+invokes the confidential ZuriBeans HTTP route. The HTTP probe observes
+wrong-CSRF refusal, a `COMMITTED` non-draft Medusa order response and the
+same order on replay with its original idempotency key.
+
+It **then** builds the existing Trade DEV-11 Python owner image from that
+exact pinned Trade SHA and starts it only as a short-lived independent
+read-only witness. It selects the original canonical event by
+`order_id + idempotency_key` and runs
+`dev11_native_business_origin.py` on a **separate PostgreSQL connection**.
+That unchanged verifier refuses absent/duplicate outbox, missing native
+order or lines, SHADOW classification, buyer/seller receipt inconsistency,
+wrong/duplicate consumption, wrong reservation, or ledger/outbox/order
+XID mismatch. Infrastructure additionally requires BFF-to-event trace
+identity, original event UUID, immutable digest, exact reviewed source/image
+identity and the observed HTTP replay; the private
+`dev07-checkout-native-origin.json` and `dev07-checkout-witness.json`
+remain in the run-owned directory. The witness retains
+`dev07_accepted=false`, `l4_ops_01=BLOCKED`,
+`current_iam_cp_authority_independently_qualified=false` and
+`production_authorized=false`. Only the genuine original event may
+subsequently be passed to the confirmed publisher/ERP/JVM/OTLP gates.
+
+**Execution constraints:** This repository connection cannot itself open a
+Codespace, reach the user's private Docker lab, register actual CP
+approval mandates or prove a live PostgreSQL readback. Until those
+operator-owned prerequisites exist and the command actually succeeds,
+the independent runtime transaction remains **NOT OBSERVED**, not PASS.
+Leases and host recovery remain mandatory. Always run
+`finish-checkout` to attempt issuer/native cleanup and confirm disposal;
+the separate watchdog handles an interrupted owner.

@@ -1,0 +1,15 @@
+{
+  "schema": "infrastructure.dev07.checkout-source-lock.v1",
+  "scope": "DEVELOPMENT_DISPOSABLE_ONLY",
+  "sources": {
+    "baobab-trade": "c5308bbb593aa700742e6086fc20c467e265abd9",
+    "zuribeans": "2ca5d85c663a725c698df4fe66452f113a8a3a23",
+    "baobab-cp": "ba337b5700ff344e9ca3762a5ded53042a0c07fe",
+    "baobab-iam": "399a505f08ad34922845bfd8a08bab385e2de80f"
+  },
+  "checkout_operation": "trade.order.commit",
+  "native_order": "NON_DRAFT_MEDUSA_ORDER",
+  "native_commit_fence": "EXPLICIT_DISPOSABLE_ENFORCED",
+  "independent_original_event_readback_required": true,
+  "protected_acceptance": false
+}

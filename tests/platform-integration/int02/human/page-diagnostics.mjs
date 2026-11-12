@@ -22,7 +22,9 @@ export async function pageDiagnostics(page) {
       : document.contentType === 'application/json' ? 'JSON' : 'OTHER';
     // Use fixed boolean markers, never the surrounding untrusted text.
     const text = document.body?.innerText?.toLowerCase() ?? '';
-    const marker = text.includes('cookie not found') ? 'COOKIE_MISSING'
+    const marker = text.includes('invalid username or password') || text.includes('invalid credentials') ? 'CREDENTIAL_REJECTED'
+      : text.includes('account is temporarily disabled') ? 'ACCOUNT_TEMPORARILY_DISABLED'
+      : text.includes('cookie not found') ? 'COOKIE_MISSING'
       : text.includes('update account information') ? 'PROFILE_REQUIRED'
       : text.includes('invalid parameter') ? 'INVALID_PARAMETER'
       : text.includes('we are sorry') ? 'ISSUER_ERROR'

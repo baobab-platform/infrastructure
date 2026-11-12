@@ -1,0 +1,21 @@
+{
+  "schema": "infrastructure.dev11.six-owner-source-lock.v1",
+  "scope": "DEVELOPMENT_DISPOSABLE_ONLY",
+  "sources": {
+    "zuribeans": "2ca5d85c663a725c698df4fe66452f113a8a3a23",
+    "baobab-iam": "399a505f08ad34922845bfd8a08bab385e2de80f",
+    "baobab-cp": "ba337b5700ff344e9ca3762a5ded53042a0c07fe",
+    "baobab-trade": "c5308bbb593aa700742e6086fc20c467e265abd9",
+    "baobab-erp": "f8558b616e81f37ef0246a0e7fc58bc81b2a1e3a"
+  },
+  "owner": "infrastructure",
+  "infrastructure_source": "EXACT_RUNNING_PR_HEAD",
+  "positive_profile": "GOVERNED_NATIVE_B2B_ENFORCED",
+  "synthetic_business_inputs_accepted": false,
+  "decision9_enforcement_required": "ENFORCED",
+  "independent_native_event_origin_required": true,
+  "independent_iam_cp_source_required": true,
+  "independent_jvm_cp_lineage_required": true,
+  "independent_jaeger_graph_required": true,
+  "protected_acceptance": false
+}

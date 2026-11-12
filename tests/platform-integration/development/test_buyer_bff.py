@@ -105,6 +105,81 @@ class BuyerBffTests(unittest.TestCase):
             self.assertTrue(buyer_bff.cleanup('a'*32))
             down.assert_called_once_with('a'*32)
 
+    def test_build_failure_skips_unstarted_fixtures_and_still_cleans_owners(self):
+        run = 'a' * 32
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(dev, 'guarded', side_effect=lambda *_: nullcontext()), \
+             patch.object(dev, 'current', return_value=(Path(folder), {})), \
+             patch.object(buyer_bff, 'native') as native, \
+             patch.object(buyer_bff.buyer_identity, 'cleanup_owners') as owners, \
+             patch.object(dev, 'down') as down:
+            self.assertFalse(buyer_bff.cleanup(run))
+            native.assert_not_called()
+            owners.assert_called_once_with(run)
+            down.assert_called_once_with(run)
+
+    def test_owner_cleanup_continues_when_http_control_probe_fails(self):
+        run = 'a' * 32
+        state = {'dev07_bff_native_prepare_started': True,
+                 'dev07_bff_runtime_identity_verified': True}
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(dev, 'guarded', side_effect=lambda *_: nullcontext()), \
+             patch.object(dev, 'current', return_value=(Path(folder), state)), \
+             patch.object(dev, 'compose', side_effect=dev.Refused('COMMAND_FAILED')), \
+             patch.object(buyer_bff, 'native') as native, \
+             patch.object(buyer_bff.buyer_identity, 'cleanup_owners') as owners, \
+             patch.object(dev, 'down') as down:
+            self.assertTrue(buyer_bff.cleanup(run))
+            native.assert_called_once_with(Path(folder), state, 'cleanup')
+            owners.assert_called_once_with(run)
+            down.assert_called_once_with(run)
+
+    def test_failed_connected_build_keeps_redacted_receipt_and_fails_gate(self):
+        run = 'a' * 32
+        trade_sha = 'b' * 40
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            dev.write(root / 'state.json', {
+                'dev07_bff_stage': 'BUILD_BAOBAB_TRADE',
+                'dev07_bff_stage_source': 'baobab-trade',
+                'sources': {'baobab-trade': trade_sha},
+            })
+            original = root / ('dev01-' + run) / 'completed' / 'receipt.json'
+            original.parent.mkdir(parents=True)
+            dev.write(original, {'teardown_verified': True})
+            with patch.dict(os.environ, {'DEV11_CONNECTED_BFF_REQUIRED': 'true'}), \
+                 patch.object(dev, 'EVIDENCE', root), \
+                 patch.object(dev, 'guarded', side_effect=lambda *_: nullcontext()), \
+                 patch.object(dev, 'run_dir', side_effect=[root, root / 'removed']), \
+                 patch.object(dev, 'resources', return_value=[]), \
+                 patch.object(buyer_bff, 'prepare', return_value=run), \
+                 patch.object(buyer_bff, 'up', side_effect=RuntimeError('private provider payload')), \
+                 patch.object(buyer_bff, 'private_http_diagnostics'), \
+                 patch.object(buyer_bff, 'cleanup', return_value=False):
+                with self.assertRaisesRegex(dev.Refused, 'DEV07_BFF_HTTP_CASES_INCOMPLETE'):
+                    buyer_bff.main()
+            path = root / 'dev07-bff-http-suite.json'
+            self.assertNotIn('private provider payload', path.read_text())
+            receipt = dev.read(path)
+            self.assertFalse(receipt['bff_http_qualified'])
+            self.assertEqual(receipt['failure'], {'stage': 'BUILD_BAOBAB_TRADE',
+                                                  'source_sha': trade_sha,
+                                                  'reason': 'UNCLASSIFIED_FAILURE'})
+            self.assertTrue(path.with_name('dev07-bff-http-suite.sha256.json').is_file())
+
+    def test_preparation_refusal_retains_failure_without_fabricating_a_lifecycle(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            with patch.object(dev, 'EVIDENCE', root), \
+                 patch.object(buyer_bff, 'prepare', side_effect=dev.Refused('EMBEDDED_CONTRACT_DRIFT')):
+                with self.assertRaisesRegex(dev.Refused, 'DEV07_BFF_PREPARATION_FAILED'):
+                    buyer_bff.main()
+            report = dev.read(root / 'dev07-bff-http-suite.json')
+            self.assertIsNone(report['lifecycle'])
+            self.assertFalse(report['bff_http_qualified'])
+            self.assertEqual(report['failure'], {'stage': 'PREPARE', 'source_sha': None,
+                                                 'reason': 'EMBEDDED_CONTRACT_DRIFT'})
+
     def relay(self, body, *, name=c.BFF, secret='own-secret', enabled=True):
         spec = importlib.util.spec_from_file_location('_buyer_bff_native_test', Path(__file__).with_name('native_probe.py'))
         module = importlib.util.module_from_spec(spec)
