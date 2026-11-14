@@ -1,6 +1,6 @@
 {
   "name": "Baobab platform infrastructure",
-  "image": "ghcr.io/baobab-platform/baobab-dev:1.4.4-infra",
+  "image": "ghcr.io/baobab-platform/baobab-dev:1.5.1-infra@sha256:5b39e71dd068da12e009421012d7c3620339746c2a39839182ea1f4fe788ffda",
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
   "init": true,
