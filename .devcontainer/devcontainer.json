@@ -1,13 +1,28 @@
 {
   "name": "Baobab platform infrastructure",
-  "image": "ghcr.io/baobab-platform/baobab-dev:1.4.4-infra",
+  "image": "ghcr.io/baobab-platform/baobab-dev:1.4.4",
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
   "init": true,
-  "postCreateCommand": "baobab-verify --contract && if [ ! -f compose/.env ]; then cp compose/.env.example compose/.env; fi",
+  "postCreateCommand": "printf 'Infrastructure Codespace ready; run make local-env and make local-up when needed\\n'",
   "customizations": {
     "vscode": {
-      "extensions": ["github.vscode-github-actions", "redhat.vscode-yaml", "hashicorp.terraform"]
+      "extensions": [
+        "github.vscode-github-actions",
+        "redhat.vscode-yaml",
+        "hashicorp.terraform"
+      ]
     }
-  }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": false
+    },
+    "ghcr.io/devcontainers/features/terraform:1": {},
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.27.3"
+    }
+  },
+  "waitFor": "postCreateCommand"
 }
