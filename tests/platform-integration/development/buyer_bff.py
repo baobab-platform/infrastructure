@@ -44,6 +44,7 @@ SAFE_FAILURE_REASONS = {
     'DEV07_CALLBACK_PROFILE_REFUSED', 'DEV07_REGISTRATION_REFUSED',
     'DEV07_GRANT_REFUSED', 'DEV07_ASSURANCE_ABSENT',
     'DEV11_IMMUTABLE_CANDIDATE_PINS_REQUIRED', 'DEV11_BFF_ISSUER_CP_SOURCE_DRIFT',
+    *dev.BFF_BUILD_FAILURES.values(),
 }
 
 
@@ -114,6 +115,7 @@ def lock():
 
 
 def prepare():
+    owners = lock()['sources']
     candidate = os.environ.get('DEV11_CONNECTED_BFF_REQUIRED') == 'true'
     checkout_candidate = os.environ.get('DEV07_GENUINE_CHECKOUT_REQUIRED') == 'true'
     run = dev.prepare(lock_name=('dev11-buyer-bff-base-lock.json' if candidate
@@ -132,7 +134,7 @@ def prepare():
         docs = module.build_clients(registry, run, datetime.fromtimestamp(state['deadline'], timezone.utc),
             {buyer_identity.BFF: secrets.token_urlsafe(32), buyer_identity.VALIDATOR: secrets.token_urlsafe(32)}, bff_http=True)
         dev.write(directory / 'buyer-client-spec.json', docs)
-        for repo, sha in lock()['sources'].items():
+        for repo, sha in owners.items():
             source = directory / 'sources' / repo
             dev.call(['git', 'init', '-q', str(source)], state=state)
             dev.call(['git', '-C', str(source), 'fetch', '--quiet', '--depth', '1',
@@ -162,7 +164,7 @@ def build(directory, state):
         dev.check_dockerfile(source / dockerfile)
         image = state['project'] + '-' + service
         state['images'][service] = image; dev.persist(directory, state, 'RUNNING')
-        args = ['docker', 'build', '--tag', image, '--file', str(source / dockerfile)]
+        args = ['docker', 'build', '--progress=plain', '--tag', image, '--file', str(source / dockerfile)]
         for name, val in {**dev.labels(state), 'org.opencontainers.image.revision': state['sources'][repo]}.items():
             args += ['--label', name + '=' + val]
         if repo == 'baobab-trade':

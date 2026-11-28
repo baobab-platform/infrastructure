@@ -159,6 +159,32 @@ def is_dev07_native_diagnostic(line):
     ) is not None
 
 
+BFF_BUILD_FAILURES = {
+    'npm ci': 'BFF_BUILD_DEPENDENCIES',
+    'npm run build': 'BFF_BUILD_COMPILE',
+}
+
+
+def bff_build_failure(args, stderr):
+    if args[:3] != ['docker', 'build', '--progress=plain'] or '--file' not in args:
+        return None
+    path = Path(args[args.index('--file') + 1])
+    if path.name not in {'Dockerfile.dev07-http', 'Dockerfile.dev07'}:
+        return None
+    # Use only BuildKit's terminal failing invocation and a closed phase
+    # vocabulary. Numbered build output may contain arbitrary provider text.
+    for line in reversed(stderr.splitlines()):
+        if not line.startswith('ERROR: failed to solve:'):
+            continue
+        failure = re.search(r'process "/bin/sh -c (.+)" did not complete successfully:', line)
+        if failure:
+            for command, reason in BFF_BUILD_FAILURES.items():
+                if re.search(rf'(?<![\w.-]){re.escape(command)}(?:\s|$)', failure[1]):
+                    return reason
+        return None
+    return None
+
+
 def call(args, *, timeout=120, stdin=None, state=None, env=None):
     if state is not None:
         timeout = min(timeout, state['deadline'] - time.time())
@@ -228,6 +254,8 @@ def call(args, *, timeout=120, stdin=None, state=None, env=None):
                                 ('manifest unknown','IMAGE_UNAVAILABLE'),('invalid config','INVALID_PROVIDER_CONFIGURATION'),
                                 ('field not found','INVALID_PROVIDER_CONFIGURATION'),('permission denied','RUNTIME_PERMISSION_DENIED')):
                 if needle in raw: classification=code;break
+            if classification == 'COMMAND_FAILED':
+                classification = bff_build_failure(args, result.stderr) or classification
             matched=re.search(r'DEV03_PROVIDER_PROBE_FAILED ([A-Z][A-Z0-9_]{0,80})',result.stderr)
             known={'NATIVE_PROTOCOL_FAILED','PROVIDER_OBSERVATION_FAILED','KRATOS_CREATE','KRATOS_READBACK',
                    'HYDRA_CREATE','HYDRA_READBACK','SIGNED_TOKEN_ISSUANCE','REAL_KRATOS_LOGIN','KRATOS_CURRENT_SESSION',
