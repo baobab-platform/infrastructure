@@ -49,6 +49,23 @@ class NativeTests(unittest.TestCase):
             with self.assertRaises(dev.Refused): dev.qualify('a'*32)
             self.assertIsNone(state['authority'])
 
+    def test_connected_build_diagnostics_expose_only_the_failed_phase(self):
+        import subprocess
+        args = ['docker', 'build', '--progress=plain', '--file', '/private/Dockerfile.dev07-http', '/private']
+        for command, expected in [('npm ci --include=dev', 'BFF_BUILD_DEPENDENCIES'),
+                                  ('npm run build', 'BFF_BUILD_COMPILE'),
+                                  ('secret-command', 'COMMAND_FAILED')]:
+            stderr = (f'ERROR: failed to solve: process "/bin/sh -c {command}" '
+                      'did not complete successfully: exit code: 1')
+            output = io.StringIO()
+            with redirect_stdout(output), patch('subprocess.run', return_value=subprocess.CompletedProcess(
+                    args, 1, '#12 private-registry-credential', stderr)):
+                with self.assertRaisesRegex(dev.Refused, '^' + expected + '$'):
+                    dev.call(args)
+            self.assertEqual(output.getvalue(), '')
+        self.assertIsNone(dev.bff_build_failure(
+            args, '#12 ERROR: failed to solve: process "/bin/sh -c npm ci" did not complete successfully:'))
+
     def test_collapsed_ui_origins_remain_unique(self):
         raw='allowed_origins:\n  - https://rp.baobab-dev.test\n  - https://rp.baobab-dev.test\n'
         self.assertEqual(adapter.unique_transport_lists(raw).count('  - https://rp.baobab-dev.test'),1)

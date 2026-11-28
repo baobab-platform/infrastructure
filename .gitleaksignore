@@ -7,3 +7,7 @@
 # -H "X-API-KEY: $${APISIX_ADMIN_KEY}", i.e. a reference to an environment
 # variable resolved at runtime; the key itself is not in the repository.
 887da1f8dba7e72dded955ba320484e62fe4fc6c:compose/compose.yaml:curl-auth-user:174
+
+# Historical synthetic checkout witness fixture: the flagged idempotency
+# selector is a fixed test label. It authenticates no request or service.
+834e30068bb8e33ddca0745a15108dd87bf8c0e0:tests/platform-integration/development/test_dev07_checkout_witness.py:generic-api-key:14

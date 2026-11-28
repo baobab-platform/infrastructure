@@ -42,6 +42,10 @@ SERVICES = {"keycloak", "iam-db", "cp", "cp-db", "edge", "probe", "human",
 # against its own head through the reusable workflow; only these two pins
 # may be replaced, and only by a full commit SHA.
 CANDIDATE_REPOSITORIES = {"baobab-iam", "baobab-cp"}
+# This is CP's deployment environment, not the integration test's evidence
+# class. Accepted named development workloads and Organisation read grants
+# must agree with the same server environment; no caller override is allowed.
+CP_RUNTIME_ENVIRONMENT = "development"
 
 class Blocked(Exception):
     pass
@@ -827,7 +831,8 @@ def seed_isolation_authority(p, directory, envfile, ids):
         subject = ids[label + "_sub"]
         must(re.fullmatch(r"[0-9a-f-]{36}", subject) is not None, "Invalid isolation subject")
         org = target["organisation"]
-        scope = json.dumps({"level":"ORGANISATION","organisation_id":org,"mode":"EXACT","environment":"integration"})
+        scope = json.dumps({"level":"ORGANISATION","organisation_id":org,"mode":"EXACT",
+                            "environment":CP_RUNTIME_ENVIRONMENT})
         cp_sql(p, envfile, "identity_human", f"""
           INSERT INTO policy.administrative_grant
           (grant_id,principal_id,permission,scope_level,scope,grant_type,source,
@@ -941,6 +946,22 @@ def test(lock):
     # before returning; a failed restore aborts rather than tainting evidence.
     workload_report = json.loads(run_probe(p, envfile, "workload-proof"))
     report = json.loads(run_probe(p, envfile, "test"))
+    # DEV-11 candidate-only: real Keycloak token readback through the live CP
+    # process with W3C lineage and unchanged authority denials. A standard
+    # INT-02 run does not assert observations from an uninstrumented CP pin.
+    if os.environ.get("INT02_DEV11_CONNECTED_REQUIRED") == "true":
+        connected = json.loads(run_probe(p, envfile, "dev11-trace"))
+        observed = connected.get("checks")
+        must(connected.get("source") == "real_keycloak_and_cp_https"
+             and connected.get("runtime_qualified") is False
+             and connected.get("outbox_consumer_qualified") is False
+             and isinstance(observed, dict) and len(observed) == 7
+             and all(k.startswith("dev11_") and type(v) is bool for k, v in observed.items()),
+             "DEV11_CONNECTED_RECEIPT_INVALID")
+        report.setdefault("checks", {}).update(observed)
+        report.setdefault("observations", {})["dev11_connected_scope"] = "KEYCLOAK_CP_HTTP_ONLY"
+        write_evidence(p, lock, report, accepted=False)
+        must(all(observed.values()), "DEV11_CONNECTED_IAM_CP_TRACE_OR_DENIAL_FAILED")
     http_report = json.loads(run_probe(p, envfile, "pulse-http"))
     apply_pulse_http_proof(report, http_report)
     apply_pulse_native_proof(report, native_report)

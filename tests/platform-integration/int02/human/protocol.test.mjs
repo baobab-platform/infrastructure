@@ -23,6 +23,29 @@ test('page classification cannot export issuer text, credential values or unboun
     else globalThis.document = previous;
   }
 });
+test('failed real login classifies credential rejection without exposing issuer content', async () => {
+  const previous = globalThis.document;
+  globalThis.document = {
+    contentType:'text/html',
+    body:{innerText:'Invalid username or password. Password sentinel-secret'},
+    querySelectorAll:()=>[],
+  };
+  try {
+    const facts = await pageDiagnostics({
+      url:()=>issuer+'/login-actions/authenticate?session_code=sentinel-secret',
+      evaluate:async fn=>fn(),
+    });
+    assert.equal(facts.marker,'CREDENTIAL_REJECTED');
+    assert.equal(facts.host,'IAM');
+    assert.equal(facts.path,'ACTION');
+    assert.ok(!JSON.stringify(facts).includes('sentinel-secret'));
+    assert.ok(!JSON.stringify(facts).includes('password.'));
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});
+
 test('callback rejects expiry, state, duplicate parameters and wrong callback before exchange', () => {
   const tx = { state: 'expected', expires: Date.now() + 60000 };
   validateCallback(new URL(redirectUri + '?state=expected&code=real'), tx);

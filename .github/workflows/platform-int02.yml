@@ -41,6 +41,11 @@ on:
         type: string
         required: false
         default: ""
+      dev11_connected_required:
+        description: Require live Keycloak-issued token to CP W3C and authority-negative receipt; independent of base INT-02
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 jobs:
@@ -118,12 +123,14 @@ jobs:
         env:
           INT02_CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository }}
           INT02_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          DEV11_CONNECTED_REQUIRED: ${{ inputs.dev11_connected_required }}
         run: |
           set -eu
           tests/platform-integration/devcontainer-cli/node_modules/.bin/devcontainer exec \
             --workspace-folder . --config .devcontainer/platform-integration/devcontainer.json \
             --remote-env "INT02_CANDIDATE_REPOSITORY=$INT02_CANDIDATE_REPOSITORY" \
             --remote-env "INT02_CANDIDATE_SHA=$INT02_CANDIDATE_SHA" \
+            --remote-env "INT02_DEV11_CONNECTED_REQUIRED=$DEV11_CONNECTED_REQUIRED" \
             --remote-env GITHUB_ACTIONS=true \
             --remote-env "GITHUB_RUN_ID=$GITHUB_RUN_ID" \
             bash tests/platform-integration/int02/run-in-devcontainer.sh

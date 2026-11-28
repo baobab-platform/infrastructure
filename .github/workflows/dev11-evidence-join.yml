@@ -1,0 +1,78 @@
+name: DEV-11 independent L4-OPS-01 and estate evidence custody
+
+# Separate reviewer execution. No owner may mark its own results accepted.
+# Requires exact source SHAs and eight immutable GitHub run IDs via one JSON.
+# Missing cross-repo Actions read access remains BLOCKED, never green.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/dev11-evidence-join.yml
+      - tests/platform-integration/development/dev11_evidence_join.py
+      - tests/platform-integration/development/test_dev11_evidence_join.py
+  workflow_dispatch:
+    inputs:
+      bindings_json:
+        description: "JSON infrastructure.dev11.join-input.v1 (eight exact run IDs, current source SHAs, no tokens)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  independent-join-tests:
+    name: Verify L4-OPS-01 independent custody negatives
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Bounded archive, GitHub run identity, invalid-step and replay-of-artifact tests
+        run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev11_evidence_join.py' -v
+      - name: Independent exported buyer-to-JVM graph negative tests
+        run: python3 -B -m unittest discover -s tests/platform-integration/development -p 'test_dev11_full_vertical_trace.py' -v
+
+  independent-join:
+    name: Independently verify real trace negatives and all three estate browser owners
+    needs: independent-join-tests
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Decode immutable run bindings from controlled environment
+        env:
+          EVIDENCE_BINDINGS_JSON: ${{ inputs.bindings_json }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          raw = os.environ.get("EVIDENCE_BINDINGS_JSON", "")
+          if len(raw) > 10000: raise SystemExit("DEV11_BINDINGS_TOO_LARGE")
+          Path("/tmp/dev11-bindings.json").write_text(raw)
+          PY
+      - name: Verify actual GitHub run/job/step and ZIP SHA256; demand native source/teardown
+        env:
+          # A read-only org GitHub App installation token or scoped PAT can
+          # be set as an Actions secret. Public cross-repository access may
+          # also work with the ephemeral GITHUB_TOKEN; 403 is BLOCKED.
+          DEV11_EVIDENCE_READ_TOKEN: ${{ secrets.DEV11_EVIDENCE_READ_TOKEN || github.token }}
+        run: |
+          python3 -B tests/platform-integration/development/dev11_evidence_join.py \
+            --bindings /tmp/dev11-bindings.json \
+            --output tests/platform-integration/evidence/dev11-l4-ops-01.json
+      - name: Publish ONLY independently sanitised state, immutable run and artifact digests
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.7.5
+        with:
+          name: dev11-l4-ops-01-independent-join
+          path: |
+            tests/platform-integration/evidence/dev11-l4-ops-01.json
+            tests/platform-integration/evidence/dev11-l4-ops-01.json.sha256
+          if-no-files-found: error
+          retention-days: 14
