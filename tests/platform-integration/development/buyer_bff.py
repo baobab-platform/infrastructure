@@ -14,7 +14,6 @@ import os
 import re
 import sys
 import time
-import stat
 
 import adapter
 import buyer_identity
@@ -25,6 +24,7 @@ from dev07_checkout_witness import verify_checkout
 from dev07_checkout_configuration import validate_private_checkout_configuration
 
 BASE = Path(__file__).resolve().parent
+PRIVATE_CHECKOUT_CONFIGURATION = 'dev07-checkout-private-configuration.json'
 HTTP_HOPS = {
     'hydra.int03.test:/.well-known/openid-configuration': 'IAM_DISCOVERY',
     'hydra.int03.test:/oauth2/token': 'IAM_TOKEN',
@@ -187,7 +187,9 @@ def build(directory, state):
 def verify_profile(directory, state):
     dev.verify_sources(directory, state)
     for name, digest in state.get('dev07_bff_config_hashes', {}).items():
-        dev.require(hashlib.sha256((directory / name).read_bytes()).hexdigest() == digest,
+        raw = (dev.read_private_bytes(directory / name, 8192)
+               if name == PRIVATE_CHECKOUT_CONFIGURATION else (directory / name).read_bytes())
+        dev.require(hashlib.sha256(raw).hexdigest() == digest,
                     'DEV07_BFF_CONFIGURATION_DRIFT')
     owner = state.get('dev07_bff_owner_sha256')
     if owner:
@@ -345,12 +347,8 @@ def configure_checkout_candidate(run):
                     and state.get('dev07_checkout_configured') is not True,
                     'DEV07_CONFIGURE_WRONG_OR_ALREADY_CONFIGURED_RUN')
         verify_profile(directory, state)
-        path = directory / 'dev07-checkout-private-configuration.json'
-        info = path.lstat()
-        dev.require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
-                    and (info.st_mode & 0o077) == 0 and 0 < info.st_size <= 8192,
-                    'DEV07_PRIVATE_CONFIG_FILE_NOT_OWNED')
-        value = json.loads(path.read_text(), object_pairs_hook=dev.unique)
+        packet = dev.read_private_bytes(directory / PRIVATE_CHECKOUT_CONFIGURATION, 8192)
+        value = json.loads(packet, object_pairs_hook=dev.unique)
         validated = validate_private_checkout_configuration(value, run)
         config = dev.read(directory / 'compose.json')
         trade = config['services']['trade-bff-http']['environment']
@@ -358,8 +356,8 @@ def configure_checkout_candidate(run):
                     and trade.get('BAOBAB_TRADE_A_ORDER_AUTHORITY_ENABLED') == 'true',
                     'DEV07_CHECKOUT_NATIVE_FENCE_PROFILE_NOT_CONFIGURED')
         trade.update(validated)
-        state['dev07_bff_config_hashes']['dev07-checkout-private-configuration.json'] = (
-            hashlib.sha256(path.read_bytes()).hexdigest())
+        state['dev07_bff_config_hashes'][PRIVATE_CHECKOUT_CONFIGURATION] = (
+            hashlib.sha256(packet).hexdigest())
         commit_config(directory, state, config)
         dev.compose(directory, state, 'up', '-d', '--no-deps', '--force-recreate',
                     'trade-bff-http', timeout=120)

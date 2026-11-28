@@ -50,15 +50,21 @@ def unique(pairs):
     return result
 
 
-def read(path):
-    """Read one private regular inode without following a final symlink."""
+def read_private_bytes(path, limit):
+    """Read bounded bytes from one private regular inode."""
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    with os.fdopen(fd) as stream:
+    with os.fdopen(fd, 'rb') as stream:
         info = os.fstat(stream.fileno())
         require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
                 and info.st_nlink == 1 and not info.st_mode & 0o077
-                and info.st_size <= 1024 * 1024, 'PRIVATE_STATE_REQUIRED')
-        return json.load(stream, object_pairs_hook=unique)
+                and info.st_size <= limit, 'PRIVATE_STATE_REQUIRED')
+        raw = stream.read(limit + 1)
+        require(len(raw) <= limit, 'PRIVATE_STATE_REQUIRED')
+        return raw
+
+
+def read(path):
+    return json.loads(read_private_bytes(path, 1024 * 1024).decode('utf-8'), object_pairs_hook=unique)
 
 
 def write(path, data):
@@ -823,7 +829,9 @@ def down(run_id):
             if component: buyer_bff_contract.validate(component, run_id, state['sources'])
             report.update(dev07_bff_http=component,
                 dev07_bff_runtime_identity_verified=state.get('dev07_bff_runtime_identity_verified', False),
-                dev07_bff_config_hashes=state.get('dev07_bff_config_hashes', {}))
+                dev07_bff_config_hashes={name: digest for name, digest in
+                    state.get('dev07_bff_config_hashes', {}).items()
+                    if name != 'dev07-checkout-private-configuration.json'})
         if state.get('dev07_checkout_sql_witnessed') is True:
             # The runtime-owned private originals cannot silently disappear
             # during host teardown without a durable integrity checkpoint.

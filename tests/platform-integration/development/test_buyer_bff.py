@@ -4,6 +4,7 @@ from copy import deepcopy
 import importlib.util
 import io
 import base64
+import hashlib
 import json
 import os
 import sys
@@ -21,6 +22,25 @@ import dev
 
 
 class BuyerBffTests(unittest.TestCase):
+    def test_private_checkout_packet_readback_refuses_changed_bytes_and_symlink(self):
+        with tempfile.TemporaryDirectory() as root, patch.object(dev, 'verify_sources'):
+            directory = Path(root)
+            name = buyer_bff.PRIVATE_CHECKOUT_CONFIGURATION
+            packet = directory / name
+            raw = b'{"run":"disposable"}\n'
+            packet.write_bytes(raw)
+            packet.chmod(0o600)
+            state = {'dev07_bff_config_hashes': {name: hashlib.sha256(raw).hexdigest()}}
+            buyer_bff.verify_profile(directory, state)
+            packet.write_bytes(raw + b' ')
+            with self.assertRaisesRegex(dev.Refused, 'DEV07_BFF_CONFIGURATION_DRIFT'):
+                buyer_bff.verify_profile(directory, state)
+            target = packet.rename(directory / 'replacement')
+            target.write_bytes(raw)
+            packet.symlink_to(target)
+            with self.assertRaises(OSError):
+                buyer_bff.verify_profile(directory, state)
+
     def test_private_http_diagnostics_never_release_provider_content(self):
         self.assertEqual(c.http_status_diagnostics('IAM_TOKEN 200 200\nTRADE_CONTEXT 401 -'),
             ['DEV07_BFF_HTTP_HOP=IAM_TOKEN:200:UPSTREAM_200', 'DEV07_BFF_HTTP_HOP=TRADE_CONTEXT:401:UPSTREAM_NONE'])

@@ -118,8 +118,10 @@ four-owner candidate installed, select the immutable source tuple explicitly:
 ```sh
 export BAOBAB_ENVIRONMENT=development
 export DEV07_GENUINE_CHECKOUT_REQUIRED=true
-export DEV07_CHECKOUT_TRADE_SHA=79dc564a5d94d41eb4cd88d5476cc391b2a24b9e
-export DEV07_CHECKOUT_ZURIBEANS_SHA=e171ede6cbb9512359266e85870e297c5a1e4361
+lock=tests/platform-integration/development/dev07-checkout-source-lock.json
+DEV07_CHECKOUT_TRADE_SHA=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["sources"]["baobab-trade"])' "$lock")
+DEV07_CHECKOUT_ZURIBEANS_SHA=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["sources"]["zuribeans"])' "$lock")
+export DEV07_CHECKOUT_TRADE_SHA DEV07_CHECKOUT_ZURIBEANS_SHA
 python3 -B tests/platform-integration/development/buyer_bff.py start-checkout
 # Record the printed disposable RUN_ID inside the private operator workspace.
 ```
